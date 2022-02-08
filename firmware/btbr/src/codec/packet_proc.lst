@@ -1,0 +1,537 @@
+ARM GAS  /tmp/ccVSF3KU.s 			page 1
+
+
+   1              		.cpu cortex-m3
+   2              		.eabi_attribute 20, 1
+   3              		.eabi_attribute 21, 1
+   4              		.eabi_attribute 23, 3
+   5              		.eabi_attribute 24, 1
+   6              		.eabi_attribute 25, 1
+   7              		.eabi_attribute 26, 1
+   8              		.eabi_attribute 30, 2
+   9              		.eabi_attribute 34, 1
+  10              		.eabi_attribute 18, 4
+  11              		.file	"packet_proc.c"
+  12              		.text
+  13              	.Ltext0:
+  14              		.cfi_sections	.debug_frame
+  15              		.section	.text.bbpkt_fhs_prepare_payload,"ax",%progbits
+  16              		.align	1
+  17              		.p2align 2,,3
+  18              		.global	bbpkt_fhs_prepare_payload
+  19              		.arch armv7-m
+  20              		.syntax unified
+  21              		.thumb
+  22              		.thumb_func
+  23              		.fpu softvfp
+  25              	bbpkt_fhs_prepare_payload:
+  26              	.LVL0:
+  27              	.LFB7:
+  28              		.file 1 "src/codec/packet_proc.c"
+   1:src/codec/packet_proc.c **** /* Packet processing
+   2:src/codec/packet_proc.c ****  *
+   3:src/codec/packet_proc.c ****  * Copyright 2020 Etienne Helluy-Lafont, Univ. Lille, CNRS.
+   4:src/codec/packet_proc.c ****  *
+   5:src/codec/packet_proc.c ****  * This file is part of Project Ubertooth.
+   6:src/codec/packet_proc.c ****  *
+   7:src/codec/packet_proc.c ****  * This program is free software; you can redistribute it and/or modify
+   8:src/codec/packet_proc.c ****  * it under the terms of the GNU General Public License as published by
+   9:src/codec/packet_proc.c ****  * the Free Software Foundation; either version 2, or (at your option)
+  10:src/codec/packet_proc.c ****  * any later version.
+  11:src/codec/packet_proc.c ****  *
+  12:src/codec/packet_proc.c ****  * This program is distributed in the hope that it will be useful,
+  13:src/codec/packet_proc.c ****  * but WITHOUT ANY WARRANTY; without even the implied warranty of
+  14:src/codec/packet_proc.c ****  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  15:src/codec/packet_proc.c ****  * GNU General Public License for more details.
+  16:src/codec/packet_proc.c ****  *
+  17:src/codec/packet_proc.c ****  * You should have received a copy of the GNU General Public License
+  18:src/codec/packet_proc.c ****  * along with this program; see the file COPYING.  If not, write to
+  19:src/codec/packet_proc.c ****  * the Free Software Foundation, Inc., 51 Franklin Street,
+  20:src/codec/packet_proc.c ****  * Boston, MA 02110-1301, USA.
+  21:src/codec/packet_proc.c ****  */
+  22:src/codec/packet_proc.c **** #include <stdlib.h>
+  23:src/codec/packet_proc.c **** #include <string.h>
+  24:src/codec/packet_proc.c **** #include <ubtbr/cfg.h>
+  25:src/codec/packet_proc.c **** #include <ubtbr/bb.h>
+  26:src/codec/packet_proc.c **** 
+  27:src/codec/packet_proc.c **** /* Encode static fields of fhs payload */
+  28:src/codec/packet_proc.c **** void bbpkt_fhs_prepare_payload(
+  29:src/codec/packet_proc.c **** 	uint8_t *data, uint64_t parity, uint32_t lap, uint8_t uap, 
+  30:src/codec/packet_proc.c **** 	uint16_t nap, uint32_t cls, uint8_t ltaddr, uint8_t has_eir)
+ARM GAS  /tmp/ccVSF3KU.s 			page 2
+
+
+  31:src/codec/packet_proc.c **** {
+  29              		.loc 1 31 1 view -0
+  30              		.cfi_startproc
+  31              		@ args = 24, pretend = 0, frame = 0
+  32              		@ frame_needed = 0, uses_anonymous_args = 0
+  33              		@ link register save eliminated.
+  34              		.loc 1 31 1 is_stmt 0 view .LVU1
+  35 0000 70B4     		push	{r4, r5, r6}
+  36              		.cfi_def_cfa_offset 12
+  37              		.cfi_offset 4, -12
+  38              		.cfi_offset 5, -8
+  39              		.cfi_offset 6, -4
+  32:src/codec/packet_proc.c **** 	data[0] = 0xff & parity;
+  40              		.loc 1 32 2 is_stmt 1 view .LVU2
+  31:src/codec/packet_proc.c **** 	data[0] = 0xff & parity;
+  41              		.loc 1 31 1 is_stmt 0 view .LVU3
+  42 0002 9DF82040 		ldrb	r4, [sp, #32]	@ zero_extendqisi2
+  43 0006 0399     		ldr	r1, [sp, #12]
+  33:src/codec/packet_proc.c **** 	data[1] = 0xff & (parity>>8);
+  34:src/codec/packet_proc.c **** 	data[2] = 0xff & (parity>>16);
+  35:src/codec/packet_proc.c **** 	data[3] = 0xff & (parity>>24);
+  36:src/codec/packet_proc.c **** 	data[4] = (0x3 & (parity>>32)) | (0xfc & (lap<<2));
+  37:src/codec/packet_proc.c **** 	data[5] = 0xff & (lap >> 6);
+  38:src/codec/packet_proc.c **** 	data[6] = 0xff & (lap >> 14);
+  39:src/codec/packet_proc.c **** 	data[7] = (0x03 & (lap >> 22))
+  40:src/codec/packet_proc.c **** 		| ((has_eir&1) << 2) 	// EIR
+  44              		.loc 1 40 18 view .LVU4
+  45 0008 A400     		lsls	r4, r4, #2
+  46 000a 04F00405 		and	r5, r4, #4
+  39:src/codec/packet_proc.c **** 		| ((has_eir&1) << 2) 	// EIR
+  47              		.loc 1 39 18 view .LVU5
+  48 000e C1F38154 		ubfx	r4, r1, #22, #2
+  49              		.loc 1 40 3 view .LVU6
+  50 0012 2C43     		orrs	r4, r4, r5
+  33:src/codec/packet_proc.c **** 	data[1] = 0xff & (parity>>8);
+  51              		.loc 1 33 26 view .LVU7
+  52 0014 150A     		lsrs	r5, r2, #8
+  36:src/codec/packet_proc.c **** 	data[5] = 0xff & (lap >> 6);
+  53              		.loc 1 36 17 view .LVU8
+  54 0016 03F00303 		and	r3, r3, #3
+  32:src/codec/packet_proc.c **** 	data[1] = 0xff & (parity>>8);
+  55              		.loc 1 32 10 view .LVU9
+  56 001a 0270     		strb	r2, [r0]
+  33:src/codec/packet_proc.c **** 	data[2] = 0xff & (parity>>16);
+  57              		.loc 1 33 2 is_stmt 1 view .LVU10
+  33:src/codec/packet_proc.c **** 	data[2] = 0xff & (parity>>16);
+  58              		.loc 1 33 10 is_stmt 0 view .LVU11
+  59 001c 4570     		strb	r5, [r0, #1]
+  34:src/codec/packet_proc.c **** 	data[3] = 0xff & (parity>>24);
+  60              		.loc 1 34 2 is_stmt 1 view .LVU12
+  34:src/codec/packet_proc.c **** 	data[3] = 0xff & (parity>>24);
+  61              		.loc 1 34 26 is_stmt 0 view .LVU13
+  62 001e 150C     		lsrs	r5, r2, #16
+  35:src/codec/packet_proc.c **** 	data[4] = (0x3 & (parity>>32)) | (0xfc & (lap<<2));
+  63              		.loc 1 35 26 view .LVU14
+  64 0020 120E     		lsrs	r2, r2, #24
+  65              	.LVL1:
+ARM GAS  /tmp/ccVSF3KU.s 			page 3
+
+
+  36:src/codec/packet_proc.c **** 	data[5] = 0xff & (lap >> 6);
+  66              		.loc 1 36 33 view .LVU15
+  67 0022 43EA8103 		orr	r3, r3, r1, lsl #2
+  35:src/codec/packet_proc.c **** 	data[4] = (0x3 & (parity>>32)) | (0xfc & (lap<<2));
+  68              		.loc 1 35 10 view .LVU16
+  69 0026 C270     		strb	r2, [r0, #3]
+  37:src/codec/packet_proc.c **** 	data[6] = 0xff & (lap >> 14);
+  70              		.loc 1 37 24 view .LVU17
+  71 0028 8A09     		lsrs	r2, r1, #6
+  31:src/codec/packet_proc.c **** 	data[0] = 0xff & parity;
+  72              		.loc 1 31 1 view .LVU18
+  73 002a BDF81460 		ldrh	r6, [sp, #20]
+  34:src/codec/packet_proc.c **** 	data[3] = 0xff & (parity>>24);
+  74              		.loc 1 34 10 view .LVU19
+  75 002e 8570     		strb	r5, [r0, #2]
+  35:src/codec/packet_proc.c **** 	data[4] = (0x3 & (parity>>32)) | (0xfc & (lap<<2));
+  76              		.loc 1 35 2 is_stmt 1 view .LVU20
+  36:src/codec/packet_proc.c **** 	data[5] = 0xff & (lap >> 6);
+  77              		.loc 1 36 2 view .LVU21
+  36:src/codec/packet_proc.c **** 	data[5] = 0xff & (lap >> 6);
+  78              		.loc 1 36 10 is_stmt 0 view .LVU22
+  79 0030 0371     		strb	r3, [r0, #4]
+  37:src/codec/packet_proc.c **** 	data[6] = 0xff & (lap >> 14);
+  80              		.loc 1 37 2 is_stmt 1 view .LVU23
+  31:src/codec/packet_proc.c **** 	data[0] = 0xff & parity;
+  81              		.loc 1 31 1 is_stmt 0 view .LVU24
+  82 0032 069D     		ldr	r5, [sp, #24]
+  38:src/codec/packet_proc.c **** 	data[7] = (0x03 & (lap >> 22))
+  83              		.loc 1 38 24 view .LVU25
+  84 0034 8B0B     		lsrs	r3, r1, #14
+  37:src/codec/packet_proc.c **** 	data[6] = 0xff & (lap >> 14);
+  85              		.loc 1 37 10 view .LVU26
+  86 0036 4271     		strb	r2, [r0, #5]
+  38:src/codec/packet_proc.c **** 	data[7] = (0x03 & (lap >> 22))
+  87              		.loc 1 38 2 is_stmt 1 view .LVU27
+  31:src/codec/packet_proc.c **** 	data[0] = 0xff & parity;
+  88              		.loc 1 31 1 is_stmt 0 view .LVU28
+  89 0038 9DF81020 		ldrb	r2, [sp, #16]	@ zero_extendqisi2
+  41:src/codec/packet_proc.c **** //		| (0 << 3) 	// RES = 0
+  42:src/codec/packet_proc.c **** 		| (1 << 4) 	// SR = 1
+  43:src/codec/packet_proc.c **** 		| (2 << 6);	// SP = 2
+  90              		.loc 1 43 3 view .LVU29
+  91 003c 64F06F04 		orn	r4, r4, #111
+  38:src/codec/packet_proc.c **** 	data[7] = (0x03 & (lap >> 22))
+  92              		.loc 1 38 10 view .LVU30
+  93 0040 8371     		strb	r3, [r0, #6]
+  39:src/codec/packet_proc.c **** 		| ((has_eir&1) << 2) 	// EIR
+  94              		.loc 1 39 2 is_stmt 1 view .LVU31
+  31:src/codec/packet_proc.c **** 	data[0] = 0xff & parity;
+  95              		.loc 1 31 1 is_stmt 0 view .LVU32
+  96 0042 9DF81C30 		ldrb	r3, [sp, #28]	@ zero_extendqisi2
+  44:src/codec/packet_proc.c **** 	data[8] = uap;
+  45:src/codec/packet_proc.c **** 	data[9] = 0xff & nap;
+  46:src/codec/packet_proc.c **** 	data[10] = 0xff & (nap>>8);
+  47:src/codec/packet_proc.c **** 	data[11] = 0xff & (cls);
+  48:src/codec/packet_proc.c **** 	data[12] = 0xff & (cls>>8);
+  97              		.loc 1 48 24 view .LVU33
+ARM GAS  /tmp/ccVSF3KU.s 			page 4
+
+
+  98 0046 290A     		lsrs	r1, r5, #8
+  39:src/codec/packet_proc.c **** 		| ((has_eir&1) << 2) 	// EIR
+  99              		.loc 1 39 10 view .LVU34
+ 100 0048 C471     		strb	r4, [r0, #7]
+  44:src/codec/packet_proc.c **** 	data[8] = uap;
+ 101              		.loc 1 44 2 is_stmt 1 view .LVU35
+  44:src/codec/packet_proc.c **** 	data[8] = uap;
+ 102              		.loc 1 44 10 is_stmt 0 view .LVU36
+ 103 004a 0272     		strb	r2, [r0, #8]
+  45:src/codec/packet_proc.c **** 	data[10] = 0xff & (nap>>8);
+ 104              		.loc 1 45 2 is_stmt 1 view .LVU37
+  46:src/codec/packet_proc.c **** 	data[11] = 0xff & (cls);
+ 105              		.loc 1 46 11 is_stmt 0 view .LVU38
+ 106 004c 340A     		lsrs	r4, r6, #8
+  49:src/codec/packet_proc.c **** 	data[13] = 0xff & (cls>>16);
+ 107              		.loc 1 49 24 view .LVU39
+ 108 004e 2A0C     		lsrs	r2, r5, #16
+  45:src/codec/packet_proc.c **** 	data[10] = 0xff & (nap>>8);
+ 109              		.loc 1 45 10 view .LVU40
+ 110 0050 4672     		strb	r6, [r0, #9]
+  46:src/codec/packet_proc.c **** 	data[11] = 0xff & (cls);
+ 111              		.loc 1 46 2 is_stmt 1 view .LVU41
+  46:src/codec/packet_proc.c **** 	data[11] = 0xff & (cls);
+ 112              		.loc 1 46 11 is_stmt 0 view .LVU42
+ 113 0052 8472     		strb	r4, [r0, #10]
+  47:src/codec/packet_proc.c **** 	data[12] = 0xff & (cls>>8);
+ 114              		.loc 1 47 2 is_stmt 1 view .LVU43
+  47:src/codec/packet_proc.c **** 	data[12] = 0xff & (cls>>8);
+ 115              		.loc 1 47 11 is_stmt 0 view .LVU44
+ 116 0054 C572     		strb	r5, [r0, #11]
+  48:src/codec/packet_proc.c **** 	data[13] = 0xff & (cls>>16);
+ 117              		.loc 1 48 2 is_stmt 1 view .LVU45
+  48:src/codec/packet_proc.c **** 	data[13] = 0xff & (cls>>16);
+ 118              		.loc 1 48 11 is_stmt 0 view .LVU46
+ 119 0056 0173     		strb	r1, [r0, #12]
+ 120              		.loc 1 49 2 is_stmt 1 view .LVU47
+ 121              		.loc 1 49 11 is_stmt 0 view .LVU48
+ 122 0058 4273     		strb	r2, [r0, #13]
+  50:src/codec/packet_proc.c **** 	// 3 low bits are ltaddr
+  51:src/codec/packet_proc.c **** 	data[14] = ltaddr;
+ 123              		.loc 1 51 2 is_stmt 1 view .LVU49
+ 124              		.loc 1 51 11 is_stmt 0 view .LVU50
+ 125 005a 8373     		strb	r3, [r0, #14]
+  52:src/codec/packet_proc.c **** }
+ 126              		.loc 1 52 1 view .LVU51
+ 127 005c 70BC     		pop	{r4, r5, r6}
+ 128              		.cfi_restore 6
+ 129              		.cfi_restore 5
+ 130              		.cfi_restore 4
+ 131              		.cfi_def_cfa_offset 0
+ 132              	.LVL2:
+ 133              		.loc 1 52 1 view .LVU52
+ 134 005e 7047     		bx	lr
+ 135              		.cfi_endproc
+ 136              	.LFE7:
+ 138              		.section	.text.bbpkt_fhs_finalize_payload,"ax",%progbits
+ 139              		.align	1
+ARM GAS  /tmp/ccVSF3KU.s 			page 5
+
+
+ 140              		.p2align 2,,3
+ 141              		.global	bbpkt_fhs_finalize_payload
+ 142              		.syntax unified
+ 143              		.thumb
+ 144              		.thumb_func
+ 145              		.fpu softvfp
+ 147              	bbpkt_fhs_finalize_payload:
+ 148              	.LVL3:
+ 149              	.LFB8:
+  53:src/codec/packet_proc.c **** 
+  54:src/codec/packet_proc.c **** /* Write last 32 bits of payload (ltaddr,clkn,psmode)
+  55:src/codec/packet_proc.c ****  * compute crc
+  56:src/codec/packet_proc.c ****  * whiten 
+  57:src/codec/packet_proc.c ****  * write the fec23 encoded payload in air_data
+  58:src/codec/packet_proc.c ****  */
+  59:src/codec/packet_proc.c **** void bbpkt_fhs_finalize_payload(uint8_t *fhs_data, uint32_t clk27_2)
+  60:src/codec/packet_proc.c **** {
+ 150              		.loc 1 60 1 is_stmt 1 view -0
+ 151              		.cfi_startproc
+ 152              		@ args = 0, pretend = 0, frame = 0
+ 153              		@ frame_needed = 0, uses_anonymous_args = 0
+ 154              		@ link register save eliminated.
+ 155              		.loc 1 60 1 is_stmt 0 view .LVU54
+ 156 0000 10B4     		push	{r4}
+ 157              		.cfi_def_cfa_offset 4
+ 158              		.cfi_offset 4, -4
+  61:src/codec/packet_proc.c **** 	uint8_t tmp[20];
+ 159              		.loc 1 61 2 is_stmt 1 view .LVU55
+  62:src/codec/packet_proc.c **** 	uint16_t crc;
+ 160              		.loc 1 62 2 view .LVU56
+  63:src/codec/packet_proc.c **** 	fhs_data[14] = (fhs_data[14]&7) | (0xf8 & (clk27_2<<3));
+ 161              		.loc 1 63 2 view .LVU57
+ 162              		.loc 1 63 30 is_stmt 0 view .LVU58
+ 163 0002 837B     		ldrb	r3, [r0, #14]	@ zero_extendqisi2
+  64:src/codec/packet_proc.c **** 	fhs_data[15] = 0xff & (clk27_2>>5);
+ 164              		.loc 1 64 32 view .LVU59
+ 165 0004 4C09     		lsrs	r4, r1, #5
+  63:src/codec/packet_proc.c **** 	fhs_data[14] = (fhs_data[14]&7) | (0xf8 & (clk27_2<<3));
+ 166              		.loc 1 63 30 view .LVU60
+ 167 0006 03F00703 		and	r3, r3, #7
+  63:src/codec/packet_proc.c **** 	fhs_data[14] = (fhs_data[14]&7) | (0xf8 & (clk27_2<<3));
+ 168              		.loc 1 63 34 view .LVU61
+ 169 000a 43EAC103 		orr	r3, r3, r1, lsl #3
+  65:src/codec/packet_proc.c **** 	fhs_data[16] = 0xff & (clk27_2>>13);
+ 170              		.loc 1 65 32 view .LVU62
+ 171 000e 4A0B     		lsrs	r2, r1, #13
+  66:src/codec/packet_proc.c **** 	// 3 high bits are psmode = 0
+  67:src/codec/packet_proc.c **** 	fhs_data[17] = 0x1f & (clk27_2>>21);
+ 172              		.loc 1 67 22 view .LVU63
+ 173 0010 C1F34451 		ubfx	r1, r1, #21, #5
+ 174              	.LVL4:
+  64:src/codec/packet_proc.c **** 	fhs_data[16] = 0xff & (clk27_2>>13);
+ 175              		.loc 1 64 15 view .LVU64
+ 176 0014 C473     		strb	r4, [r0, #15]
+  63:src/codec/packet_proc.c **** 	fhs_data[15] = 0xff & (clk27_2>>5);
+ 177              		.loc 1 63 15 view .LVU65
+ 178 0016 8373     		strb	r3, [r0, #14]
+ARM GAS  /tmp/ccVSF3KU.s 			page 6
+
+
+  64:src/codec/packet_proc.c **** 	fhs_data[16] = 0xff & (clk27_2>>13);
+ 179              		.loc 1 64 2 is_stmt 1 view .LVU66
+  65:src/codec/packet_proc.c **** 	// 3 high bits are psmode = 0
+ 180              		.loc 1 65 2 view .LVU67
+  68:src/codec/packet_proc.c **** }
+ 181              		.loc 1 68 1 is_stmt 0 view .LVU68
+ 182 0018 10BC     		pop	{r4}
+ 183              		.cfi_restore 4
+ 184              		.cfi_def_cfa_offset 0
+  65:src/codec/packet_proc.c **** 	// 3 high bits are psmode = 0
+ 185              		.loc 1 65 15 view .LVU69
+ 186 001a 0274     		strb	r2, [r0, #16]
+  67:src/codec/packet_proc.c **** }
+ 187              		.loc 1 67 2 is_stmt 1 view .LVU70
+  67:src/codec/packet_proc.c **** }
+ 188              		.loc 1 67 15 is_stmt 0 view .LVU71
+ 189 001c 4174     		strb	r1, [r0, #17]
+ 190              		.loc 1 68 1 view .LVU72
+ 191 001e 7047     		bx	lr
+ 192              		.cfi_endproc
+ 193              	.LFE8:
+ 195              		.section	.text.bbpkt_decode_fhs,"ax",%progbits
+ 196              		.align	1
+ 197              		.p2align 2,,3
+ 198              		.global	bbpkt_decode_fhs
+ 199              		.syntax unified
+ 200              		.thumb
+ 201              		.thumb_func
+ 202              		.fpu softvfp
+ 204              	bbpkt_decode_fhs:
+ 205              	.LVL5:
+ 206              	.LFB9:
+  69:src/codec/packet_proc.c **** 
+  70:src/codec/packet_proc.c **** /* FHS contains 144 info bits + 16 bits of CRC: 
+  71:src/codec/packet_proc.c ****  * LSB                                                                 MSB
+  72:src/codec/packet_proc.c ****  * 0     4                    8             14                      18   20
+  73:src/codec/packet_proc.c ****  * |  34   | 24 | 1 | 1 |2 |2 | 8 |16 | 24  |  3   |26  |      3     |16 |
+  74:src/codec/packet_proc.c ****  * |Parity | Lap|EIR|Res|SR|SP|UAP|NAP|Class|ltaddr|clk2|PageScanMode|CRC|
+  75:src/codec/packet_proc.c ****  */
+  76:src/codec/packet_proc.c **** void bbpkt_decode_fhs(uint8_t *data, fhs_info_t *info)
+  77:src/codec/packet_proc.c **** {
+ 207              		.loc 1 77 1 is_stmt 1 view -0
+ 208              		.cfi_startproc
+ 209              		@ args = 0, pretend = 0, frame = 0
+ 210              		@ frame_needed = 0, uses_anonymous_args = 0
+ 211              		.loc 1 77 1 is_stmt 0 view .LVU74
+ 212 0000 2DE9F04F 		push	{r4, r5, r6, r7, r8, r9, r10, fp, lr}
+ 213              		.cfi_def_cfa_offset 36
+ 214              		.cfi_offset 4, -36
+ 215              		.cfi_offset 5, -32
+ 216              		.cfi_offset 6, -28
+ 217              		.cfi_offset 7, -24
+ 218              		.cfi_offset 8, -20
+ 219              		.cfi_offset 9, -16
+ 220              		.cfi_offset 10, -12
+ 221              		.cfi_offset 11, -8
+ 222              		.cfi_offset 14, -4
+ARM GAS  /tmp/ccVSF3KU.s 			page 7
+
+
+  78:src/codec/packet_proc.c **** 	//uint64_t parity;
+  79:src/codec/packet_proc.c **** 	uint32_t lap, clk27_2;
+ 223              		.loc 1 79 2 is_stmt 1 view .LVU75
+  80:src/codec/packet_proc.c **** 	//uint32_t cls;
+  81:src/codec/packet_proc.c **** 	uint16_t nap;
+ 224              		.loc 1 81 2 view .LVU76
+  82:src/codec/packet_proc.c **** 	//uint8_t eir, res, sr, sp, psmode;
+  83:src/codec/packet_proc.c **** 	uint8_t uap, ltaddr;
+ 225              		.loc 1 83 2 view .LVU77
+  84:src/codec/packet_proc.c **** 
+  85:src/codec/packet_proc.c **** 	/* 34 low bits of syncword */
+  86:src/codec/packet_proc.c **** 	//parity = 0x3ffffffff & (data[0]|(data[1]<<8)|(data[2]<<16)|(data[3]<<24)|((uint64_t)(data[4]&3)<
+  87:src/codec/packet_proc.c **** 
+  88:src/codec/packet_proc.c **** 	/* 24 low bits of address */
+  89:src/codec/packet_proc.c **** 	lap = (data[4]>>2)|(data[5]<<6)|(data[6]<<14)|((data[7]&3)<<22);
+ 226              		.loc 1 89 2 view .LVU78
+ 227              	.LVL6:
+  90:src/codec/packet_proc.c **** 	// eir = 1&(data[7]>>2);	// Extended Inquiry Response follows
+  91:src/codec/packet_proc.c **** 	// res = 1&(data[7]>>3);	// Reserved
+  92:src/codec/packet_proc.c **** 	// sr =  3&(data[7]>>4);	// Page scan repetition mode
+  93:src/codec/packet_proc.c **** 	// sp =  3&(data[7]>>6);	// Must be 2
+  94:src/codec/packet_proc.c **** 	uap = data[8];
+ 228              		.loc 1 94 2 view .LVU79
+  95:src/codec/packet_proc.c **** 	nap = data[9]|((uint16_t)data[10]<<8);
+ 229              		.loc 1 95 2 view .LVU80
+  96:src/codec/packet_proc.c **** 	//cls = data[11]|((uint32_t)data[12]<<8)|((uint32_t)data[13]<<16);
+  97:src/codec/packet_proc.c **** 	ltaddr = data[14]&7;
+ 230              		.loc 1 97 2 view .LVU81
+  89:src/codec/packet_proc.c **** 	// eir = 1&(data[7]>>2);	// Extended Inquiry Response follows
+ 231              		.loc 1 89 26 is_stmt 0 view .LVU82
+ 232 0004 4379     		ldrb	r3, [r0, #5]	@ zero_extendqisi2
+ 233              	.LVL7:
+  89:src/codec/packet_proc.c **** 	// eir = 1&(data[7]>>2);	// Extended Inquiry Response follows
+ 234              		.loc 1 89 16 view .LVU83
+ 235 0006 0579     		ldrb	r5, [r0, #4]	@ zero_extendqisi2
+  89:src/codec/packet_proc.c **** 	// eir = 1&(data[7]>>2);	// Extended Inquiry Response follows
+ 236              		.loc 1 89 39 view .LVU84
+ 237 0008 8479     		ldrb	r4, [r0, #6]	@ zero_extendqisi2
+  89:src/codec/packet_proc.c **** 	// eir = 1&(data[7]>>2);	// Extended Inquiry Response follows
+ 238              		.loc 1 89 60 view .LVU85
+ 239 000a C279     		ldrb	r2, [r0, #7]	@ zero_extendqisi2
+  89:src/codec/packet_proc.c **** 	// eir = 1&(data[7]>>2);	// Extended Inquiry Response follows
+ 240              		.loc 1 89 29 view .LVU86
+ 241 000c 9B01     		lsls	r3, r3, #6
+ 242              	.LVL8:
+  89:src/codec/packet_proc.c **** 	// eir = 1&(data[7]>>2);	// Extended Inquiry Response follows
+ 243              		.loc 1 89 20 view .LVU87
+ 244 000e 43EA9503 		orr	r3, r3, r5, lsr #2
+  89:src/codec/packet_proc.c **** 	// eir = 1&(data[7]>>2);	// Extended Inquiry Response follows
+ 245              		.loc 1 89 33 view .LVU88
+ 246 0012 43EA8433 		orr	r3, r3, r4, lsl #14
+  89:src/codec/packet_proc.c **** 	// eir = 1&(data[7]>>2);	// Extended Inquiry Response follows
+ 247              		.loc 1 89 60 view .LVU89
+ 248 0016 9205     		lsls	r2, r2, #22
+ 249              	.LVL9:
+  98:src/codec/packet_proc.c **** 	clk27_2 = (data[14]>>3)|(data[15]<<5)|(data[16]<<13)|((data[17]&0x1f)<<21);
+ 250              		.loc 1 98 71 view .LVU90
+ARM GAS  /tmp/ccVSF3KU.s 			page 8
+
+
+ 251 0018 447C     		ldrb	r4, [r0, #17]	@ zero_extendqisi2
+  97:src/codec/packet_proc.c **** 	clk27_2 = (data[14]>>3)|(data[15]<<5)|(data[16]<<13)|((data[17]&0x1f)<<21);
+ 252              		.loc 1 97 15 view .LVU91
+ 253 001a 867B     		ldrb	r6, [r0, #14]	@ zero_extendqisi2
+ 254              	.LVL10:
+ 255              		.loc 1 98 2 is_stmt 1 view .LVU92
+  89:src/codec/packet_proc.c **** 	// eir = 1&(data[7]>>2);	// Extended Inquiry Response follows
+ 256              		.loc 1 89 60 is_stmt 0 view .LVU93
+ 257 001c 02F44002 		and	r2, r2, #12582912
+ 258              	.LVL11:
+ 259              		.loc 1 98 31 view .LVU94
+ 260 0020 90F80FC0 		ldrb	ip, [r0, #15]	@ zero_extendqisi2
+  89:src/codec/packet_proc.c **** 	// eir = 1&(data[7]>>2);	// Extended Inquiry Response follows
+ 261              		.loc 1 89 47 view .LVU95
+ 262 0024 1343     		orrs	r3, r3, r2
+ 263              		.loc 1 98 71 view .LVU96
+ 264 0026 6205     		lsls	r2, r4, #21
+  99:src/codec/packet_proc.c **** 	//psmode = data[17]>>5;
+ 100:src/codec/packet_proc.c **** 
+ 101:src/codec/packet_proc.c **** 	info->bdaddr = (lap|((uint64_t)uap<<24)|((uint64_t)nap<<32));
+ 265              		.loc 1 101 23 view .LVU97
+ 266 0028 90F80880 		ldrb	r8, [r0, #8]	@ zero_extendqisi2
+  98:src/codec/packet_proc.c **** 	//psmode = data[17]>>5;
+ 267              		.loc 1 98 45 view .LVU98
+ 268 002c 077C     		ldrb	r7, [r0, #16]	@ zero_extendqisi2
+  95:src/codec/packet_proc.c **** 	//cls = data[11]|((uint32_t)data[12]<<8)|((uint32_t)data[13]<<16);
+ 269              		.loc 1 95 17 view .LVU99
+ 270 002e 90F80AE0 		ldrb	lr, [r0, #10]	@ zero_extendqisi2
+  98:src/codec/packet_proc.c **** 	//psmode = data[17]>>5;
+ 271              		.loc 1 98 71 view .LVU100
+ 272 0032 02F07874 		and	r4, r2, #65011712
+  95:src/codec/packet_proc.c **** 	//cls = data[11]|((uint32_t)data[12]<<8)|((uint32_t)data[13]<<16);
+ 273              		.loc 1 95 12 view .LVU101
+ 274 0036 407A     		ldrb	r0, [r0, #9]	@ zero_extendqisi2
+ 275              	.LVL12:
+  98:src/codec/packet_proc.c **** 	//psmode = data[17]>>5;
+ 276              		.loc 1 98 21 view .LVU102
+ 277 0038 F208     		lsrs	r2, r6, #3
+  98:src/codec/packet_proc.c **** 	//psmode = data[17]>>5;
+ 278              		.loc 1 98 25 view .LVU103
+ 279 003a 42EA4C12 		orr	r2, r2, ip, lsl #5
+ 280              		.loc 1 101 21 view .LVU104
+ 281 003e 4FEAE37B 		asr	fp, r3, #31
+  95:src/codec/packet_proc.c **** 	//cls = data[11]|((uint32_t)data[12]<<8)|((uint32_t)data[13]<<16);
+ 282              		.loc 1 95 15 view .LVU105
+ 283 0042 40EA0E20 		orr	r0, r0, lr, lsl #8
+ 284              	.LVL13:
+  98:src/codec/packet_proc.c **** 	//psmode = data[17]>>5;
+ 285              		.loc 1 98 39 view .LVU106
+ 286 0046 42EA4732 		orr	r2, r2, r7, lsl #13
+  98:src/codec/packet_proc.c **** 	//psmode = data[17]>>5;
+ 287              		.loc 1 98 54 view .LVU107
+ 288 004a 2243     		orrs	r2, r2, r4
+ 289              	.LVL14:
+ 290              		.loc 1 101 2 is_stmt 1 view .LVU108
+ 291              		.loc 1 101 21 is_stmt 0 view .LVU109
+ 292 004c 43EA0863 		orr	r3, r3, r8, lsl #24
+ARM GAS  /tmp/ccVSF3KU.s 			page 9
+
+
+  97:src/codec/packet_proc.c **** 	clk27_2 = (data[14]>>3)|(data[15]<<5)|(data[16]<<13)|((data[17]&0x1f)<<21);
+ 293              		.loc 1 97 9 view .LVU110
+ 294 0050 06F00704 		and	r4, r6, #7
+ 295              		.loc 1 101 41 view .LVU111
+ 296 0054 40EA0B00 		orr	r0, r0, fp
+ 297              		.loc 1 101 15 view .LVU112
+ 298 0058 0B60     		str	r3, [r1]
+ 299              	.LVL15:
+ 102:src/codec/packet_proc.c **** 	info->clk27_2= clk27_2;;
+ 300              		.loc 1 102 15 view .LVU113
+ 301 005a 8A60     		str	r2, [r1, #8]
+ 103:src/codec/packet_proc.c **** 	info->lt_addr = ltaddr;
+ 302              		.loc 1 103 16 view .LVU114
+ 303 005c 0C73     		strb	r4, [r1, #12]
+ 101:src/codec/packet_proc.c **** 	info->clk27_2= clk27_2;;
+ 304              		.loc 1 101 15 view .LVU115
+ 305 005e 4860     		str	r0, [r1, #4]
+ 102:src/codec/packet_proc.c **** 	info->clk27_2= clk27_2;;
+ 306              		.loc 1 102 2 is_stmt 1 view .LVU116
+ 102:src/codec/packet_proc.c **** 	info->clk27_2= clk27_2;;
+ 307              		.loc 1 102 25 view .LVU117
+ 308              		.loc 1 103 2 view .LVU118
+ 104:src/codec/packet_proc.c **** 
+ 105:src/codec/packet_proc.c **** 	//BB_DEBUG("Valid fhs: parity = %llx, bdaddr=%04x:%02x:%06x\n", (unsigned long long)parity, nap, u
+ 106:src/codec/packet_proc.c **** 	//BB_DEBUG("\teir=%d, res=%d, sr=%d, sp=%d, ltaddr=%d, clk27=%d, cls=0x%x, psmode=%d\n", eir, res,
+ 107:src/codec/packet_proc.c **** }
+ 309              		.loc 1 107 1 is_stmt 0 view .LVU119
+ 310 0060 BDE8F08F 		pop	{r4, r5, r6, r7, r8, r9, r10, fp, pc}
+ 311              		.loc 1 107 1 view .LVU120
+ 312              		.cfi_endproc
+ 313              	.LFE9:
+ 315              		.text
+ 316              	.Letext0:
+ 317              		.file 2 "/usr/lib/gcc/arm-none-eabi/9.2.1/include/stddef.h"
+ 318              		.file 3 "/usr/include/newlib/sys/_types.h"
+ 319              		.file 4 "/usr/include/newlib/sys/reent.h"
+ 320              		.file 5 "/usr/include/newlib/sys/lock.h"
+ 321              		.file 6 "/usr/include/newlib/stdlib.h"
+ 322              		.file 7 "/usr/lib/gcc/arm-none-eabi/9.2.1/include/stdint.h"
+ 323              		.file 8 "../common/ubertooth.h"
+ 324              		.file 9 "include/ubtbr/bb.h"
+ARM GAS  /tmp/ccVSF3KU.s 			page 10
+
+
+DEFINED SYMBOLS
+                            *ABS*:0000000000000000 packet_proc.c
+     /tmp/ccVSF3KU.s:16     .text.bbpkt_fhs_prepare_payload:0000000000000000 $t
+     /tmp/ccVSF3KU.s:25     .text.bbpkt_fhs_prepare_payload:0000000000000000 bbpkt_fhs_prepare_payload
+     /tmp/ccVSF3KU.s:139    .text.bbpkt_fhs_finalize_payload:0000000000000000 $t
+     /tmp/ccVSF3KU.s:147    .text.bbpkt_fhs_finalize_payload:0000000000000000 bbpkt_fhs_finalize_payload
+     /tmp/ccVSF3KU.s:196    .text.bbpkt_decode_fhs:0000000000000000 $t
+     /tmp/ccVSF3KU.s:204    .text.bbpkt_decode_fhs:0000000000000000 bbpkt_decode_fhs
+
+NO UNDEFINED SYMBOLS

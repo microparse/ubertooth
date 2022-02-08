@@ -1,0 +1,1243 @@
+ARM GAS  /tmp/ccRvmKeM.s 			page 1
+
+
+   1              		.cpu cortex-m3
+   2              		.eabi_attribute 20, 1
+   3              		.eabi_attribute 21, 1
+   4              		.eabi_attribute 23, 3
+   5              		.eabi_attribute 24, 1
+   6              		.eabi_attribute 25, 1
+   7              		.eabi_attribute 26, 1
+   8              		.eabi_attribute 30, 2
+   9              		.eabi_attribute 34, 1
+  10              		.eabi_attribute 18, 4
+  11              		.file	"paging_state.c"
+  12              		.text
+  13              	.Ltext0:
+  14              		.cfi_sections	.debug_frame
+  15              		.section	.rodata.str1.4,"aMS",%progbits,1
+  16              		.align	2
+  17              	.LC0:
+  18 0000 70616769 		.ascii	"paging timeout\012\000"
+  18      6E672074 
+  18      696D656F 
+  18      75740A00 
+  19              		.section	.text.paging_rx_cb,"ax",%progbits
+  20              		.align	1
+  21              		.p2align 2,,3
+  22              		.arch armv7-m
+  23              		.syntax unified
+  24              		.thumb
+  25              		.thumb_func
+  26              		.fpu softvfp
+  28              	paging_rx_cb:
+  29              	.LVL0:
+  30              	.LFB33:
+  31              		.file 1 "src/btphy/paging_state.c"
+   1:src/btphy/paging_state.c **** /* Page state
+   2:src/btphy/paging_state.c ****  *
+   3:src/btphy/paging_state.c ****  * Copyright 2020 Etienne Helluy-Lafont, Univ. Lille, CNRS.
+   4:src/btphy/paging_state.c ****  *
+   5:src/btphy/paging_state.c ****  * This file is part of Project Ubertooth.
+   6:src/btphy/paging_state.c ****  *
+   7:src/btphy/paging_state.c ****  * This program is free software; you can redistribute it and/or modify
+   8:src/btphy/paging_state.c ****  * it under the terms of the GNU General Public License as published by
+   9:src/btphy/paging_state.c ****  * the Free Software Foundation; either version 2, or (at your option)
+  10:src/btphy/paging_state.c ****  * any later version.
+  11:src/btphy/paging_state.c ****  *
+  12:src/btphy/paging_state.c ****  * This program is distributed in the hope that it will be useful,
+  13:src/btphy/paging_state.c ****  * but WITHOUT ANY WARRANTY; without even the implied warranty of
+  14:src/btphy/paging_state.c ****  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  15:src/btphy/paging_state.c ****  * GNU General Public License for more details.
+  16:src/btphy/paging_state.c ****  *
+  17:src/btphy/paging_state.c ****  * You should have received a copy of the GNU General Public License
+  18:src/btphy/paging_state.c ****  * along with this program; see the file COPYING.  If not, write to
+  19:src/btphy/paging_state.c ****  * the Free Software Foundation, Inc., 51 Franklin Street,
+  20:src/btphy/paging_state.c ****  * Boston, MA 02110-1301, USA.
+  21:src/btphy/paging_state.c ****  */
+  22:src/btphy/paging_state.c **** #include <string.h>
+  23:src/btphy/paging_state.c **** #include <ubtbr/cfg.h>
+  24:src/btphy/paging_state.c **** #include <ubtbr/debug.h>
+ARM GAS  /tmp/ccRvmKeM.s 			page 2
+
+
+  25:src/btphy/paging_state.c **** #include <ubtbr/btphy.h>
+  26:src/btphy/paging_state.c **** #include <ubtbr/tdma_sched.h>
+  27:src/btphy/paging_state.c **** #include <ubtbr/bb.h>
+  28:src/btphy/paging_state.c **** #include <ubtbr/rx_task.h>
+  29:src/btphy/paging_state.c **** #include <ubtbr/tx_task.h>
+  30:src/btphy/paging_state.c **** #include <ubtbr/master_state.h>
+  31:src/btphy/paging_state.c **** #include <ubtbr/btctl_intf.h>
+  32:src/btphy/paging_state.c **** 
+  33:src/btphy/paging_state.c **** /* Max duration : 45 seconds */
+  34:src/btphy/paging_state.c **** #define PAGING_MAX_TICKS (CLKN_RATE*45)
+  35:src/btphy/paging_state.c **** #define TX_PREPARE_IDX	3  // We will transmit at clkn1_0 = 0
+  36:src/btphy/paging_state.c **** 
+  37:src/btphy/paging_state.c **** static struct {
+  38:src/btphy/paging_state.c **** 	uint32_t clkn_start;
+  39:src/btphy/paging_state.c **** 	bbhdr_t fhs_hdr;
+  40:src/btphy/paging_state.c **** 	uint8_t fhs_data[20];
+  41:src/btphy/paging_state.c **** } paging_state;
+  42:src/btphy/paging_state.c **** 
+  43:src/btphy/paging_state.c **** static int paging_canceled(void)
+  44:src/btphy/paging_state.c **** {
+  45:src/btphy/paging_state.c **** 	return btctl_get_state() != BTCTL_STATE_PAGE;
+  46:src/btphy/paging_state.c **** }
+  47:src/btphy/paging_state.c **** 
+  48:src/btphy/paging_state.c **** static void paging_schedule(unsigned delay);
+  49:src/btphy/paging_state.c **** 
+  50:src/btphy/paging_state.c **** /* Timeframe:
+  51:src/btphy/paging_state.c ****  * usec                 0             625                   1250              1875
+  52:src/btphy/paging_state.c ****  * clk          -1      0        1     2          3            4         5    6
+  53:src/btphy/paging_state.c ****  * master:      prep tx | tx id  |  .. |       	  | rx/prep tx | tx fhs  | .. |
+  54:src/btphy/paging_state.c ****  * slave:               |        |  .. | tx id(2) |            |         | .. |tx id(3)
+  55:src/btphy/paging_state.c ****  */
+  56:src/btphy/paging_state.c **** 
+  57:src/btphy/paging_state.c **** /* We received ID(3) from paged device */
+  58:src/btphy/paging_state.c **** static int paging_rx_ack_cb(msg_t *msg, void *arg, int time_offset)
+  59:src/btphy/paging_state.c **** {
+  60:src/btphy/paging_state.c **** 	btctl_hdr_t *h = (btctl_hdr_t*)msg->data;
+  61:src/btphy/paging_state.c **** 	btctl_rx_pkt_t *pkt;
+  62:src/btphy/paging_state.c **** 
+  63:src/btphy/paging_state.c **** 	if (paging_canceled())
+  64:src/btphy/paging_state.c **** 	{
+  65:src/btphy/paging_state.c **** 		msg_free(msg);
+  66:src/btphy/paging_state.c **** 		return 0;
+  67:src/btphy/paging_state.c **** 	}
+  68:src/btphy/paging_state.c **** 	pkt = (btctl_rx_pkt_t *)h->data;
+  69:src/btphy/paging_state.c **** 
+  70:src/btphy/paging_state.c **** 	if (BBPKT_HAS_PKT(pkt))
+  71:src/btphy/paging_state.c **** 	{
+  72:src/btphy/paging_state.c **** 		cprintf("ID(3)\n");
+  73:src/btphy/paging_state.c **** 		master_state_init();
+  74:src/btphy/paging_state.c **** 	}
+  75:src/btphy/paging_state.c **** 	else{
+  76:src/btphy/paging_state.c **** 		cprintf("no ID(3)\n");
+  77:src/btphy/paging_state.c **** 		paging_schedule(3&(TX_PREPARE_IDX-CUR_MASTER_SLOT_IDX()));
+  78:src/btphy/paging_state.c **** 	}
+  79:src/btphy/paging_state.c **** 	msg_free(msg);
+  80:src/btphy/paging_state.c **** 	return 0;
+  81:src/btphy/paging_state.c **** }
+ARM GAS  /tmp/ccRvmKeM.s 			page 3
+
+
+  82:src/btphy/paging_state.c **** 
+  83:src/btphy/paging_state.c **** /* We received the ID(2) from paged device */
+  84:src/btphy/paging_state.c **** static int paging_rx_cb(msg_t *msg, void *arg, int time_offset)
+  85:src/btphy/paging_state.c **** {
+  32              		.loc 1 85 1 view -0
+  33              		.cfi_startproc
+  34              		@ args = 0, pretend = 0, frame = 0
+  35              		@ frame_needed = 0, uses_anonymous_args = 0
+  36              		.loc 1 85 1 is_stmt 0 view .LVU1
+  37 0000 70B5     		push	{r4, r5, r6, lr}
+  38              		.cfi_def_cfa_offset 16
+  39              		.cfi_offset 4, -16
+  40              		.cfi_offset 5, -12
+  41              		.cfi_offset 6, -8
+  42              		.cfi_offset 14, -4
+  43 0002 82B0     		sub	sp, sp, #8
+  44              		.cfi_def_cfa_offset 24
+  86:src/btphy/paging_state.c **** 	btctl_hdr_t *h = (btctl_hdr_t*)msg->data;
+  45              		.loc 1 86 2 is_stmt 1 view .LVU2
+  46              	.LVL1:
+  87:src/btphy/paging_state.c **** 	btctl_rx_pkt_t *pkt;
+  47              		.loc 1 87 2 view .LVU3
+  88:src/btphy/paging_state.c **** 	unsigned delay; 
+  48              		.loc 1 88 2 view .LVU4
+  89:src/btphy/paging_state.c **** 
+  90:src/btphy/paging_state.c **** 	if (paging_canceled())
+  49              		.loc 1 90 2 view .LVU5
+  50              	.LBB35:
+  51              	.LBI35:
+  43:src/btphy/paging_state.c **** {
+  52              		.loc 1 43 12 view .LVU6
+  53              	.LBE35:
+  45:src/btphy/paging_state.c **** }
+  54              		.loc 1 45 2 view .LVU7
+  55              	.LBB38:
+  56              	.LBB36:
+  57              	.LBI36:
+  58              		.file 2 "include/ubtbr/btctl_intf.h"
+   1:include/ubtbr/btctl_intf.h **** #ifndef __BTCTL_INTF_H
+   2:include/ubtbr/btctl_intf.h **** #define __BTCTL_INTF_H
+   3:include/ubtbr/btctl_intf.h **** #include <ubtbr/bb_msg.h>
+   4:include/ubtbr/btctl_intf.h **** #include <ubtbr/queue.h>
+   5:include/ubtbr/btctl_intf.h **** #include <ubtbr/system.h>
+   6:include/ubtbr/btctl_intf.h **** #include <ubertooth_interface.h>
+   7:include/ubtbr/btctl_intf.h **** 
+   8:include/ubtbr/btctl_intf.h **** typedef struct btctl_s {
+   9:include/ubtbr/btctl_intf.h **** 	btctl_state_t state;
+  10:include/ubtbr/btctl_intf.h **** 	msg_queue_t rx_q;
+  11:include/ubtbr/btctl_intf.h **** 	msg_queue_t tx_q;
+  12:include/ubtbr/btctl_intf.h **** 	msg_queue_t acl_tx_q;
+  13:include/ubtbr/btctl_intf.h **** 	msg_t *eir_msg;
+  14:include/ubtbr/btctl_intf.h **** 	btctl_tx_pkt_t *eir_pkt;
+  15:include/ubtbr/btctl_intf.h **** } btctl_t;
+  16:include/ubtbr/btctl_intf.h **** 
+  17:include/ubtbr/btctl_intf.h **** extern btctl_t btctl;
+  18:include/ubtbr/btctl_intf.h **** 
+  19:include/ubtbr/btctl_intf.h **** void btctl_init(void);
+ARM GAS  /tmp/ccRvmKeM.s 			page 4
+
+
+  20:include/ubtbr/btctl_intf.h **** int btctl_work(void);
+  21:include/ubtbr/btctl_intf.h **** 
+  22:include/ubtbr/btctl_intf.h **** void btctl_set_state(btctl_state_t state, btctl_reason_t reason);
+  23:include/ubtbr/btctl_intf.h **** 
+  24:include/ubtbr/btctl_intf.h **** static inline btctl_state_t btctl_get_state(void)
+  59              		.loc 2 24 29 view .LVU8
+  60              	.LBB37:
+  25:include/ubtbr/btctl_intf.h **** {
+  26:include/ubtbr/btctl_intf.h **** 	return btctl.state;
+  61              		.loc 2 26 2 view .LVU9
+  62              		.loc 2 26 14 is_stmt 0 view .LVU10
+  63 0004 274B     		ldr	r3, .L7
+  64              	.LBE37:
+  65              	.LBE36:
+  66              	.LBE38:
+  85:src/btphy/paging_state.c **** 	btctl_hdr_t *h = (btctl_hdr_t*)msg->data;
+  67              		.loc 1 85 1 view .LVU11
+  68 0006 0446     		mov	r4, r0
+  69              		.loc 1 90 5 view .LVU12
+  70 0008 1B78     		ldrb	r3, [r3]	@ zero_extendqisi2
+  71 000a 022B     		cmp	r3, #2
+  72 000c 1CD1     		bne	.L2
+  91:src/btphy/paging_state.c **** 		goto end;
+  92:src/btphy/paging_state.c **** 	pkt = (btctl_rx_pkt_t *)h->data;
+  73              		.loc 1 92 2 is_stmt 1 view .LVU13
+  74              	.LVL2:
+  93:src/btphy/paging_state.c **** 
+  94:src/btphy/paging_state.c **** 	if (BBPKT_HAS_PKT(pkt))
+  75              		.loc 1 94 2 view .LVU14
+  76              		.loc 1 94 5 is_stmt 0 view .LVU15
+  77 000e 437D     		ldrb	r3, [r0, #21]	@ zero_extendqisi2
+  78 0010 13F00105 		ands	r5, r3, #1
+  79 0014 1ED0     		beq	.L3
+  95:src/btphy/paging_state.c **** 	{
+  96:src/btphy/paging_state.c **** 		/* We received the slave's ID(2) at t'(k).
+  97:src/btphy/paging_state.c **** 		 * Send FHS in next slot and start basic hopping
+  98:src/btphy/paging_state.c **** 		 * The FHS shall be sent on chan f(k+1), following the std paging hop
+  99:src/btphy/paging_state.c **** 		 * */
+ 100:src/btphy/paging_state.c **** 		delay = 3&(TX_PREPARE_IDX-CUR_MASTER_SLOT_IDX());
+  80              		.loc 1 100 3 is_stmt 1 view .LVU16
+  81              		.loc 1 100 29 is_stmt 0 view .LVU17
+  82 0016 244B     		ldr	r3, .L7+4
+ 101:src/btphy/paging_state.c **** 
+ 102:src/btphy/paging_state.c **** 		/* Write clk27_2 in fhs payload
+ 103:src/btphy/paging_state.c **** 		 * Will tx at (clkn+1) */
+ 104:src/btphy/paging_state.c **** 		bbpkt_fhs_finalize_payload(paging_state.fhs_data, (btphy.master_clkn+delay+1)>>2);
+  83              		.loc 1 104 3 view .LVU18
+  84 0018 244E     		ldr	r6, .L7+8
+ 100:src/btphy/paging_state.c **** 
+  85              		.loc 1 100 29 view .LVU19
+  86 001a 5968     		ldr	r1, [r3, #4]
+  87              	.LVL3:
+  88              		.loc 1 104 3 view .LVU20
+  89 001c 3046     		mov	r0, r6
+  90              	.LVL4:
+ 100:src/btphy/paging_state.c **** 
+  91              		.loc 1 100 12 view .LVU21
+ARM GAS  /tmp/ccRvmKeM.s 			page 5
+
+
+  92 001e CD43     		mvns	r5, r1
+  93              		.loc 1 104 77 view .LVU22
+  94 0020 0131     		adds	r1, r1, #1
+ 100:src/btphy/paging_state.c **** 
+  95              		.loc 1 100 9 view .LVU23
+  96 0022 05F00305 		and	r5, r5, #3
+  97              	.LVL5:
+  98              		.loc 1 104 3 is_stmt 1 view .LVU24
+  99              		.loc 1 104 77 is_stmt 0 view .LVU25
+ 100 0026 2944     		add	r1, r1, r5
+ 101              		.loc 1 104 3 view .LVU26
+ 102 0028 8908     		lsrs	r1, r1, #2
+ 103 002a FFF7FEFF 		bl	bbpkt_fhs_finalize_payload
+ 104              	.LVL6:
+ 105:src/btphy/paging_state.c **** 
+ 106:src/btphy/paging_state.c **** 		/* Schedule tx masters's page response (FHS): */
+ 107:src/btphy/paging_state.c **** 		tx_task_schedule(delay, 	// must schedule tx_prepare now to start tx in next clkn
+ 105              		.loc 1 107 3 is_stmt 1 view .LVU27
+ 106 002e 0022     		movs	r2, #0
+ 107 0030 2846     		mov	r0, r5
+ 108 0032 1146     		mov	r1, r2
+ 109 0034 331F     		subs	r3, r6, #4
+ 110 0036 0096     		str	r6, [sp]
+ 111 0038 FFF7FEFF 		bl	tx_task_schedule
+ 112              	.LVL7:
+ 108:src/btphy/paging_state.c **** 			NULL, NULL,
+ 109:src/btphy/paging_state.c **** 			/* skip 4 bytes of sw */
+ 110:src/btphy/paging_state.c **** 			&paging_state.fhs_hdr, paging_state.fhs_data);
+ 111:src/btphy/paging_state.c **** 
+ 112:src/btphy/paging_state.c **** 		/* Schedule rx slave's ID(3) page response: */
+ 113:src/btphy/paging_state.c **** 		rx_task_schedule(delay+2,
+ 113              		.loc 1 113 3 view .LVU28
+ 114 003c 0023     		movs	r3, #0
+ 115 003e 1C49     		ldr	r1, .L7+12
+ 116 0040 1A46     		mov	r2, r3
+ 117 0042 A81C     		adds	r0, r5, #2
+ 118 0044 FFF7FEFF 		bl	rx_task_schedule
+ 119              	.LVL8:
+ 120              	.L2:
+ 114:src/btphy/paging_state.c **** 			paging_rx_ack_cb, NULL,	// ID rx callback
+ 115:src/btphy/paging_state.c **** 			0			// no payload
+ 116:src/btphy/paging_state.c **** 			);
+ 117:src/btphy/paging_state.c **** 	}
+ 118:src/btphy/paging_state.c **** 	else
+ 119:src/btphy/paging_state.c **** 	{
+ 120:src/btphy/paging_state.c **** 		// schedule tx in next slot
+ 121:src/btphy/paging_state.c **** 		paging_schedule(3&(TX_PREPARE_IDX-CUR_MASTER_SLOT_IDX()));
+ 122:src/btphy/paging_state.c **** 	}
+ 123:src/btphy/paging_state.c **** end:
+ 124:src/btphy/paging_state.c **** 	msg_free(msg);
+ 121              		.loc 1 124 2 view .LVU29
+ 122              	.LBB39:
+ 123              	.LBI39:
+ 124              		.file 3 "include/ubtbr/msg.h"
+   1:include/ubtbr/msg.h **** #ifndef __DEF_MSG_H
+   2:include/ubtbr/msg.h **** #define __DEF_MSG_H
+   3:include/ubtbr/msg.h **** #include <stdint.h>
+ARM GAS  /tmp/ccRvmKeM.s 			page 6
+
+
+   4:include/ubtbr/msg.h **** 
+   5:include/ubtbr/msg.h **** typedef struct msg_s {
+   6:include/ubtbr/msg.h **** 	uint16_t len;
+   7:include/ubtbr/msg.h **** 	uint16_t data_len;
+   8:include/ubtbr/msg.h **** 	uint8_t *read;
+   9:include/ubtbr/msg.h **** 	uint8_t *write;
+  10:include/ubtbr/msg.h **** 	/* never move head */
+  11:include/ubtbr/msg.h **** 	uint8_t data[0];
+  12:include/ubtbr/msg.h **** } msg_t;
+  13:include/ubtbr/msg.h **** 
+  14:include/ubtbr/msg.h **** /* Allocate a msg_t wigh given room*/
+  15:include/ubtbr/msg.h **** static inline msg_t *msg_alloc(unsigned size)
+  16:include/ubtbr/msg.h **** {
+  17:include/ubtbr/msg.h **** 	msg_t *msg = (msg_t*)btctl_mem_alloc(sizeof(msg_t)+size);
+  18:include/ubtbr/msg.h **** 
+  19:include/ubtbr/msg.h **** 	msg->write = msg->data;
+  20:include/ubtbr/msg.h **** 	msg->read = msg->data;
+  21:include/ubtbr/msg.h **** 	msg->data_len = size;
+  22:include/ubtbr/msg.h **** 
+  23:include/ubtbr/msg.h **** 	return msg;
+  24:include/ubtbr/msg.h **** }
+  25:include/ubtbr/msg.h **** 
+  26:include/ubtbr/msg.h **** static inline void msg_free(msg_t *msg)
+ 125              		.loc 3 26 20 view .LVU30
+ 126              	.LBB40:
+  27:include/ubtbr/msg.h **** {
+  28:include/ubtbr/msg.h **** 	btctl_mem_free(msg);
+ 127              		.loc 3 28 2 view .LVU31
+ 128 0048 2046     		mov	r0, r4
+ 129 004a FFF7FEFF 		bl	mem_pool_free
+ 130              	.LVL9:
+ 131              		.loc 3 28 2 is_stmt 0 view .LVU32
+ 132              	.LBE40:
+ 133              	.LBE39:
+ 125:src/btphy/paging_state.c **** 	return 0;
+ 134              		.loc 1 125 2 is_stmt 1 view .LVU33
+ 126:src/btphy/paging_state.c **** }
+ 135              		.loc 1 126 1 is_stmt 0 view .LVU34
+ 136 004e 0020     		movs	r0, #0
+ 137 0050 02B0     		add	sp, sp, #8
+ 138              		.cfi_remember_state
+ 139              		.cfi_def_cfa_offset 16
+ 140              		@ sp needed
+ 141 0052 70BD     		pop	{r4, r5, r6, pc}
+ 142              	.LVL10:
+ 143              	.L3:
+ 144              		.cfi_restore_state
+ 121:src/btphy/paging_state.c **** 	}
+ 145              		.loc 1 121 3 is_stmt 1 view .LVU35
+ 146              	.LBB42:
+ 147              	.LBB43:
+ 127:src/btphy/paging_state.c **** 
+ 128:src/btphy/paging_state.c **** static void paging_schedule(unsigned delay)
+ 129:src/btphy/paging_state.c **** {
+ 130:src/btphy/paging_state.c **** 	/* FIXME: wrap */
+ 131:src/btphy/paging_state.c **** 	if (btphy.master_clkn >= paging_state.clkn_start + PAGING_MAX_TICKS)
+ 148              		.loc 1 131 39 is_stmt 0 view .LVU36
+ARM GAS  /tmp/ccRvmKeM.s 			page 7
+
+
+ 149 0054 174B     		ldr	r3, .L7+16
+ 150              	.LBE43:
+ 151              	.LBE42:
+ 121:src/btphy/paging_state.c **** 	}
+ 152              		.loc 1 121 37 view .LVU37
+ 153 0056 144A     		ldr	r2, .L7+4
+ 154              	.LVL11:
+ 155              	.LBB50:
+ 156              	.LBB46:
+ 157              		.loc 1 131 51 view .LVU38
+ 158 0058 1B68     		ldr	r3, [r3]
+ 159              	.LBE46:
+ 160              	.LBE50:
+ 121:src/btphy/paging_state.c **** 	}
+ 161              		.loc 1 121 37 view .LVU39
+ 162 005a 5068     		ldr	r0, [r2, #4]
+ 163              	.LVL12:
+ 164              	.LBB51:
+ 165              	.LBI42:
+ 128:src/btphy/paging_state.c **** {
+ 166              		.loc 1 128 13 is_stmt 1 view .LVU40
+ 167              	.LBB47:
+ 168              		.loc 1 131 2 view .LVU41
+ 169              		.loc 1 131 51 is_stmt 0 view .LVU42
+ 170 005c 03F50C33 		add	r3, r3, #143360
+ 171 0060 03F52073 		add	r3, r3, #640
+ 172              		.loc 1 131 5 view .LVU43
+ 173 0064 9842     		cmp	r0, r3
+ 174 0066 15D2     		bcs	.L6
+ 175              	.LBE47:
+ 176              	.LBE51:
+ 121:src/btphy/paging_state.c **** 	}
+ 177              		.loc 1 121 20 view .LVU44
+ 178 0068 C043     		mvns	r0, r0
+ 179              	.LVL13:
+ 121:src/btphy/paging_state.c **** 	}
+ 180              		.loc 1 121 3 view .LVU45
+ 181 006a 00F00306 		and	r6, r0, #3
+ 182              	.LBB52:
+ 183              	.LBB48:
+ 132:src/btphy/paging_state.c **** 	{
+ 133:src/btphy/paging_state.c **** 		cprintf("paging timeout\n");
+ 134:src/btphy/paging_state.c **** 		btctl_set_state(BTCTL_STATE_STANDBY, BTCTL_REASON_TIMEOUT);
+ 135:src/btphy/paging_state.c **** 		return;
+ 136:src/btphy/paging_state.c **** 	}
+ 137:src/btphy/paging_state.c **** 
+ 138:src/btphy/paging_state.c **** 	/* Schedule TX ID(1) */
+ 139:src/btphy/paging_state.c **** 	tx_task_schedule(delay,
+ 184              		.loc 1 139 2 is_stmt 1 view .LVU46
+ 185 006e 3046     		mov	r0, r6
+ 186              	.LVL14:
+ 187              		.loc 1 139 2 is_stmt 0 view .LVU47
+ 188 0070 2B46     		mov	r3, r5
+ 189 0072 2A46     		mov	r2, r5
+ 190              	.LVL15:
+ 191              		.loc 1 139 2 view .LVU48
+ 192 0074 2946     		mov	r1, r5
+ARM GAS  /tmp/ccRvmKeM.s 			page 8
+
+
+ 193              	.LVL16:
+ 194              		.loc 1 139 2 view .LVU49
+ 195 0076 0095     		str	r5, [sp]
+ 196 0078 FFF7FEFF 		bl	tx_task_schedule
+ 197              	.LVL17:
+ 140:src/btphy/paging_state.c **** 		NULL, NULL,	// no tx callback
+ 141:src/btphy/paging_state.c **** 		NULL, NULL); 	// no header / no payload
+ 142:src/btphy/paging_state.c **** 
+ 143:src/btphy/paging_state.c **** 	/* Schedule rx ID(2): */
+ 144:src/btphy/paging_state.c **** 	rx_task_schedule(delay+2,
+ 198              		.loc 1 144 2 is_stmt 1 view .LVU50
+ 199 007c 2B46     		mov	r3, r5
+ 200 007e 2A46     		mov	r2, r5
+ 201 0080 0D49     		ldr	r1, .L7+20
+ 202 0082 B01C     		adds	r0, r6, #2
+ 203 0084 FFF7FEFF 		bl	rx_task_schedule
+ 204              	.LVL18:
+ 205              		.loc 1 144 2 is_stmt 0 view .LVU51
+ 206              	.LBE48:
+ 207              	.LBE52:
+ 124:src/btphy/paging_state.c **** 	return 0;
+ 208              		.loc 1 124 2 is_stmt 1 view .LVU52
+ 209              	.LBB53:
+  26:include/ubtbr/msg.h **** {
+ 210              		.loc 3 26 20 view .LVU53
+ 211              	.LBB41:
+ 212              		.loc 3 28 2 view .LVU54
+ 213 0088 2046     		mov	r0, r4
+ 214 008a FFF7FEFF 		bl	mem_pool_free
+ 215              	.LVL19:
+ 216              		.loc 3 28 2 is_stmt 0 view .LVU55
+ 217              	.LBE41:
+ 218              	.LBE53:
+ 125:src/btphy/paging_state.c **** }
+ 219              		.loc 1 125 2 is_stmt 1 view .LVU56
+ 126:src/btphy/paging_state.c **** 
+ 220              		.loc 1 126 1 is_stmt 0 view .LVU57
+ 221 008e 0020     		movs	r0, #0
+ 222 0090 02B0     		add	sp, sp, #8
+ 223              		.cfi_remember_state
+ 224              		.cfi_def_cfa_offset 16
+ 225              		@ sp needed
+ 226 0092 70BD     		pop	{r4, r5, r6, pc}
+ 227              	.LVL20:
+ 228              	.L6:
+ 229              		.cfi_restore_state
+ 230              	.LBB54:
+ 231              	.LBB49:
+ 232              	.LBB44:
+ 233              	.LBI44:
+ 128:src/btphy/paging_state.c **** {
+ 234              		.loc 1 128 13 is_stmt 1 view .LVU58
+ 235              	.LBB45:
+ 133:src/btphy/paging_state.c **** 		btctl_set_state(BTCTL_STATE_STANDBY, BTCTL_REASON_TIMEOUT);
+ 236              		.loc 1 133 3 view .LVU59
+ 237 0094 0948     		ldr	r0, .L7+24
+ 238              	.LVL21:
+ARM GAS  /tmp/ccRvmKeM.s 			page 9
+
+
+ 133:src/btphy/paging_state.c **** 		btctl_set_state(BTCTL_STATE_STANDBY, BTCTL_REASON_TIMEOUT);
+ 239              		.loc 1 133 3 is_stmt 0 view .LVU60
+ 240 0096 FFF7FEFF 		bl	cprintf
+ 241              	.LVL22:
+ 134:src/btphy/paging_state.c **** 		return;
+ 242              		.loc 1 134 3 is_stmt 1 view .LVU61
+ 243 009a 2846     		mov	r0, r5
+ 244 009c 0121     		movs	r1, #1
+ 245 009e FFF7FEFF 		bl	btctl_set_state
+ 246              	.LVL23:
+ 135:src/btphy/paging_state.c **** 	}
+ 247              		.loc 1 135 3 view .LVU62
+ 248 00a2 D1E7     		b	.L2
+ 249              	.L8:
+ 250              		.align	2
+ 251              	.L7:
+ 252 00a4 00000000 		.word	btctl
+ 253 00a8 00000000 		.word	btphy
+ 254 00ac 08000000 		.word	.LANCHOR0+8
+ 255 00b0 00000000 		.word	paging_rx_ack_cb
+ 256 00b4 00000000 		.word	.LANCHOR0
+ 257 00b8 00000000 		.word	paging_rx_cb
+ 258 00bc 00000000 		.word	.LC0
+ 259              	.LBE45:
+ 260              	.LBE44:
+ 261              	.LBE49:
+ 262              	.LBE54:
+ 263              		.cfi_endproc
+ 264              	.LFE33:
+ 266              		.section	.text.paging_start_sync,"ax",%progbits
+ 267              		.align	1
+ 268              		.p2align 2,,3
+ 269              		.syntax unified
+ 270              		.thumb
+ 271              		.thumb_func
+ 272              		.fpu softvfp
+ 274              	paging_start_sync:
+ 275              	.LVL24:
+ 276              	.LFB35:
+ 145:src/btphy/paging_state.c **** 		paging_rx_cb, NULL,	// ID rx callback
+ 146:src/btphy/paging_state.c **** 		0			// no payload for an ID packet
+ 147:src/btphy/paging_state.c **** 		);
+ 148:src/btphy/paging_state.c **** }
+ 149:src/btphy/paging_state.c **** 
+ 150:src/btphy/paging_state.c **** /* dummy tick handler to start TX'ing with a proper clock */
+ 151:src/btphy/paging_state.c **** static int paging_start_sync(uint8_t p1, uint8_t p2, uint16_t p3)
+ 152:src/btphy/paging_state.c **** {
+ 277              		.loc 1 152 1 view -0
+ 278              		.cfi_startproc
+ 279              		@ args = 0, pretend = 0, frame = 0
+ 280              		@ frame_needed = 0, uses_anonymous_args = 0
+ 281              		.loc 1 152 1 is_stmt 0 view .LVU64
+ 282 0000 30B5     		push	{r4, r5, lr}
+ 283              		.cfi_def_cfa_offset 12
+ 284              		.cfi_offset 4, -12
+ 285              		.cfi_offset 5, -8
+ 286              		.cfi_offset 14, -4
+ARM GAS  /tmp/ccRvmKeM.s 			page 10
+
+
+ 287 0002 83B0     		sub	sp, sp, #12
+ 288              		.cfi_def_cfa_offset 24
+ 153:src/btphy/paging_state.c **** 	unsigned delay;
+ 289              		.loc 1 153 2 is_stmt 1 view .LVU65
+ 154:src/btphy/paging_state.c **** 
+ 155:src/btphy/paging_state.c **** 	/* Use the master clkn */
+ 156:src/btphy/paging_state.c **** 	btphy_cancel_clkn_delay();
+ 290              		.loc 1 156 2 view .LVU66
+ 291 0004 FFF7FEFF 		bl	btphy_cancel_clkn_delay
+ 292              	.LVL25:
+ 157:src/btphy/paging_state.c **** 	delay = 4+(3&(TX_PREPARE_IDX-CUR_MASTER_SLOT_IDX()));
+ 293              		.loc 1 157 2 view .LVU67
+ 294              		.loc 1 157 31 is_stmt 0 view .LVU68
+ 295 0008 144B     		ldr	r3, .L13
+ 158:src/btphy/paging_state.c **** 	paging_state.clkn_start = btphy.master_clkn+delay;
+ 296              		.loc 1 158 26 view .LVU69
+ 297 000a 154D     		ldr	r5, .L13+4
+ 157:src/btphy/paging_state.c **** 	delay = 4+(3&(TX_PREPARE_IDX-CUR_MASTER_SLOT_IDX()));
+ 298              		.loc 1 157 31 view .LVU70
+ 299 000c 5A68     		ldr	r2, [r3, #4]
+ 157:src/btphy/paging_state.c **** 	delay = 4+(3&(TX_PREPARE_IDX-CUR_MASTER_SLOT_IDX()));
+ 300              		.loc 1 157 30 view .LVU71
+ 301 000e D443     		mvns	r4, r2
+ 157:src/btphy/paging_state.c **** 	delay = 4+(3&(TX_PREPARE_IDX-CUR_MASTER_SLOT_IDX()));
+ 302              		.loc 1 157 14 view .LVU72
+ 303 0010 04F00304 		and	r4, r4, #3
+ 157:src/btphy/paging_state.c **** 	delay = 4+(3&(TX_PREPARE_IDX-CUR_MASTER_SLOT_IDX()));
+ 304              		.loc 1 157 8 view .LVU73
+ 305 0014 201D     		adds	r0, r4, #4
+ 306              	.LVL26:
+ 307              		.loc 1 158 2 is_stmt 1 view .LVU74
+ 308              		.loc 1 158 45 is_stmt 0 view .LVU75
+ 309 0016 1118     		adds	r1, r2, r0
+ 310              	.LBB59:
+ 311              	.LBB60:
+ 131:src/btphy/paging_state.c **** 	{
+ 312              		.loc 1 131 51 view .LVU76
+ 313 0018 01F50C33 		add	r3, r1, #143360
+ 314 001c 03F52073 		add	r3, r3, #640
+ 131:src/btphy/paging_state.c **** 	{
+ 315              		.loc 1 131 5 view .LVU77
+ 316 0020 9A42     		cmp	r2, r3
+ 317              	.LBE60:
+ 318              	.LBE59:
+ 319              		.loc 1 158 26 view .LVU78
+ 320 0022 2960     		str	r1, [r5]
+ 159:src/btphy/paging_state.c **** 	paging_schedule(delay);
+ 321              		.loc 1 159 2 is_stmt 1 view .LVU79
+ 322              	.LVL27:
+ 323              	.LBB65:
+ 324              	.LBI59:
+ 128:src/btphy/paging_state.c **** {
+ 325              		.loc 1 128 13 view .LVU80
+ 326              	.LBB63:
+ 131:src/btphy/paging_state.c **** 	{
+ 327              		.loc 1 131 2 view .LVU81
+ 131:src/btphy/paging_state.c **** 	{
+ARM GAS  /tmp/ccRvmKeM.s 			page 11
+
+
+ 328              		.loc 1 131 5 is_stmt 0 view .LVU82
+ 329 0024 0FD2     		bcs	.L12
+ 139:src/btphy/paging_state.c **** 		NULL, NULL,	// no tx callback
+ 330              		.loc 1 139 2 is_stmt 1 view .LVU83
+ 331 0026 0025     		movs	r5, #0
+ 332 0028 2B46     		mov	r3, r5
+ 333 002a 2A46     		mov	r2, r5
+ 334 002c 2946     		mov	r1, r5
+ 335 002e 0095     		str	r5, [sp]
+ 336 0030 FFF7FEFF 		bl	tx_task_schedule
+ 337              	.LVL28:
+ 144:src/btphy/paging_state.c **** 		paging_rx_cb, NULL,	// ID rx callback
+ 338              		.loc 1 144 2 view .LVU84
+ 339 0034 A01D     		adds	r0, r4, #6
+ 340 0036 2B46     		mov	r3, r5
+ 341 0038 2A46     		mov	r2, r5
+ 342 003a 0A49     		ldr	r1, .L13+8
+ 343 003c FFF7FEFF 		bl	rx_task_schedule
+ 344              	.LVL29:
+ 144:src/btphy/paging_state.c **** 		paging_rx_cb, NULL,	// ID rx callback
+ 345              		.loc 1 144 2 is_stmt 0 view .LVU85
+ 346              	.LBE63:
+ 347              	.LBE65:
+ 160:src/btphy/paging_state.c **** 	return 0;
+ 348              		.loc 1 160 2 is_stmt 1 view .LVU86
+ 161:src/btphy/paging_state.c **** }
+ 349              		.loc 1 161 1 is_stmt 0 view .LVU87
+ 350 0040 0020     		movs	r0, #0
+ 351 0042 03B0     		add	sp, sp, #12
+ 352              		.cfi_remember_state
+ 353              		.cfi_def_cfa_offset 12
+ 354              		@ sp needed
+ 355 0044 30BD     		pop	{r4, r5, pc}
+ 356              	.LVL30:
+ 357              	.L12:
+ 358              		.cfi_restore_state
+ 359              	.LBB66:
+ 360              	.LBB64:
+ 361              	.LBB61:
+ 362              	.LBI61:
+ 128:src/btphy/paging_state.c **** {
+ 363              		.loc 1 128 13 is_stmt 1 view .LVU88
+ 364              	.LBB62:
+ 133:src/btphy/paging_state.c **** 		btctl_set_state(BTCTL_STATE_STANDBY, BTCTL_REASON_TIMEOUT);
+ 365              		.loc 1 133 3 view .LVU89
+ 366 0046 0848     		ldr	r0, .L13+12
+ 367              	.LVL31:
+ 133:src/btphy/paging_state.c **** 		btctl_set_state(BTCTL_STATE_STANDBY, BTCTL_REASON_TIMEOUT);
+ 368              		.loc 1 133 3 is_stmt 0 view .LVU90
+ 369 0048 FFF7FEFF 		bl	cprintf
+ 370              	.LVL32:
+ 134:src/btphy/paging_state.c **** 		return;
+ 371              		.loc 1 134 3 is_stmt 1 view .LVU91
+ 372 004c 0121     		movs	r1, #1
+ 373 004e 0020     		movs	r0, #0
+ 374 0050 FFF7FEFF 		bl	btctl_set_state
+ 375              	.LVL33:
+ARM GAS  /tmp/ccRvmKeM.s 			page 12
+
+
+ 135:src/btphy/paging_state.c **** 	}
+ 376              		.loc 1 135 3 view .LVU92
+ 135:src/btphy/paging_state.c **** 	}
+ 377              		.loc 1 135 3 is_stmt 0 view .LVU93
+ 378              	.LBE62:
+ 379              	.LBE61:
+ 380              	.LBE64:
+ 381              	.LBE66:
+ 160:src/btphy/paging_state.c **** }
+ 382              		.loc 1 160 2 is_stmt 1 view .LVU94
+ 383              		.loc 1 161 1 is_stmt 0 view .LVU95
+ 384 0054 0020     		movs	r0, #0
+ 385 0056 03B0     		add	sp, sp, #12
+ 386              		.cfi_def_cfa_offset 12
+ 387              		@ sp needed
+ 388 0058 30BD     		pop	{r4, r5, pc}
+ 389              	.LVL34:
+ 390              	.L14:
+ 391              		.loc 1 161 1 view .LVU96
+ 392 005a 00BF     		.align	2
+ 393              	.L13:
+ 394 005c 00000000 		.word	btphy
+ 395 0060 00000000 		.word	.LANCHOR0
+ 396 0064 00000000 		.word	paging_rx_cb
+ 397 0068 00000000 		.word	.LC0
+ 398              		.cfi_endproc
+ 399              	.LFE35:
+ 401              		.section	.rodata.str1.4
+ 402              		.align	2
+ 403              	.LC1:
+ 404 0010 49442833 		.ascii	"ID(3)\012\000"
+ 404      290A00
+ 405 0017 00       		.align	2
+ 406              	.LC2:
+ 407 0018 6E6F2049 		.ascii	"no ID(3)\012\000"
+ 407      44283329 
+ 407      0A00
+ 408              		.section	.text.paging_rx_ack_cb,"ax",%progbits
+ 409              		.align	1
+ 410              		.p2align 2,,3
+ 411              		.syntax unified
+ 412              		.thumb
+ 413              		.thumb_func
+ 414              		.fpu softvfp
+ 416              	paging_rx_ack_cb:
+ 417              	.LVL35:
+ 418              	.LFB32:
+  59:src/btphy/paging_state.c **** 	btctl_hdr_t *h = (btctl_hdr_t*)msg->data;
+ 419              		.loc 1 59 1 is_stmt 1 view -0
+ 420              		.cfi_startproc
+ 421              		@ args = 0, pretend = 0, frame = 0
+ 422              		@ frame_needed = 0, uses_anonymous_args = 0
+  59:src/btphy/paging_state.c **** 	btctl_hdr_t *h = (btctl_hdr_t*)msg->data;
+ 423              		.loc 1 59 1 is_stmt 0 view .LVU98
+ 424 0000 70B5     		push	{r4, r5, r6, lr}
+ 425              		.cfi_def_cfa_offset 16
+ 426              		.cfi_offset 4, -16
+ARM GAS  /tmp/ccRvmKeM.s 			page 13
+
+
+ 427              		.cfi_offset 5, -12
+ 428              		.cfi_offset 6, -8
+ 429              		.cfi_offset 14, -4
+ 430 0002 82B0     		sub	sp, sp, #8
+ 431              		.cfi_def_cfa_offset 24
+  60:src/btphy/paging_state.c **** 	btctl_rx_pkt_t *pkt;
+ 432              		.loc 1 60 2 is_stmt 1 view .LVU99
+ 433              	.LVL36:
+  61:src/btphy/paging_state.c **** 
+ 434              		.loc 1 61 2 view .LVU100
+  63:src/btphy/paging_state.c **** 	{
+ 435              		.loc 1 63 2 view .LVU101
+ 436              	.LBB86:
+ 437              	.LBI86:
+  43:src/btphy/paging_state.c **** {
+ 438              		.loc 1 43 12 view .LVU102
+ 439              	.LBE86:
+  45:src/btphy/paging_state.c **** }
+ 440              		.loc 1 45 2 view .LVU103
+ 441              	.LBB89:
+ 442              	.LBB87:
+ 443              	.LBI87:
+  24:include/ubtbr/btctl_intf.h **** {
+ 444              		.loc 2 24 29 view .LVU104
+ 445              	.LBB88:
+ 446              		.loc 2 26 2 view .LVU105
+ 447              		.loc 2 26 14 is_stmt 0 view .LVU106
+ 448 0004 214B     		ldr	r3, .L23
+ 449              	.LBE88:
+ 450              	.LBE87:
+ 451              	.LBE89:
+  59:src/btphy/paging_state.c **** 	btctl_hdr_t *h = (btctl_hdr_t*)msg->data;
+ 452              		.loc 1 59 1 view .LVU107
+ 453 0006 0446     		mov	r4, r0
+  63:src/btphy/paging_state.c **** 	{
+ 454              		.loc 1 63 5 view .LVU108
+ 455 0008 1B78     		ldrb	r3, [r3]	@ zero_extendqisi2
+ 456 000a 022B     		cmp	r3, #2
+ 457 000c 20D1     		bne	.L18
+ 458              	.LVL37:
+ 459              	.LBB90:
+ 460              	.LBI90:
+  58:src/btphy/paging_state.c **** {
+ 461              		.loc 1 58 12 is_stmt 1 view .LVU109
+ 462              	.LBB91:
+  68:src/btphy/paging_state.c **** 
+ 463              		.loc 1 68 2 view .LVU110
+  70:src/btphy/paging_state.c **** 	{
+ 464              		.loc 1 70 2 view .LVU111
+  70:src/btphy/paging_state.c **** 	{
+ 465              		.loc 1 70 5 is_stmt 0 view .LVU112
+ 466 000e 437D     		ldrb	r3, [r0, #21]	@ zero_extendqisi2
+ 467 0010 13F00105 		ands	r5, r3, #1
+ 468 0014 22D1     		bne	.L21
+  76:src/btphy/paging_state.c **** 		paging_schedule(3&(TX_PREPARE_IDX-CUR_MASTER_SLOT_IDX()));
+ 469              		.loc 1 76 3 is_stmt 1 view .LVU113
+ 470 0016 1E48     		ldr	r0, .L23+4
+ARM GAS  /tmp/ccRvmKeM.s 			page 14
+
+
+ 471              	.LVL38:
+  76:src/btphy/paging_state.c **** 		paging_schedule(3&(TX_PREPARE_IDX-CUR_MASTER_SLOT_IDX()));
+ 472              		.loc 1 76 3 is_stmt 0 view .LVU114
+ 473 0018 FFF7FEFF 		bl	cprintf
+ 474              	.LVL39:
+  77:src/btphy/paging_state.c **** 	}
+ 475              		.loc 1 77 3 is_stmt 1 view .LVU115
+ 476              	.LBB92:
+ 477              	.LBB93:
+ 131:src/btphy/paging_state.c **** 	{
+ 478              		.loc 1 131 39 is_stmt 0 view .LVU116
+ 479 001c 1D4B     		ldr	r3, .L23+8
+ 480              	.LBE93:
+ 481              	.LBE92:
+  77:src/btphy/paging_state.c **** 	}
+ 482              		.loc 1 77 37 view .LVU117
+ 483 001e 1E4A     		ldr	r2, .L23+12
+ 484              	.LBB100:
+ 485              	.LBB96:
+ 131:src/btphy/paging_state.c **** 	{
+ 486              		.loc 1 131 51 view .LVU118
+ 487 0020 1B68     		ldr	r3, [r3]
+ 488              	.LBE96:
+ 489              	.LBE100:
+  77:src/btphy/paging_state.c **** 	}
+ 490              		.loc 1 77 37 view .LVU119
+ 491 0022 5068     		ldr	r0, [r2, #4]
+ 492              	.LVL40:
+ 493              	.LBB101:
+ 494              	.LBI92:
+ 128:src/btphy/paging_state.c **** {
+ 495              		.loc 1 128 13 is_stmt 1 view .LVU120
+ 496              	.LBB97:
+ 131:src/btphy/paging_state.c **** 	{
+ 497              		.loc 1 131 2 view .LVU121
+ 131:src/btphy/paging_state.c **** 	{
+ 498              		.loc 1 131 51 is_stmt 0 view .LVU122
+ 499 0024 03F50C33 		add	r3, r3, #143360
+ 500 0028 03F52073 		add	r3, r3, #640
+ 131:src/btphy/paging_state.c **** 	{
+ 501              		.loc 1 131 5 view .LVU123
+ 502 002c 9842     		cmp	r0, r3
+ 503 002e 20D2     		bcs	.L22
+ 504              	.LBE97:
+ 505              	.LBE101:
+  77:src/btphy/paging_state.c **** 	}
+ 506              		.loc 1 77 20 view .LVU124
+ 507 0030 C043     		mvns	r0, r0
+ 508              	.LVL41:
+  77:src/btphy/paging_state.c **** 	}
+ 509              		.loc 1 77 3 view .LVU125
+ 510 0032 00F00306 		and	r6, r0, #3
+ 511              	.LBB102:
+ 512              	.LBB98:
+ 139:src/btphy/paging_state.c **** 		NULL, NULL,	// no tx callback
+ 513              		.loc 1 139 2 is_stmt 1 view .LVU126
+ 514 0036 3046     		mov	r0, r6
+ARM GAS  /tmp/ccRvmKeM.s 			page 15
+
+
+ 515              	.LVL42:
+ 139:src/btphy/paging_state.c **** 		NULL, NULL,	// no tx callback
+ 516              		.loc 1 139 2 is_stmt 0 view .LVU127
+ 517 0038 2B46     		mov	r3, r5
+ 518 003a 2A46     		mov	r2, r5
+ 519              	.LVL43:
+ 139:src/btphy/paging_state.c **** 		NULL, NULL,	// no tx callback
+ 520              		.loc 1 139 2 view .LVU128
+ 521 003c 2946     		mov	r1, r5
+ 522 003e 0095     		str	r5, [sp]
+ 523 0040 FFF7FEFF 		bl	tx_task_schedule
+ 524              	.LVL44:
+ 144:src/btphy/paging_state.c **** 		paging_rx_cb, NULL,	// ID rx callback
+ 525              		.loc 1 144 2 is_stmt 1 view .LVU129
+ 526 0044 2B46     		mov	r3, r5
+ 527 0046 2A46     		mov	r2, r5
+ 528 0048 1449     		ldr	r1, .L23+16
+ 529 004a B01C     		adds	r0, r6, #2
+ 530 004c FFF7FEFF 		bl	rx_task_schedule
+ 531              	.LVL45:
+ 532              	.L18:
+ 144:src/btphy/paging_state.c **** 		paging_rx_cb, NULL,	// ID rx callback
+ 533              		.loc 1 144 2 is_stmt 0 view .LVU130
+ 534              	.LBE98:
+ 535              	.LBE102:
+ 536              	.LBE91:
+ 537              	.LBE90:
+  65:src/btphy/paging_state.c **** 		return 0;
+ 538              		.loc 1 65 3 is_stmt 1 view .LVU131
+ 539              	.LBB106:
+ 540              	.LBI106:
+  26:include/ubtbr/msg.h **** {
+ 541              		.loc 3 26 20 view .LVU132
+ 542              	.LBB107:
+ 543              		.loc 3 28 2 view .LVU133
+ 544 0050 2046     		mov	r0, r4
+ 545 0052 FFF7FEFF 		bl	mem_pool_free
+ 546              	.LVL46:
+ 547              		.loc 3 28 2 is_stmt 0 view .LVU134
+ 548              	.LBE107:
+ 549              	.LBE106:
+  66:src/btphy/paging_state.c **** 	}
+ 550              		.loc 1 66 3 is_stmt 1 view .LVU135
+  81:src/btphy/paging_state.c **** 
+ 551              		.loc 1 81 1 is_stmt 0 view .LVU136
+ 552 0056 0020     		movs	r0, #0
+ 553 0058 02B0     		add	sp, sp, #8
+ 554              		.cfi_remember_state
+ 555              		.cfi_def_cfa_offset 16
+ 556              		@ sp needed
+ 557 005a 70BD     		pop	{r4, r5, r6, pc}
+ 558              	.LVL47:
+ 559              	.L21:
+ 560              		.cfi_restore_state
+ 561              	.LBB110:
+ 562              	.LBB104:
+  72:src/btphy/paging_state.c **** 		master_state_init();
+ARM GAS  /tmp/ccRvmKeM.s 			page 16
+
+
+ 563              		.loc 1 72 3 is_stmt 1 view .LVU137
+ 564 005c 1048     		ldr	r0, .L23+20
+ 565              	.LVL48:
+  72:src/btphy/paging_state.c **** 		master_state_init();
+ 566              		.loc 1 72 3 is_stmt 0 view .LVU138
+ 567 005e FFF7FEFF 		bl	cprintf
+ 568              	.LVL49:
+  73:src/btphy/paging_state.c **** 	}
+ 569              		.loc 1 73 3 is_stmt 1 view .LVU139
+ 570 0062 FFF7FEFF 		bl	master_state_init
+ 571              	.LVL50:
+ 572              	.LBE104:
+ 573              	.LBE110:
+  65:src/btphy/paging_state.c **** 		return 0;
+ 574              		.loc 1 65 3 view .LVU140
+ 575              	.LBB111:
+  26:include/ubtbr/msg.h **** {
+ 576              		.loc 3 26 20 view .LVU141
+ 577              	.LBB108:
+ 578              		.loc 3 28 2 view .LVU142
+ 579 0066 2046     		mov	r0, r4
+ 580 0068 FFF7FEFF 		bl	mem_pool_free
+ 581              	.LVL51:
+ 582              		.loc 3 28 2 is_stmt 0 view .LVU143
+ 583              	.LBE108:
+ 584              	.LBE111:
+  66:src/btphy/paging_state.c **** 	}
+ 585              		.loc 1 66 3 is_stmt 1 view .LVU144
+  81:src/btphy/paging_state.c **** 
+ 586              		.loc 1 81 1 is_stmt 0 view .LVU145
+ 587 006c 0020     		movs	r0, #0
+ 588 006e 02B0     		add	sp, sp, #8
+ 589              		.cfi_remember_state
+ 590              		.cfi_def_cfa_offset 16
+ 591              		@ sp needed
+ 592 0070 70BD     		pop	{r4, r5, r6, pc}
+ 593              	.LVL52:
+ 594              	.L22:
+ 595              		.cfi_restore_state
+ 596              	.LBB112:
+ 597              	.LBB105:
+ 598              	.LBB103:
+ 599              	.LBB99:
+ 600              	.LBB94:
+ 601              	.LBI94:
+ 128:src/btphy/paging_state.c **** {
+ 602              		.loc 1 128 13 is_stmt 1 view .LVU146
+ 603              	.LBB95:
+ 133:src/btphy/paging_state.c **** 		btctl_set_state(BTCTL_STATE_STANDBY, BTCTL_REASON_TIMEOUT);
+ 604              		.loc 1 133 3 view .LVU147
+ 605 0072 0C48     		ldr	r0, .L23+24
+ 606              	.LVL53:
+ 133:src/btphy/paging_state.c **** 		btctl_set_state(BTCTL_STATE_STANDBY, BTCTL_REASON_TIMEOUT);
+ 607              		.loc 1 133 3 is_stmt 0 view .LVU148
+ 608 0074 FFF7FEFF 		bl	cprintf
+ 609              	.LVL54:
+ 134:src/btphy/paging_state.c **** 		return;
+ARM GAS  /tmp/ccRvmKeM.s 			page 17
+
+
+ 610              		.loc 1 134 3 is_stmt 1 view .LVU149
+ 611 0078 2846     		mov	r0, r5
+ 612 007a 0121     		movs	r1, #1
+ 613 007c FFF7FEFF 		bl	btctl_set_state
+ 614              	.LVL55:
+ 135:src/btphy/paging_state.c **** 	}
+ 615              		.loc 1 135 3 view .LVU150
+ 616              	.LBE95:
+ 617              	.LBE94:
+ 618              	.LBE99:
+ 619              	.LBE103:
+ 620              	.LBE105:
+ 621              	.LBE112:
+  65:src/btphy/paging_state.c **** 		return 0;
+ 622              		.loc 1 65 3 view .LVU151
+ 623              	.LBB113:
+  26:include/ubtbr/msg.h **** {
+ 624              		.loc 3 26 20 view .LVU152
+ 625              	.LBB109:
+ 626              		.loc 3 28 2 view .LVU153
+ 627 0080 2046     		mov	r0, r4
+ 628 0082 FFF7FEFF 		bl	mem_pool_free
+ 629              	.LVL56:
+ 630              		.loc 3 28 2 is_stmt 0 view .LVU154
+ 631              	.LBE109:
+ 632              	.LBE113:
+  66:src/btphy/paging_state.c **** 	}
+ 633              		.loc 1 66 3 is_stmt 1 view .LVU155
+  81:src/btphy/paging_state.c **** 
+ 634              		.loc 1 81 1 is_stmt 0 view .LVU156
+ 635 0086 0020     		movs	r0, #0
+ 636 0088 02B0     		add	sp, sp, #8
+ 637              		.cfi_def_cfa_offset 16
+ 638              		@ sp needed
+ 639 008a 70BD     		pop	{r4, r5, r6, pc}
+ 640              	.LVL57:
+ 641              	.L24:
+  81:src/btphy/paging_state.c **** 
+ 642              		.loc 1 81 1 view .LVU157
+ 643              		.align	2
+ 644              	.L23:
+ 645 008c 00000000 		.word	btctl
+ 646 0090 18000000 		.word	.LC2
+ 647 0094 00000000 		.word	.LANCHOR0
+ 648 0098 00000000 		.word	btphy
+ 649 009c 00000000 		.word	paging_rx_cb
+ 650 00a0 10000000 		.word	.LC1
+ 651 00a4 00000000 		.word	.LC0
+ 652              		.cfi_endproc
+ 653              	.LFE32:
+ 655              		.section	.text.paging_state_setup,"ax",%progbits
+ 656              		.align	1
+ 657              		.p2align 2,,3
+ 658              		.global	paging_state_setup
+ 659              		.syntax unified
+ 660              		.thumb
+ 661              		.thumb_func
+ARM GAS  /tmp/ccRvmKeM.s 			page 18
+
+
+ 662              		.fpu softvfp
+ 664              	paging_state_setup:
+ 665              	.LVL58:
+ 666              	.LFB36:
+ 162:src/btphy/paging_state.c **** 
+ 163:src/btphy/paging_state.c **** /*
+ 164:src/btphy/paging_state.c ****  * Paging master
+ 165:src/btphy/paging_state.c ****  * Refs: timings at BT52|V2PB|Table 8.3
+ 166:src/btphy/paging_state.c ****  * In a nutshell, we must:
+ 167:src/btphy/paging_state.c ****  * k 0: Tx ID(1) packets with sw of paged device on f(k)
+ 168:src/btphy/paging_state.c ****  * k 2: clk1(1): Receive ID(2) packet in response of the paged device 	at clk1(1) 
+ 169:src/btphy/paging_state.c ****  * k 4: Tx FHS packet with sw of paged device
+ 170:src/btphy/paging_state.c ****  *	if contains master's (low_sw, lap, nap, uap, etc.), and clk27_2 sampled at start of tx.
+ 171:src/btphy/paging_state.c ****  * k 6: Rx ID(3) from the slave, and start master task.
+ 172:src/btphy/paging_state.c ****  */
+ 173:src/btphy/paging_state.c **** void paging_state_setup(uint32_t lap, uint8_t uap)
+ 174:src/btphy/paging_state.c **** {
+ 667              		.loc 1 174 1 is_stmt 1 view -0
+ 668              		.cfi_startproc
+ 669              		@ args = 0, pretend = 0, frame = 0
+ 670              		@ frame_needed = 0, uses_anonymous_args = 0
+ 671              		.loc 1 174 1 is_stmt 0 view .LVU159
+ 672 0000 30B5     		push	{r4, r5, lr}
+ 673              		.cfi_def_cfa_offset 12
+ 674              		.cfi_offset 4, -12
+ 675              		.cfi_offset 5, -8
+ 676              		.cfi_offset 14, -4
+ 677 0002 87B0     		sub	sp, sp, #28
+ 678              		.cfi_def_cfa_offset 40
+ 175:src/btphy/paging_state.c **** 	// Reset paging state
+ 176:src/btphy/paging_state.c **** 	btphy_set_mode(BT_MODE_PAGING, lap, uap);
+ 679              		.loc 1 176 2 is_stmt 1 view .LVU160
+ 174:src/btphy/paging_state.c **** 	// Reset paging state
+ 680              		.loc 1 174 1 is_stmt 0 view .LVU161
+ 681 0004 0346     		mov	r3, r0
+ 177:src/btphy/paging_state.c **** 
+ 178:src/btphy/paging_state.c **** 	/* A simple Header for our fhs */ 
+ 179:src/btphy/paging_state.c **** 	paging_state.fhs_hdr.lt_addr = 0;		//  This seems right
+ 180:src/btphy/paging_state.c **** 	paging_state.fhs_hdr.type = BB_TYPE_FHS;
+ 181:src/btphy/paging_state.c **** 	paging_state.fhs_hdr.flags = 0; 		// Depends on devices, some sends BTHDR_FLOW|BTHDR_SEQN, others 
+ 682              		.loc 1 181 29 view .LVU162
+ 683 0006 0024     		movs	r4, #0
+ 174:src/btphy/paging_state.c **** 	// Reset paging state
+ 684              		.loc 1 174 1 view .LVU163
+ 685 0008 0A46     		mov	r2, r1
+ 176:src/btphy/paging_state.c **** 
+ 686              		.loc 1 176 2 view .LVU164
+ 687 000a 0120     		movs	r0, #1
+ 688              	.LVL59:
+ 176:src/btphy/paging_state.c **** 
+ 689              		.loc 1 176 2 view .LVU165
+ 690 000c 1946     		mov	r1, r3
+ 691              	.LVL60:
+ 176:src/btphy/paging_state.c **** 
+ 692              		.loc 1 176 2 view .LVU166
+ 693 000e FFF7FEFF 		bl	btphy_set_mode
+ 694              	.LVL61:
+ARM GAS  /tmp/ccRvmKeM.s 			page 19
+
+
+ 179:src/btphy/paging_state.c **** 	paging_state.fhs_hdr.type = BB_TYPE_FHS;
+ 695              		.loc 1 179 2 is_stmt 1 view .LVU167
+ 180:src/btphy/paging_state.c **** 	paging_state.fhs_hdr.flags = 0; 		// Depends on devices, some sends BTHDR_FLOW|BTHDR_SEQN, others 
+ 696              		.loc 1 180 2 view .LVU168
+ 697              		.loc 1 181 2 view .LVU169
+ 182:src/btphy/paging_state.c **** 
+ 183:src/btphy/paging_state.c **** 	/* Prepare constant part of FHS payload */
+ 184:src/btphy/paging_state.c **** 	bbpkt_fhs_prepare_payload(paging_state.fhs_data,
+ 698              		.loc 1 184 2 is_stmt 0 view .LVU170
+ 699 0012 0122     		movs	r2, #1
+ 179:src/btphy/paging_state.c **** 	paging_state.fhs_hdr.type = BB_TYPE_FHS;
+ 700              		.loc 1 179 31 view .LVU171
+ 701 0014 4FF40075 		mov	r5, #512
+ 185:src/btphy/paging_state.c **** 		btphy.my_sw&0xffffffff, 	// parity: low32 bits of master's sw
+ 702              		.loc 1 185 8 view .LVU172
+ 703 0018 124B     		ldr	r3, .L26
+ 179:src/btphy/paging_state.c **** 	paging_state.fhs_hdr.type = BB_TYPE_FHS;
+ 704              		.loc 1 179 31 view .LVU173
+ 705 001a 1349     		ldr	r1, .L26+4
+ 184:src/btphy/paging_state.c **** 		btphy.my_sw&0xffffffff, 	// parity: low32 bits of master's sw
+ 706              		.loc 1 184 2 view .LVU174
+ 707 001c 588F     		ldrh	r0, [r3, #58]
+ 708 001e 0594     		str	r4, [sp, #20]
+ 709 0020 0290     		str	r0, [sp, #8]
+ 710 0022 93F83800 		ldrb	r0, [r3, #56]	@ zero_extendqisi2
+ 711 0026 0492     		str	r2, [sp, #16]
+ 712 0028 5A6B     		ldr	r2, [r3, #52]
+ 713 002a 0190     		str	r0, [sp, #4]
+ 714 002c 0F48     		ldr	r0, .L26+8
+ 715 002e 0092     		str	r2, [sp]
+ 716 0030 1A6C     		ldr	r2, [r3, #64]
+ 717 0032 0390     		str	r0, [sp, #12]
+ 718 0034 2346     		mov	r3, r4
+ 719 0036 01F10800 		add	r0, r1, #8
+ 181:src/btphy/paging_state.c **** 
+ 720              		.loc 1 181 29 view .LVU175
+ 721 003a 8C71     		strb	r4, [r1, #6]
+ 184:src/btphy/paging_state.c **** 		btphy.my_sw&0xffffffff, 	// parity: low32 bits of master's sw
+ 722              		.loc 1 184 2 is_stmt 1 view .LVU176
+ 179:src/btphy/paging_state.c **** 	paging_state.fhs_hdr.type = BB_TYPE_FHS;
+ 723              		.loc 1 179 31 is_stmt 0 view .LVU177
+ 724 003c 8D80     		strh	r5, [r1, #4]	@ movhi
+ 184:src/btphy/paging_state.c **** 		btphy.my_sw&0xffffffff, 	// parity: low32 bits of master's sw
+ 725              		.loc 1 184 2 view .LVU178
+ 726 003e FFF7FEFF 		bl	bbpkt_fhs_prepare_payload
+ 727              	.LVL62:
+ 186:src/btphy/paging_state.c **** 		btphy.my_lap,		// master's bdaddr
+ 187:src/btphy/paging_state.c **** 		btphy.my_uap,		// 
+ 188:src/btphy/paging_state.c **** 		btphy.my_nap,		// 
+ 189:src/btphy/paging_state.c **** 		0x5A020C,		// class: FIXME make this configurable
+ 190:src/btphy/paging_state.c **** 		1,			// lt_addr: FIXME: fixed ltaddr = 1
+ 191:src/btphy/paging_state.c **** 		0 // No eir
+ 192:src/btphy/paging_state.c **** 		);
+ 193:src/btphy/paging_state.c **** 
+ 194:src/btphy/paging_state.c **** 	tdma_schedule(2, paging_start_sync, 0,0,0,-3);
+ 728              		.loc 1 194 2 is_stmt 1 view .LVU179
+ 729 0042 6FF00201 		mvn	r1, #2
+ARM GAS  /tmp/ccRvmKeM.s 			page 20
+
+
+ 730 0046 2346     		mov	r3, r4
+ 731 0048 0191     		str	r1, [sp, #4]
+ 732 004a 2246     		mov	r2, r4
+ 733 004c 0849     		ldr	r1, .L26+12
+ 734 004e 0094     		str	r4, [sp]
+ 735 0050 0220     		movs	r0, #2
+ 736 0052 FFF7FEFF 		bl	tdma_schedule
+ 737              	.LVL63:
+ 195:src/btphy/paging_state.c **** 	btctl_set_state(BTCTL_STATE_PAGE, BTCTL_REASON_SUCCESS);
+ 738              		.loc 1 195 2 view .LVU180
+ 739 0056 2146     		mov	r1, r4
+ 740 0058 0220     		movs	r0, #2
+ 196:src/btphy/paging_state.c **** }
+ 741              		.loc 1 196 1 is_stmt 0 view .LVU181
+ 742 005a 07B0     		add	sp, sp, #28
+ 743              		.cfi_def_cfa_offset 12
+ 744              		@ sp needed
+ 745 005c BDE83040 		pop	{r4, r5, lr}
+ 746              		.cfi_restore 14
+ 747              		.cfi_restore 5
+ 748              		.cfi_restore 4
+ 749              		.cfi_def_cfa_offset 0
+ 195:src/btphy/paging_state.c **** 	btctl_set_state(BTCTL_STATE_PAGE, BTCTL_REASON_SUCCESS);
+ 750              		.loc 1 195 2 view .LVU182
+ 751 0060 FFF7FEBF 		b	btctl_set_state
+ 752              	.LVL64:
+ 753              	.L27:
+ 754              		.align	2
+ 755              	.L26:
+ 756 0064 00000000 		.word	btphy
+ 757 0068 00000000 		.word	.LANCHOR0
+ 758 006c 0C025A00 		.word	5898764
+ 759 0070 00000000 		.word	paging_start_sync
+ 760              		.cfi_endproc
+ 761              	.LFE36:
+ 763              		.bss
+ 764              		.align	2
+ 765              		.set	.LANCHOR0,. + 0
+ 768              	paging_state:
+ 769 0000 00000000 		.space	28
+ 769      00000000 
+ 769      00000000 
+ 769      00000000 
+ 769      00000000 
+ 770              		.text
+ 771              	.Letext0:
+ 772              		.file 4 "/usr/lib/gcc/arm-none-eabi/9.2.1/include/stddef.h"
+ 773              		.file 5 "/usr/include/newlib/sys/_types.h"
+ 774              		.file 6 "/usr/include/newlib/sys/reent.h"
+ 775              		.file 7 "/usr/include/newlib/sys/lock.h"
+ 776              		.file 8 "/usr/lib/gcc/arm-none-eabi/9.2.1/include/stdint.h"
+ 777              		.file 9 "../../host/libubertooth/src/ubertooth_interface.h"
+ 778              		.file 10 "../common/ubertooth.h"
+ 779              		.file 11 "include/ubtbr/queue.h"
+ 780              		.file 12 "include/ubtbr/btphy.h"
+ 781              		.file 13 "include/ubtbr/bb.h"
+ 782              		.file 14 "include/ubtbr/tdma_sched.h"
+ARM GAS  /tmp/ccRvmKeM.s 			page 21
+
+
+ 783              		.file 15 "include/ubtbr/debug.h"
+ 784              		.file 16 "include/ubtbr/tx_task.h"
+ 785              		.file 17 "include/ubtbr/rx_task.h"
+ 786              		.file 18 "include/ubtbr/mem_pool.h"
+ 787              		.file 19 "include/ubtbr/master_state.h"
+ARM GAS  /tmp/ccRvmKeM.s 			page 22
+
+
+DEFINED SYMBOLS
+                            *ABS*:0000000000000000 paging_state.c
+     /tmp/ccRvmKeM.s:16     .rodata.str1.4:0000000000000000 $d
+     /tmp/ccRvmKeM.s:20     .text.paging_rx_cb:0000000000000000 $t
+     /tmp/ccRvmKeM.s:28     .text.paging_rx_cb:0000000000000000 paging_rx_cb
+     /tmp/ccRvmKeM.s:252    .text.paging_rx_cb:00000000000000a4 $d
+     /tmp/ccRvmKeM.s:416    .text.paging_rx_ack_cb:0000000000000000 paging_rx_ack_cb
+     /tmp/ccRvmKeM.s:267    .text.paging_start_sync:0000000000000000 $t
+     /tmp/ccRvmKeM.s:274    .text.paging_start_sync:0000000000000000 paging_start_sync
+     /tmp/ccRvmKeM.s:394    .text.paging_start_sync:000000000000005c $d
+     /tmp/ccRvmKeM.s:409    .text.paging_rx_ack_cb:0000000000000000 $t
+     /tmp/ccRvmKeM.s:645    .text.paging_rx_ack_cb:000000000000008c $d
+     /tmp/ccRvmKeM.s:656    .text.paging_state_setup:0000000000000000 $t
+     /tmp/ccRvmKeM.s:664    .text.paging_state_setup:0000000000000000 paging_state_setup
+     /tmp/ccRvmKeM.s:756    .text.paging_state_setup:0000000000000064 $d
+     /tmp/ccRvmKeM.s:764    .bss:0000000000000000 $d
+     /tmp/ccRvmKeM.s:768    .bss:0000000000000000 paging_state
+
+UNDEFINED SYMBOLS
+bbpkt_fhs_finalize_payload
+tx_task_schedule
+rx_task_schedule
+mem_pool_free
+cprintf
+btctl_set_state
+btctl
+btphy
+btphy_cancel_clkn_delay
+master_state_init
+btphy_set_mode
+bbpkt_fhs_prepare_payload
+tdma_schedule

@@ -1,0 +1,1922 @@
+ARM GAS  /tmp/cc9wX12x.s 			page 1
+
+
+   1              		.cpu cortex-m3
+   2              		.eabi_attribute 20, 1
+   3              		.eabi_attribute 21, 1
+   4              		.eabi_attribute 23, 3
+   5              		.eabi_attribute 24, 1
+   6              		.eabi_attribute 25, 1
+   7              		.eabi_attribute 26, 1
+   8              		.eabi_attribute 30, 2
+   9              		.eabi_attribute 34, 1
+  10              		.eabi_attribute 18, 4
+  11              		.file	"tx_task.c"
+  12              		.text
+  13              	.Ltext0:
+  14              		.cfi_sections	.debug_frame
+  15              		.section	.text.tx_finalize,"ax",%progbits
+  16              		.align	1
+  17              		.p2align 2,,3
+  18              		.arch armv7-m
+  19              		.syntax unified
+  20              		.thumb
+  21              		.thumb_func
+  22              		.fpu softvfp
+  24              	tx_finalize:
+  25              	.LVL0:
+  26              	.LFB29:
+  27              		.file 1 "src/btphy/tx_task.c"
+   1:src/btphy/tx_task.c **** /* TX task
+   2:src/btphy/tx_task.c ****  *
+   3:src/btphy/tx_task.c ****  * Copyright 2020 Etienne Helluy-Lafont, Univ. Lille, CNRS.
+   4:src/btphy/tx_task.c ****  *
+   5:src/btphy/tx_task.c ****  * This file is part of Project Ubertooth.
+   6:src/btphy/tx_task.c ****  *
+   7:src/btphy/tx_task.c ****  * This program is free software; you can redistribute it and/or modify
+   8:src/btphy/tx_task.c ****  * it under the terms of the GNU General Public License as published by
+   9:src/btphy/tx_task.c ****  * the Free Software Foundation; either version 2, or (at your option)
+  10:src/btphy/tx_task.c ****  * any later version.
+  11:src/btphy/tx_task.c ****  *
+  12:src/btphy/tx_task.c ****  * This program is distributed in the hope that it will be useful,
+  13:src/btphy/tx_task.c ****  * but WITHOUT ANY WARRANTY; without even the implied warranty of
+  14:src/btphy/tx_task.c ****  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  15:src/btphy/tx_task.c ****  * GNU General Public License for more details.
+  16:src/btphy/tx_task.c ****  *
+  17:src/btphy/tx_task.c ****  * You should have received a copy of the GNU General Public License
+  18:src/btphy/tx_task.c ****  * along with this program; see the file COPYING.  If not, write to
+  19:src/btphy/tx_task.c ****  * the Free Software Foundation, Inc., 51 Franklin Street,
+  20:src/btphy/tx_task.c ****  * Boston, MA 02110-1301, USA.
+  21:src/btphy/tx_task.c ****  */
+  22:src/btphy/tx_task.c **** #include <string.h>
+  23:src/btphy/tx_task.c **** #include <ubtbr/defines.h>
+  24:src/btphy/tx_task.c **** #include <ubtbr/cfg.h>
+  25:src/btphy/tx_task.c **** #include <ubtbr/codec.h>
+  26:src/btphy/tx_task.c **** #include <ubtbr/debug.h>
+  27:src/btphy/tx_task.c **** #include <ubtbr/bb_msg.h>
+  28:src/btphy/tx_task.c **** #include <ubtbr/ubertooth_dma.h>
+  29:src/btphy/tx_task.c **** #include <ubtbr/rf.h>
+  30:src/btphy/tx_task.c **** #include <ubtbr/hop.h>
+  31:src/btphy/tx_task.c **** #include <ubtbr/btphy.h>
+ARM GAS  /tmp/cc9wX12x.s 			page 2
+
+
+  32:src/btphy/tx_task.c **** #include <ubtbr/tdma_sched.h>
+  33:src/btphy/tx_task.c **** #include <ubtbr/tx_task.h>
+  34:src/btphy/tx_task.c **** 
+  35:src/btphy/tx_task.c **** static struct {
+  36:src/btphy/tx_task.c **** 	tx_task_cb_t cb;
+  37:src/btphy/tx_task.c **** 	void *cb_arg;
+  38:src/btphy/tx_task.c **** 	bbhdr_t *user_hdr;
+  39:src/btphy/tx_task.c **** 	bbcodec_t codec;
+  40:src/btphy/tx_task.c **** 	uint8_t *user_data;
+  41:src/btphy/tx_task.c **** 	unsigned data_size;
+  42:src/btphy/tx_task.c **** 	uint8_t air_data[BYTE_ALIGN(4+54+MAX_ACL_SIZE*12)]; // to contain trailer+header+payload
+  43:src/btphy/tx_task.c **** 	uint8_t *p;
+  44:src/btphy/tx_task.c **** } tx_task;
+  45:src/btphy/tx_task.c **** 
+  46:src/btphy/tx_task.c **** static int tx_finalize(uint8_t p1, uint8_t p2, uint16_t p3);
+  47:src/btphy/tx_task.c **** 
+  48:src/btphy/tx_task.c **** static void tx_fifo_cb(void *arg)
+  49:src/btphy/tx_task.c **** {
+  50:src/btphy/tx_task.c **** 	unsigned len;
+  51:src/btphy/tx_task.c **** 
+  52:src/btphy/tx_task.c **** 	if (tx_task.p == NULL)
+  53:src/btphy/tx_task.c **** 		DIE("No p in tx_fifo_cb (size %d)\n", tx_task.data_size);
+  54:src/btphy/tx_task.c **** 
+  55:src/btphy/tx_task.c **** 	len = MIN(tx_task.data_size, PHY_FIFO_THRESHOLD); // (128usec of tx)
+  56:src/btphy/tx_task.c **** 	btphy_rf_fifo_write(tx_task.p, len);
+  57:src/btphy/tx_task.c **** 
+  58:src/btphy/tx_task.c **** 	tx_task.p += len;
+  59:src/btphy/tx_task.c **** 	tx_task.data_size -= len;
+  60:src/btphy/tx_task.c **** 	if (tx_task.data_size == 0)
+  61:src/btphy/tx_task.c **** 	{
+  62:src/btphy/tx_task.c **** 		btphy_rf_disable_int();
+  63:src/btphy/tx_task.c **** 	}
+  64:src/btphy/tx_task.c **** 	else
+  65:src/btphy/tx_task.c **** 	{
+  66:src/btphy/tx_task.c **** 		// encode more if required
+  67:src/btphy/tx_task.c **** 		bbcodec_encode_chunk(&tx_task.codec, tx_task.air_data, tx_task.user_hdr, tx_task.user_data);
+  68:src/btphy/tx_task.c **** 	}
+  69:src/btphy/tx_task.c **** }
+  70:src/btphy/tx_task.c **** 
+  71:src/btphy/tx_task.c **** static int tx_prepare(uint8_t p1, uint8_t p2, uint16_t p3)
+  72:src/btphy/tx_task.c **** {
+  73:src/btphy/tx_task.c **** 	int i;
+  74:src/btphy/tx_task.c **** 	unsigned len;
+  75:src/btphy/tx_task.c **** 	uint8_t chan, nslots = 1;
+  76:src/btphy/tx_task.c **** 	uint32_t tx_clkn = btphy_cur_clkn()+1;
+  77:src/btphy/tx_task.c **** 
+  78:src/btphy/tx_task.c **** 	/* In inquiry/paging, hop.x must be incremented before each tx
+  79:src/btphy/tx_task.c **** 	 * of the master / RX of the slave */
+  80:src/btphy/tx_task.c **** 	if (btphy.mode == BT_MODE_INQUIRY || btphy.mode == BT_MODE_PAGING)
+  81:src/btphy/tx_task.c **** 		hop_increment();
+  82:src/btphy/tx_task.c **** 
+  83:src/btphy/tx_task.c **** 	/* Hop & prepare TX (SFSON) */
+  84:src/btphy/tx_task.c **** 	chan = hop_channel(tx_clkn);
+  85:src/btphy/tx_task.c **** 	btphy_rf_tune_chan(2402+chan, 1);
+  86:src/btphy/tx_task.c **** 	cc2400_strobe(SFSON);
+  87:src/btphy/tx_task.c **** 	btphy_rf_cfg_tx();
+  88:src/btphy/tx_task.c **** 
+ARM GAS  /tmp/cc9wX12x.s 			page 3
+
+
+  89:src/btphy/tx_task.c **** 	/* Push 32 hi bits of Access code */
+  90:src/btphy/tx_task.c **** 	btphy_rf_fifo_write(btphy.chan_sw_hi, 4);
+  91:src/btphy/tx_task.c **** 
+  92:src/btphy/tx_task.c **** 	/* Prepare data */
+  93:src/btphy/tx_task.c **** 	if (tx_task.user_hdr)
+  94:src/btphy/tx_task.c **** 	{
+  95:src/btphy/tx_task.c **** 		bbcodec_init(&tx_task.codec,
+  96:src/btphy/tx_task.c **** 			btphy_whiten_seed(tx_clkn),
+  97:src/btphy/tx_task.c **** 			btphy.chan_uap, 1, 0);
+  98:src/btphy/tx_task.c **** 
+  99:src/btphy/tx_task.c **** 		memset(tx_task.air_data, 0, sizeof(tx_task.air_data));
+ 100:src/btphy/tx_task.c **** 		/* encode the header in tx buffer & configure codec */
+ 101:src/btphy/tx_task.c **** 		bbcodec_encode_header(&tx_task.codec, tx_task.air_data, tx_task.user_hdr, btphy.chan_trailer, tx_
+ 102:src/btphy/tx_task.c **** 
+ 103:src/btphy/tx_task.c **** 		tx_task.p = tx_task.air_data;
+ 104:src/btphy/tx_task.c **** 		tx_task.data_size = tx_task.codec.air_bytes;
+ 105:src/btphy/tx_task.c **** 		nslots = tx_task.codec.t->nslots;
+ 106:src/btphy/tx_task.c **** 
+ 107:src/btphy/tx_task.c **** 		if (tx_task.user_data)
+ 108:src/btphy/tx_task.c **** 		{
+ 109:src/btphy/tx_task.c **** 			/* encode the data in tx buffer */
+ 110:src/btphy/tx_task.c **** 			bbcodec_encode_chunk(&tx_task.codec, tx_task.air_data, tx_task.user_hdr, tx_task.user_data);
+ 111:src/btphy/tx_task.c **** 		}
+ 112:src/btphy/tx_task.c **** 
+ 113:src/btphy/tx_task.c **** 		/* Push start (less that 32 bytes) of message in fifo */
+ 114:src/btphy/tx_task.c **** 		len = MIN(32-4, tx_task.data_size);
+ 115:src/btphy/tx_task.c **** 		btphy_rf_fifo_write(tx_task.p, len);
+ 116:src/btphy/tx_task.c **** 		tx_task.p += len;
+ 117:src/btphy/tx_task.c **** 		tx_task.data_size -= len;
+ 118:src/btphy/tx_task.c **** 	}
+ 119:src/btphy/tx_task.c **** 	/* Schedule end of transmission */
+ 120:src/btphy/tx_task.c **** 	tdma_schedule(2*nslots, tx_finalize, 0, 0, 0, -3);
+ 121:src/btphy/tx_task.c **** 
+ 122:src/btphy/tx_task.c **** 	return 0; 
+ 123:src/btphy/tx_task.c **** }
+ 124:src/btphy/tx_task.c **** 
+ 125:src/btphy/tx_task.c **** static int tx_execute(uint8_t p1, uint8_t p2, uint16_t p3)
+ 126:src/btphy/tx_task.c **** {
+ 127:src/btphy/tx_task.c **** 	if (!FS_TUNED())
+ 128:src/btphy/tx_task.c **** 	{
+ 129:src/btphy/tx_task.c **** 		/* TODO: Let it run for a few more usec ? */
+ 130:src/btphy/tx_task.c **** 		cprintf("TX: RF not FS_ON\n");
+ 131:src/btphy/tx_task.c **** 		// Just do nothing 
+ 132:src/btphy/tx_task.c **** 		tx_task_reset();
+ 133:src/btphy/tx_task.c **** 		// TODO: error callback
+ 134:src/btphy/tx_task.c **** 		btphy_rf_idle();
+ 135:src/btphy/tx_task.c **** 		return 0;
+ 136:src/btphy/tx_task.c **** 	}
+ 137:src/btphy/tx_task.c **** 	/* Start TX phy */
+ 138:src/btphy/tx_task.c **** 	btphy_rf_tx();
+ 139:src/btphy/tx_task.c **** 	if (tx_task.data_size)
+ 140:src/btphy/tx_task.c **** 		btphy_rf_enable_int(tx_fifo_cb, NULL, 1);
+ 141:src/btphy/tx_task.c **** 	if (btphy_cur_clkn() & 1)
+ 142:src/btphy/tx_task.c **** 		DIE("txe: wrong clkn %x", btphy_cur_clkn());
+ 143:src/btphy/tx_task.c **** 
+ 144:src/btphy/tx_task.c **** 	return 0;
+ 145:src/btphy/tx_task.c **** }
+ARM GAS  /tmp/cc9wX12x.s 			page 4
+
+
+ 146:src/btphy/tx_task.c **** 
+ 147:src/btphy/tx_task.c **** #define	TX_MAX_WAIT 1500
+ 148:src/btphy/tx_task.c **** static int tx_finalize(uint8_t p1, uint8_t p2, uint16_t p3)
+ 149:src/btphy/tx_task.c **** {
+  28              		.loc 1 149 1 view -0
+  29              		.cfi_startproc
+  30              		@ args = 0, pretend = 0, frame = 0
+  31              		@ frame_needed = 0, uses_anonymous_args = 0
+  32              		.loc 1 149 1 is_stmt 0 view .LVU1
+  33 0000 38B5     		push	{r3, r4, r5, lr}
+  34              		.cfi_def_cfa_offset 16
+  35              		.cfi_offset 3, -16
+  36              		.cfi_offset 4, -12
+  37              		.cfi_offset 5, -8
+  38              		.cfi_offset 14, -4
+ 150:src/btphy/tx_task.c **** 	/* Wait end of transmission .. */
+ 151:src/btphy/tx_task.c **** 	while (CLKN_OFFSET < TX_MAX_WAIT && (cc2400_get(FSMSTATE) & 0x1f) != STATE_STROBE_FS_ON);
+  39              		.loc 1 151 2 is_stmt 1 view .LVU2
+  40              		.loc 1 151 8 is_stmt 0 view .LVU3
+  41 0002 40F2DB55 		movw	r5, #1499
+  42              		.loc 1 151 9 view .LVU4
+  43 0006 114C     		ldr	r4, .L11
+  44              		.loc 1 151 8 view .LVU5
+  45 0008 06E0     		b	.L3
+  46              	.LVL1:
+  47              	.L10:
+  48              		.loc 1 151 39 discriminator 1 view .LVU6
+  49 000a 0E20     		movs	r0, #14
+  50 000c FFF7FEFF 		bl	cc2400_get
+  51              	.LVL2:
+  52              		.loc 1 151 35 discriminator 1 view .LVU7
+  53 0010 00F01F00 		and	r0, r0, #31
+  54 0014 0F28     		cmp	r0, #15
+  55 0016 02D0     		beq	.L2
+  56              	.L3:
+  57              		.loc 1 151 90 is_stmt 1 discriminator 2 view .LVU8
+  58              		.loc 1 151 8 discriminator 2 view .LVU9
+  59              		.loc 1 151 9 is_stmt 0 discriminator 2 view .LVU10
+  60 0018 2368     		ldr	r3, [r4]
+  61              		.loc 1 151 8 discriminator 2 view .LVU11
+  62 001a AB42     		cmp	r3, r5
+  63 001c F5D9     		bls	.L10
+  64              	.L2:
+ 152:src/btphy/tx_task.c **** 	
+ 153:src/btphy/tx_task.c **** 	/* Stop phy RX */ 
+ 154:src/btphy/tx_task.c **** 	btphy_rf_idle();
+  65              		.loc 1 154 2 is_stmt 1 view .LVU12
+  66              	.LBB36:
+  67              	.LBI36:
+  68              		.file 2 "include/ubtbr/rf.h"
+   1:include/ubtbr/rf.h **** #ifndef __BTPHY_RF_H
+   2:include/ubtbr/rf.h **** #define __BTPHY_RF_H
+   3:include/ubtbr/rf.h **** #include <stdint.h>
+   4:include/ubtbr/rf.h **** #include "ubertooth.h"
+   5:include/ubtbr/rf.h **** 
+   6:include/ubtbr/rf.h **** /* Num of bytes left in fifo when FIFO_EMPTY int trigger 64usec */
+   7:include/ubtbr/rf.h **** #define PHY_MIN_FIFO_BYTES 16
+ARM GAS  /tmp/cc9wX12x.s 			page 5
+
+
+   8:include/ubtbr/rf.h **** #define PHY_FIFO_THRESHOLD (32-PHY_MIN_FIFO_BYTES)
+   9:include/ubtbr/rf.h **** 
+  10:include/ubtbr/rf.h **** #define WAIT_CC2400_STATE(state) while((cc2400_get(FSMSTATE) & 0x1f) != (state));
+  11:include/ubtbr/rf.h **** #define FS_TUNED() (cc2400_status() & FS_LOCK)
+  12:include/ubtbr/rf.h **** #define WAIT_FS_TUNED() while(!FS_TUNED())
+  13:include/ubtbr/rf.h **** 
+  14:include/ubtbr/rf.h **** #define RF_EXPECTED_RX_CLKN_OFFSET 610	// (29usec of rf warmup + 32usec of sw)
+  15:include/ubtbr/rf.h **** 
+  16:include/ubtbr/rf.h **** typedef void (*btbr_int_cb_t)(void *arg);
+  17:include/ubtbr/rf.h **** 
+  18:include/ubtbr/rf.h **** #define MAX_AC_ERRORS_DEFAULT	1
+  19:include/ubtbr/rf.h **** typedef struct {
+  20:include/ubtbr/rf.h **** 	uint16_t freq_off_reg;
+  21:include/ubtbr/rf.h **** 	uint16_t max_ac_errors;
+  22:include/ubtbr/rf.h **** 	btbr_int_cb_t int_handler;
+  23:include/ubtbr/rf.h **** 	void *int_arg;
+  24:include/ubtbr/rf.h **** } rf_state_t;
+  25:include/ubtbr/rf.h **** 
+  26:include/ubtbr/rf.h **** extern volatile rf_state_t rf_state;
+  27:include/ubtbr/rf.h **** 
+  28:include/ubtbr/rf.h **** void btphy_rf_init(void);
+  29:include/ubtbr/rf.h **** void btphy_rf_off(void);
+  30:include/ubtbr/rf.h **** void btphy_rf_set_freq_off(uint8_t off);
+  31:include/ubtbr/rf.h **** void btphy_rf_set_max_ac_errors(uint8_t max_ac_errors);
+  32:include/ubtbr/rf.h **** void btphy_rf_cfg_sync(uint32_t sync);
+  33:include/ubtbr/rf.h **** void btphy_rf_tune_chan(uint16_t channel, int tx);
+  34:include/ubtbr/rf.h **** void btphy_rf_fifo_write(uint8_t *data, unsigned len);
+  35:include/ubtbr/rf.h **** 
+  36:include/ubtbr/rf.h **** void btphy_rf_enable_int(btbr_int_cb_t cb, void*cb_arg, int tx);
+  37:include/ubtbr/rf.h **** void btphy_rf_disable_int(void);
+  38:include/ubtbr/rf.h **** 
+  39:include/ubtbr/rf.h **** static inline void btphy_rf_idle(void)
+  69              		.loc 2 39 20 view .LVU13
+  70              	.LBB37:
+  40:include/ubtbr/rf.h **** {
+  41:include/ubtbr/rf.h **** 	cc2400_strobe(SRFOFF);
+  71              		.loc 2 41 2 view .LVU14
+  72 001e 6420     		movs	r0, #100
+  73 0020 FFF7FEFF 		bl	cc2400_strobe
+  74              	.LVL3:
+  42:include/ubtbr/rf.h **** 	TXLED_CLR;
+  75              		.loc 2 42 2 view .LVU15
+  76 0024 4FF48071 		mov	r1, #256
+  43:include/ubtbr/rf.h **** 	RXLED_CLR;
+  77              		.loc 2 43 2 is_stmt 0 view .LVU16
+  78 0028 1022     		movs	r2, #16
+  42:include/ubtbr/rf.h **** 	TXLED_CLR;
+  79              		.loc 2 42 2 view .LVU17
+  80 002a 094B     		ldr	r3, .L11+4
+  81 002c 1960     		str	r1, [r3]
+  82              		.loc 2 43 2 is_stmt 1 view .LVU18
+  83 002e 1A60     		str	r2, [r3]
+  84              	.LBE37:
+  85              	.LBE36:
+ 155:src/btphy/tx_task.c **** 
+ 156:src/btphy/tx_task.c **** 	tx_task_reset();
+  86              		.loc 1 156 2 view .LVU19
+ARM GAS  /tmp/cc9wX12x.s 			page 6
+
+
+  87              	.LBB38:
+  88              	.LBI38:
+ 157:src/btphy/tx_task.c **** 	if(tx_task.cb)
+ 158:src/btphy/tx_task.c **** 		tx_task.cb(tx_task.cb_arg);
+ 159:src/btphy/tx_task.c **** 
+ 160:src/btphy/tx_task.c **** 	return 0;
+ 161:src/btphy/tx_task.c **** }
+ 162:src/btphy/tx_task.c **** 
+ 163:src/btphy/tx_task.c **** const struct tdma_sched_item tx_sched_set[] = {
+ 164:src/btphy/tx_task.c **** 	SCHED_ITEM(tx_prepare,		 0, 0, 0), 	SCHED_END_FRAME(),	// 3
+ 165:src/btphy/tx_task.c **** 	SCHED_ITEM(tx_execute,   	-3, 0, 0), 	SCHED_END_FRAME(),	// 0
+ 166:src/btphy/tx_task.c **** 	SCHED_END_SET()
+ 167:src/btphy/tx_task.c **** };
+ 168:src/btphy/tx_task.c **** 
+ 169:src/btphy/tx_task.c **** void tx_task_reset(void)
+  89              		.loc 1 169 6 view .LVU20
+  90              	.LBB39:
+ 170:src/btphy/tx_task.c **** {
+ 171:src/btphy/tx_task.c **** 	btphy_rf_disable_int();
+  91              		.loc 1 171 2 view .LVU21
+  92 0030 FFF7FEFF 		bl	btphy_rf_disable_int
+  93              	.LVL4:
+ 172:src/btphy/tx_task.c **** 	tx_task.user_hdr = NULL;
+  94              		.loc 1 172 2 view .LVU22
+  95              		.loc 1 172 19 is_stmt 0 view .LVU23
+  96 0034 0022     		movs	r2, #0
+  97 0036 074B     		ldr	r3, .L11+8
+  98              	.LBE39:
+  99              	.LBE38:
+ 157:src/btphy/tx_task.c **** 	if(tx_task.cb)
+ 100              		.loc 1 157 12 view .LVU24
+ 101 0038 1968     		ldr	r1, [r3]
+ 102              	.LBB41:
+ 103              	.LBB40:
+ 104              		.loc 1 172 19 view .LVU25
+ 105 003a 9A60     		str	r2, [r3, #8]
+ 173:src/btphy/tx_task.c **** 	tx_task.user_data = NULL;
+ 106              		.loc 1 173 2 is_stmt 1 view .LVU26
+ 107              		.loc 1 173 20 is_stmt 0 view .LVU27
+ 108 003c 9A63     		str	r2, [r3, #56]
+ 174:src/btphy/tx_task.c **** 	tx_task.p = NULL;
+ 109              		.loc 1 174 2 is_stmt 1 view .LVU28
+ 110              		.loc 1 174 12 is_stmt 0 view .LVU29
+ 111 003e C3F84C22 		str	r2, [r3, #588]
+ 112              	.LBE40:
+ 113              	.LBE41:
+ 157:src/btphy/tx_task.c **** 		tx_task.cb(tx_task.cb_arg);
+ 114              		.loc 1 157 2 is_stmt 1 view .LVU30
+ 157:src/btphy/tx_task.c **** 		tx_task.cb(tx_task.cb_arg);
+ 115              		.loc 1 157 4 is_stmt 0 view .LVU31
+ 116 0042 09B1     		cbz	r1, .L4
+ 158:src/btphy/tx_task.c **** 
+ 117              		.loc 1 158 3 is_stmt 1 view .LVU32
+ 118 0044 5868     		ldr	r0, [r3, #4]
+ 119 0046 8847     		blx	r1
+ 120              	.LVL5:
+ 121              	.L4:
+ARM GAS  /tmp/cc9wX12x.s 			page 7
+
+
+ 160:src/btphy/tx_task.c **** }
+ 122              		.loc 1 160 2 view .LVU33
+ 161:src/btphy/tx_task.c **** 
+ 123              		.loc 1 161 1 is_stmt 0 view .LVU34
+ 124 0048 0020     		movs	r0, #0
+ 125 004a 38BD     		pop	{r3, r4, r5, pc}
+ 126              	.L12:
+ 127              		.align	2
+ 128              	.L11:
+ 129 004c 08400040 		.word	1073758216
+ 130 0050 3CC00920 		.word	537509948
+ 131 0054 00000000 		.word	.LANCHOR0
+ 132              		.cfi_endproc
+ 133              	.LFE29:
+ 135              		.section	.text.tx_prepare,"ax",%progbits
+ 136              		.align	1
+ 137              		.p2align 2,,3
+ 138              		.syntax unified
+ 139              		.thumb
+ 140              		.thumb_func
+ 141              		.fpu softvfp
+ 143              	tx_prepare:
+ 144              	.LVL6:
+ 145              	.LFB27:
+  72:src/btphy/tx_task.c **** 	int i;
+ 146              		.loc 1 72 1 is_stmt 1 view -0
+ 147              		.cfi_startproc
+ 148              		@ args = 0, pretend = 0, frame = 0
+ 149              		@ frame_needed = 0, uses_anonymous_args = 0
+  72:src/btphy/tx_task.c **** 	int i;
+ 150              		.loc 1 72 1 is_stmt 0 view .LVU36
+ 151 0000 F0B5     		push	{r4, r5, r6, r7, lr}
+ 152              		.cfi_def_cfa_offset 20
+ 153              		.cfi_offset 4, -20
+ 154              		.cfi_offset 5, -16
+ 155              		.cfi_offset 6, -12
+ 156              		.cfi_offset 7, -8
+ 157              		.cfi_offset 14, -4
+ 158 0002 83B0     		sub	sp, sp, #12
+ 159              		.cfi_def_cfa_offset 32
+  73:src/btphy/tx_task.c **** 	unsigned len;
+ 160              		.loc 1 73 2 is_stmt 1 view .LVU37
+  74:src/btphy/tx_task.c **** 	uint8_t chan, nslots = 1;
+ 161              		.loc 1 74 2 view .LVU38
+  75:src/btphy/tx_task.c **** 	uint32_t tx_clkn = btphy_cur_clkn()+1;
+ 162              		.loc 1 75 2 view .LVU39
+ 163              	.LVL7:
+  76:src/btphy/tx_task.c **** 
+ 164              		.loc 1 76 2 view .LVU40
+ 165              	.LBB52:
+ 166              	.LBI52:
+ 167              		.file 3 "include/ubtbr/btphy.h"
+   1:include/ubtbr/btphy.h **** #ifndef __BTPHY_H
+   2:include/ubtbr/btphy.h **** #define __BTPHY_H
+   3:include/ubtbr/btphy.h **** #include <stdint.h>
+   4:include/ubtbr/btphy.h **** #include <ubertooth_interface.h>
+   5:include/ubtbr/btphy.h **** #include <ubtbr/cfg.h>
+ARM GAS  /tmp/cc9wX12x.s 			page 8
+
+
+   6:include/ubtbr/btphy.h **** #include <ubtbr/queue.h>
+   7:include/ubtbr/btphy.h **** 
+   8:include/ubtbr/btphy.h **** #define CLKN_RATE 3200
+   9:include/ubtbr/btphy.h **** #define PERIPH_CLK_RATE	50000000			// 50Mhz
+  10:include/ubtbr/btphy.h **** #define PERIPH_CLK_NS (1000000000/PERIPH_CLK_RATE)	// 20ns
+  11:include/ubtbr/btphy.h **** #define CLK100NS_SECOND (1000000000/100)
+  12:include/ubtbr/btphy.h **** /* clkn_offset prescale value (from peripheral clock -> 100ns) */
+  13:include/ubtbr/btphy.h **** #define CLKN_OFFSET_PRESCALE_VAL 	(100/PERIPH_CLK_NS)
+  14:include/ubtbr/btphy.h **** /* clk_offset match register value */
+  15:include/ubtbr/btphy.h **** #define CLKN_OFFSET_RESET_VAL ((PERIPH_CLK_RATE/CLKN_OFFSET_PRESCALE_VAL)/CLKN_RATE)
+  16:include/ubtbr/btphy.h **** #define MASTER_CLKN	T1TC
+  17:include/ubtbr/btphy.h **** #define CLKN_OFFSET	T0TC
+  18:include/ubtbr/btphy.h **** 
+  19:include/ubtbr/btphy.h **** typedef enum btphy_mode_e {
+  20:include/ubtbr/btphy.h **** 	BT_MODE_INQUIRY,
+  21:include/ubtbr/btphy.h **** 	BT_MODE_PAGING,
+  22:include/ubtbr/btphy.h **** 	BT_MODE_INQUIRY_SCAN,
+  23:include/ubtbr/btphy.h **** 	BT_MODE_PAGE_SCAN,
+  24:include/ubtbr/btphy.h **** 	BT_MODE_MASTER,
+  25:include/ubtbr/btphy.h **** 	BT_MODE_SLAVE,
+  26:include/ubtbr/btphy.h **** } btphy_mode_t ; 
+  27:include/ubtbr/btphy.h **** 
+  28:include/ubtbr/btphy.h **** typedef struct btphy_s {
+  29:include/ubtbr/btphy.h **** 	btphy_mode_t mode;
+  30:include/ubtbr/btphy.h **** 	uint32_t master_clkn; 
+  31:include/ubtbr/btphy.h **** 	uint32_t slave_clkn; 
+  32:include/ubtbr/btphy.h **** 	int slave_clkn_delay;
+  33:include/ubtbr/btphy.h **** 	int clkn_delayed;
+  34:include/ubtbr/btphy.h **** 	uint32_t chan_lap;
+  35:include/ubtbr/btphy.h **** 	uint8_t chan_uap;
+  36:include/ubtbr/btphy.h **** 	uint64_t chan_sw;
+  37:include/ubtbr/btphy.h **** 	uint8_t chan_trailer;
+  38:include/ubtbr/btphy.h **** 	uint8_t chan_sw_lo[4];
+  39:include/ubtbr/btphy.h **** 	uint8_t chan_sw_hi[4];
+  40:include/ubtbr/btphy.h **** 	uint32_t my_lap;
+  41:include/ubtbr/btphy.h **** 	uint8_t  my_uap;
+  42:include/ubtbr/btphy.h **** 	uint16_t my_nap;
+  43:include/ubtbr/btphy.h **** 	uint64_t my_sw;
+  44:include/ubtbr/btphy.h **** } btphy_t;
+  45:include/ubtbr/btphy.h **** 
+  46:include/ubtbr/btphy.h **** typedef void (*btphy_timer_fn_t)(void *arg);
+  47:include/ubtbr/btphy.h **** 
+  48:include/ubtbr/btphy.h **** extern btphy_t btphy;
+  49:include/ubtbr/btphy.h **** 
+  50:include/ubtbr/btphy.h **** #define CUR_MASTER_SLOT_IDX()	(btphy.master_clkn&3)
+  51:include/ubtbr/btphy.h **** #define CUR_SLAVE_SLOT_IDX()	(btphy.slave_clkn&3)
+  52:include/ubtbr/btphy.h **** 
+  53:include/ubtbr/btphy.h **** static inline uint32_t btphy_cur_clkn(void)
+ 168              		.loc 3 53 24 view .LVU41
+ 169              	.LBB53:
+  54:include/ubtbr/btphy.h **** {
+  55:include/ubtbr/btphy.h **** 	switch(btphy.mode)
+ 170              		.loc 3 55 2 view .LVU42
+ 171              		.loc 3 55 14 is_stmt 0 view .LVU43
+ 172 0004 444E     		ldr	r6, .L23
+ 173 0006 3378     		ldrb	r3, [r6]	@ zero_extendqisi2
+ 174              		.loc 3 55 2 view .LVU44
+ARM GAS  /tmp/cc9wX12x.s 			page 9
+
+
+ 175 0008 032B     		cmp	r3, #3
+ 176 000a 7CD8     		bhi	.L14
+ 177 000c 012B     		cmp	r3, #1
+ 178 000e 7CD8     		bhi	.L15
+ 179              	.L16:
+  56:include/ubtbr/btphy.h **** 	{
+  57:include/ubtbr/btphy.h **** 	case BT_MODE_INQUIRY_SCAN:
+  58:include/ubtbr/btphy.h **** 	case BT_MODE_PAGE_SCAN:
+  59:include/ubtbr/btphy.h **** 	case BT_MODE_SLAVE:
+  60:include/ubtbr/btphy.h **** 		return btphy.slave_clkn;
+  61:include/ubtbr/btphy.h **** 	default:
+  62:include/ubtbr/btphy.h **** 		return btphy.master_clkn;
+ 180              		.loc 3 62 3 is_stmt 1 view .LVU45
+ 181              		.loc 3 62 15 is_stmt 0 view .LVU46
+ 182 0010 7568     		ldr	r5, [r6, #4]
+ 183              	.L17:
+ 184              	.LBE53:
+ 185              	.LBE52:
+  80:src/btphy/tx_task.c **** 		hop_increment();
+ 186              		.loc 1 80 5 view .LVU47
+ 187 0012 012B     		cmp	r3, #1
+  76:src/btphy/tx_task.c **** 
+ 188              		.loc 1 76 11 view .LVU48
+ 189 0014 05F10105 		add	r5, r5, #1
+ 190              	.LVL8:
+  80:src/btphy/tx_task.c **** 		hop_increment();
+ 191              		.loc 1 80 2 is_stmt 1 view .LVU49
+  80:src/btphy/tx_task.c **** 		hop_increment();
+ 192              		.loc 1 80 5 is_stmt 0 view .LVU50
+ 193 0018 03D8     		bhi	.L18
+  81:src/btphy/tx_task.c **** 
+ 194              		.loc 1 81 3 is_stmt 1 view .LVU51
+ 195              	.LBB55:
+ 196              	.LBI55:
+ 197              		.file 4 "include/ubtbr/hop.h"
+   1:include/ubtbr/hop.h **** #ifndef __HOP_H
+   2:include/ubtbr/hop.h **** #define __HOP_H
+   3:include/ubtbr/hop.h **** #include <stdint.h>
+   4:include/ubtbr/hop.h **** #include <ubertooth_interface.h>
+   5:include/ubtbr/hop.h **** 
+   6:include/ubtbr/hop.h **** typedef struct hop_state_s {
+   7:include/ubtbr/hop.h **** 	uint8_t a27_23, a22_19, C, E;
+   8:include/ubtbr/hop.h **** 	uint16_t a18_10;
+   9:include/ubtbr/hop.h **** 	uint8_t x;
+  10:include/ubtbr/hop.h **** 	/* frequency register bank */
+  11:include/ubtbr/hop.h **** 	uint8_t basic_bank[NUM_BREDR_CHANNELS];
+  12:include/ubtbr/hop.h **** 	uint8_t afh_bank[NUM_BREDR_CHANNELS];
+  13:include/ubtbr/hop.h **** 	uint8_t afh_chan_count;
+  14:include/ubtbr/hop.h **** 	uint8_t afh_enabled;
+  15:include/ubtbr/hop.h **** 	uint8_t *bank;
+  16:include/ubtbr/hop.h **** 	uint8_t chan_count;
+  17:include/ubtbr/hop.h **** } hop_state_t;
+  18:include/ubtbr/hop.h **** 
+  19:include/ubtbr/hop.h **** void hop_init(uint32_t address);
+  20:include/ubtbr/hop.h **** uint8_t hop_basic(uint32_t clk);
+  21:include/ubtbr/hop.h **** uint8_t hop_inquiry(uint32_t clk);
+  22:include/ubtbr/hop.h **** uint8_t hop_channel(uint32_t clk);
+ARM GAS  /tmp/cc9wX12x.s 			page 10
+
+
+  23:include/ubtbr/hop.h **** void hop_cfg_afh(uint8_t* buf);
+  24:include/ubtbr/hop.h **** 
+  25:include/ubtbr/hop.h **** /* FIXME ?*/
+  26:include/ubtbr/hop.h **** extern hop_state_t hop_state;
+  27:include/ubtbr/hop.h **** 
+  28:include/ubtbr/hop.h **** static inline uint8_t perm5(uint8_t z, uint8_t p_high, uint16_t p_low)
+  29:include/ubtbr/hop.h **** {
+  30:include/ubtbr/hop.h **** 	extern uint8_t perm5_lut[2][4096];
+  31:include/ubtbr/hop.h **** 	uint16_t p = (p_low&0x1ff)|((p_high&0x1f)<<9);
+  32:include/ubtbr/hop.h **** 
+  33:include/ubtbr/hop.h **** 	z &= 0x1f;
+  34:include/ubtbr/hop.h **** 	z = perm5_lut[0][(((p>>7))<<5)|z];
+  35:include/ubtbr/hop.h **** 	z = perm5_lut[1][((0x7f&(p>>0))<<5)|z];
+  36:include/ubtbr/hop.h **** 
+  37:include/ubtbr/hop.h **** 	return z;
+  38:include/ubtbr/hop.h **** }
+  39:include/ubtbr/hop.h **** 
+  40:include/ubtbr/hop.h **** /* This function increment the x variable of for paging/inquiry hopping.
+  41:include/ubtbr/hop.h ****  * It must be called before each master's transmission. */
+  42:include/ubtbr/hop.h **** static inline void hop_increment(void)
+ 198              		.loc 4 42 20 view .LVU52
+ 199              	.LBB56:
+  43:include/ubtbr/hop.h **** {
+  44:include/ubtbr/hop.h **** 	hop_state.x++;
+ 200              		.loc 4 44 2 view .LVU53
+ 201              		.loc 4 44 13 is_stmt 0 view .LVU54
+ 202 001a 404A     		ldr	r2, .L23+4
+ 203              	.LVL9:
+ 204              		.loc 4 44 13 view .LVU55
+ 205 001c 9379     		ldrb	r3, [r2, #6]	@ zero_extendqisi2
+ 206 001e 0133     		adds	r3, r3, #1
+ 207 0020 9371     		strb	r3, [r2, #6]
+ 208              	.L18:
+ 209              	.LBE56:
+ 210              	.LBE55:
+  84:src/btphy/tx_task.c **** 	btphy_rf_tune_chan(2402+chan, 1);
+ 211              		.loc 1 84 2 is_stmt 1 view .LVU56
+  84:src/btphy/tx_task.c **** 	btphy_rf_tune_chan(2402+chan, 1);
+ 212              		.loc 1 84 9 is_stmt 0 view .LVU57
+ 213 0022 2846     		mov	r0, r5
+ 214              	.LVL10:
+  84:src/btphy/tx_task.c **** 	btphy_rf_tune_chan(2402+chan, 1);
+ 215              		.loc 1 84 9 view .LVU58
+ 216 0024 FFF7FEFF 		bl	hop_channel
+ 217              	.LVL11:
+  85:src/btphy/tx_task.c **** 	cc2400_strobe(SFSON);
+ 218              		.loc 1 85 2 is_stmt 1 view .LVU59
+ 219 0028 00F66210 		addw	r0, r0, #2402
+ 220              	.LVL12:
+  85:src/btphy/tx_task.c **** 	cc2400_strobe(SFSON);
+ 221              		.loc 1 85 2 is_stmt 0 view .LVU60
+ 222 002c 0121     		movs	r1, #1
+ 223 002e 80B2     		uxth	r0, r0
+ 224 0030 FFF7FEFF 		bl	btphy_rf_tune_chan
+ 225              	.LVL13:
+  86:src/btphy/tx_task.c **** 	btphy_rf_cfg_tx();
+ 226              		.loc 1 86 2 is_stmt 1 view .LVU61
+ARM GAS  /tmp/cc9wX12x.s 			page 11
+
+
+ 227 0034 6120     		movs	r0, #97
+ 228 0036 FFF7FEFF 		bl	cc2400_strobe
+ 229              	.LVL14:
+  87:src/btphy/tx_task.c **** 
+ 230              		.loc 1 87 2 view .LVU62
+ 231              	.LBB57:
+ 232              	.LBI57:
+  44:include/ubtbr/rf.h **** }
+  45:include/ubtbr/rf.h **** 
+  46:include/ubtbr/rf.h **** static inline void btphy_rf_tx(void)
+  47:include/ubtbr/rf.h **** {
+  48:include/ubtbr/rf.h **** 	cc2400_strobe(STX);
+  49:include/ubtbr/rf.h **** 	TXLED_SET;
+  50:include/ubtbr/rf.h **** }
+  51:include/ubtbr/rf.h **** static inline void btphy_rf_rx(void)
+  52:include/ubtbr/rf.h **** {
+  53:include/ubtbr/rf.h **** 	cc2400_strobe(SRX);
+  54:include/ubtbr/rf.h **** 	RXLED_SET;
+  55:include/ubtbr/rf.h **** }
+  56:include/ubtbr/rf.h **** 
+  57:include/ubtbr/rf.h **** /* cc2400 configure for un-buffered rx */
+  58:include/ubtbr/rf.h **** static inline void btphy_rf_cfg_rx(void)
+  59:include/ubtbr/rf.h **** {
+  60:include/ubtbr/rf.h **** 	/* un-buffered mode, packet w/ sync word detection */
+  61:include/ubtbr/rf.h **** 	cc2400_set(GRMDM,   0x4E1|(rf_state.max_ac_errors<<13));
+  62:include/ubtbr/rf.h **** 	// 0 XX 00 1 001 11 0 00 0 1
+  63:include/ubtbr/rf.h **** 	//   |  |  | |   |  +--------> CRC off
+  64:include/ubtbr/rf.h **** 	//   |  |  | |   +-----------> sync word: 32 MSB bits of SYNC_WORD
+  65:include/ubtbr/rf.h **** 	//   |  |  | +---------------> 1 preamble bytes of (0)1010101
+  66:include/ubtbr/rf.h **** 	//   |  |  +-----------------> packet mode
+  67:include/ubtbr/rf.h **** 	//   |  +--------------------> un-buffered mode // use sync word to trigger 
+  68:include/ubtbr/rf.h **** 	//   +-----------------------> sync error bits allowed: N
+  69:include/ubtbr/rf.h **** 	cc2400_set(IOCFG, 0x170|(GIO_PKT<<9));
+  70:include/ubtbr/rf.h **** }
+  71:include/ubtbr/rf.h **** 
+  72:include/ubtbr/rf.h **** /* cc2400 configure for buffered tx */
+  73:include/ubtbr/rf.h **** static inline void btphy_rf_cfg_tx(void)
+ 233              		.loc 2 73 20 view .LVU63
+ 234              	.LBB58:
+  74:include/ubtbr/rf.h **** {
+  75:include/ubtbr/rf.h **** 	cc2400_set(GRMDM,   0x0CE1);
+ 235              		.loc 2 75 2 view .LVU64
+ 236 003a 40F6E141 		movw	r1, #3297
+ 237 003e 2020     		movs	r0, #32
+ 238 0040 FFF7FEFF 		bl	cc2400_set
+ 239              	.LVL15:
+  76:include/ubtbr/rf.h **** 	// 0 00 01 1 001 11 0 00 0 1
+  77:include/ubtbr/rf.h **** 	//      |  | |   |  +--------> CRC off
+  78:include/ubtbr/rf.h **** 	//      |  | |   +-----------> sync word: 32 MSB bits of SYNC_WORD
+  79:include/ubtbr/rf.h **** 	//      |  | +---------------> 1 preamble bytes of (0)1010101
+  80:include/ubtbr/rf.h **** 	//      |  +-----------------> packet mode / sync word detection
+  81:include/ubtbr/rf.h **** 	//      +--------------------> buffered mode
+  82:include/ubtbr/rf.h **** 	cc2400_set(IOCFG, 0x170|(GIO_FIFO_EMPTY<<9));
+ 240              		.loc 2 82 2 view .LVU65
+ 241              	.LBE58:
+ 242              	.LBE57:
+  93:src/btphy/tx_task.c **** 	{
+ARM GAS  /tmp/cc9wX12x.s 			page 12
+
+
+ 243              		.loc 1 93 13 is_stmt 0 view .LVU66
+ 244 0044 364C     		ldr	r4, .L23+8
+ 245              	.LBB60:
+ 246              	.LBB59:
+ 247              		.loc 2 82 2 view .LVU67
+ 248 0046 44F67051 		movw	r1, #19824
+ 249 004a 0820     		movs	r0, #8
+ 250 004c FFF7FEFF 		bl	cc2400_set
+ 251              	.LVL16:
+ 252              	.LBE59:
+ 253              	.LBE60:
+  90:src/btphy/tx_task.c **** 
+ 254              		.loc 1 90 2 is_stmt 1 view .LVU68
+ 255 0050 0421     		movs	r1, #4
+ 256 0052 3448     		ldr	r0, .L23+12
+ 257 0054 FFF7FEFF 		bl	btphy_rf_fifo_write
+ 258              	.LVL17:
+  93:src/btphy/tx_task.c **** 	{
+ 259              		.loc 1 93 2 view .LVU69
+  93:src/btphy/tx_task.c **** 	{
+ 260              		.loc 1 93 5 is_stmt 0 view .LVU70
+ 261 0058 A368     		ldr	r3, [r4, #8]
+ 262 005a 002B     		cmp	r3, #0
+ 263 005c 59D0     		beq	.L21
+  95:src/btphy/tx_task.c **** 			btphy_whiten_seed(tx_clkn),
+ 264              		.loc 1 95 3 is_stmt 1 view .LVU71
+  96:src/btphy/tx_task.c **** 			btphy.chan_uap, 1, 0);
+ 265              		.loc 1 96 4 is_stmt 0 view .LVU72
+ 266 005e 2846     		mov	r0, r5
+ 267 0060 FFF7FEFF 		bl	btphy_whiten_seed
+ 268              	.LVL18:
+ 269              	.LBB61:
+ 270              	.LBB62:
+ 271              		.file 5 "include/ubtbr/codec.h"
+   1:include/ubtbr/codec.h **** #ifndef __CODEC_H
+   2:include/ubtbr/codec.h **** #define __CODEC_H
+   3:include/ubtbr/codec.h **** #include <stdint.h>
+   4:include/ubtbr/codec.h **** #include <ubtbr/bb.h>
+   5:include/ubtbr/codec.h **** 
+   6:include/ubtbr/codec.h **** #define MAX_ACL_SIZE 344
+   7:include/ubtbr/codec.h **** 
+   8:include/ubtbr/codec.h **** /* FIXME: pkt_type interpretation depends on channel's type.
+   9:include/ubtbr/codec.h **** */
+  10:include/ubtbr/codec.h **** typedef struct bbcodec_types_s {
+  11:include/ubtbr/codec.h **** 	uint8_t nslots;		// Slot occupancy
+  12:include/ubtbr/codec.h **** 	uint8_t payload_header_bytes;	// Payload header bytes
+  13:include/ubtbr/codec.h **** 	uint16_t payload_bytes;	// Payload bytes len
+  14:include/ubtbr/codec.h **** 	uint8_t has_fec23;	// Payload is fec23 encoded
+  15:include/ubtbr/codec.h **** 	uint8_t has_crc;	// CRC is applied on payload
+  16:include/ubtbr/codec.h **** } bbcodec_types_t;
+  17:include/ubtbr/codec.h **** 
+  18:include/ubtbr/codec.h **** typedef struct bbcodec_s {
+  19:include/ubtbr/codec.h **** 	// common params 
+  20:include/ubtbr/codec.h **** 	uint8_t uap;	
+  21:include/ubtbr/codec.h **** 	int use_whiten;
+  22:include/ubtbr/codec.h **** 	int rx_raw;
+  23:include/ubtbr/codec.h **** 	uint8_t whiten_state;
+ARM GAS  /tmp/cc9wX12x.s 			page 13
+
+
+  24:include/ubtbr/codec.h **** 	uint16_t crc_state;
+  25:include/ubtbr/codec.h **** 	uint16_t crc_pos;
+  26:include/ubtbr/codec.h **** 	// codec type
+  27:include/ubtbr/codec.h **** 	const bbcodec_types_t *t;
+  28:include/ubtbr/codec.h **** 
+  29:include/ubtbr/codec.h **** 	/* packet size */
+  30:include/ubtbr/codec.h **** 	unsigned payload_length; // length of payload from spec or payload's header
+  31:include/ubtbr/codec.h **** 	unsigned air_bytes;	// total bytes required for rx/tx, incl. (58bits header)+encoded(payload)
+  32:include/ubtbr/codec.h **** 	unsigned coded_total;	// total payload bytes including payload_header, payload_daya, crc
+  33:include/ubtbr/codec.h **** 
+  34:include/ubtbr/codec.h **** 	// decoding state
+  35:include/ubtbr/codec.h **** 	unsigned air_off_b;	// air bit offset (dec: in, enc: out)
+  36:include/ubtbr/codec.h **** 	unsigned coded_pos;	// coded payload position
+  37:include/ubtbr/codec.h **** } bbcodec_t;
+  38:include/ubtbr/codec.h **** 
+  39:include/ubtbr/codec.h **** static inline void bbcodec_init(bbcodec_t *codec,
+  40:include/ubtbr/codec.h **** 		uint32_t whiten_init,
+  41:include/ubtbr/codec.h **** 		uint8_t uap,
+  42:include/ubtbr/codec.h **** 		int use_whiten,
+  43:include/ubtbr/codec.h **** 		int rx_raw)
+  44:include/ubtbr/codec.h **** {
+  45:include/ubtbr/codec.h **** 	codec->uap = uap;
+  46:include/ubtbr/codec.h **** 	codec->use_whiten = use_whiten;
+ 272              		.loc 5 46 20 view .LVU73
+ 273 0064 0125     		movs	r5, #1
+ 274              	.LVL19:
+  47:include/ubtbr/codec.h **** 	codec->rx_raw = rx_raw;
+ 275              		.loc 5 47 16 view .LVU74
+ 276 0066 0021     		movs	r1, #0
+ 277              	.LBE62:
+ 278              	.LBE61:
+  95:src/btphy/tx_task.c **** 			btphy_whiten_seed(tx_clkn),
+ 279              		.loc 1 95 3 view .LVU75
+ 280 0068 327E     		ldrb	r2, [r6, #24]	@ zero_extendqisi2
+ 281              	.LVL20:
+ 282              	.LBB70:
+ 283              	.LBI61:
+  39:include/ubtbr/codec.h **** 		uint32_t whiten_init,
+ 284              		.loc 5 39 20 is_stmt 1 view .LVU76
+ 285              	.LBB67:
+  45:include/ubtbr/codec.h **** 	codec->use_whiten = use_whiten;
+ 286              		.loc 5 45 2 view .LVU77
+ 287              	.LBB63:
+ 288              	.LBB64:
+ 289              		.file 6 "include/ubtbr/bb.h"
+   1:include/ubtbr/bb.h **** #ifndef __BB_H
+   2:include/ubtbr/bb.h **** #define __BB_H
+   3:include/ubtbr/bb.h **** #include <stdint.h>
+   4:include/ubtbr/bb.h **** #include <ubertooth_interface.h>
+   5:include/ubtbr/bb.h **** #include <ubtbr/cfg.h>
+   6:include/ubtbr/bb.h **** #include <ubtbr/debug.h>
+   7:include/ubtbr/bb.h **** 
+   8:include/ubtbr/bb.h **** /* BLUETOOTH CORE SPECIFICATION Version 5.1 | Vol 2, Part B | Table 6.2 */
+   9:include/ubtbr/bb.h **** enum bbhdr_type_e {
+  10:include/ubtbr/bb.h **** 	BB_TYPE_NULL	= 0,
+  11:include/ubtbr/bb.h **** 	BB_TYPE_POLL	= 1,
+  12:include/ubtbr/bb.h **** 	BB_TYPE_FHS	= 2,
+ARM GAS  /tmp/cc9wX12x.s 			page 14
+
+
+  13:include/ubtbr/bb.h **** 	BB_TYPE_DM1	= 3,
+  14:include/ubtbr/bb.h **** 	BB_TYPE_DH1	= 4,
+  15:include/ubtbr/bb.h **** 	BB_TYPE_HV1	= 5,
+  16:include/ubtbr/bb.h **** 	BB_TYPE_HV2	= 6,
+  17:include/ubtbr/bb.h **** 	BB_TYPE_HV3	= 7,
+  18:include/ubtbr/bb.h **** 	BB_TYPE_DV	= 8,
+  19:include/ubtbr/bb.h **** 	BB_TYPE_AUX1	= 9,
+  20:include/ubtbr/bb.h **** 	BB_TYPE_DM3	= 10,
+  21:include/ubtbr/bb.h **** 	BB_TYPE_DH3	= 11,
+  22:include/ubtbr/bb.h **** 	BB_TYPE_EV4	= 12,
+  23:include/ubtbr/bb.h **** 	BB_TYPE_EV5	= 13,
+  24:include/ubtbr/bb.h **** 	BB_TYPE_DM5	= 14,
+  25:include/ubtbr/bb.h **** 	BB_TYPE_DH5	= 15,
+  26:include/ubtbr/bb.h **** };
+  27:include/ubtbr/bb.h **** 
+  28:include/ubtbr/bb.h **** typedef struct fhs_info_s {
+  29:include/ubtbr/bb.h **** 	uint64_t bdaddr;
+  30:include/ubtbr/bb.h **** 	uint32_t clk27_2;
+  31:include/ubtbr/bb.h **** 	uint8_t lt_addr;
+  32:include/ubtbr/bb.h **** } fhs_info_t;
+  33:include/ubtbr/bb.h **** 
+  34:include/ubtbr/bb.h **** /* All sizes are excluding the 4bit preamble, which
+  35:include/ubtbr/bb.h ****  * is prepended to the packet by the cc2400 */
+  36:include/ubtbr/bb.h **** #define BB_ACCESS_CODE_SIZE 		68
+  37:include/ubtbr/bb.h **** #define BB_SHORT_ACCESS_CODE_SIZE 	64
+  38:include/ubtbr/bb.h **** #define BB_FEC13_SIZE(n)		((n)*3)
+  39:include/ubtbr/bb.h **** #define BB_FEC23_SIZE(n)		((n)*3/2)
+  40:include/ubtbr/bb.h **** #define BB_HEADER_SIZE			BB_FEC13_SIZE(18)
+  41:include/ubtbr/bb.h **** #define BB_FHS_PKT_SIZE 		(BB_ACCESS_CODE_SIZE+BB_HEADER_SIZE+BB_FEC23_SIZE(160))
+  42:include/ubtbr/bb.h **** #define BB_POLL_PKT_SIZE 		(BB_ACCESS_CODE_SIZE+BB_HEADER_SIZE)
+  43:include/ubtbr/bb.h **** 
+  44:include/ubtbr/bb.h **** #define GIAC 0x9e8b33
+  45:include/ubtbr/bb.h **** 
+  46:include/ubtbr/bb.h **** /* Declare those helpers here, to be able to inline some functions */
+  47:include/ubtbr/bb.h **** // Grab 6 bits from a buffer
+  48:include/ubtbr/bb.h **** #define EXTRACT6_0(p)   ((((((uint8_t*)(p))[0])>>0)&0x3F))
+  49:include/ubtbr/bb.h **** #define EXTRACT6_2(p)   ((((((uint8_t*)(p))[0])>>2)&0x3F))
+  50:include/ubtbr/bb.h **** #define EXTRACT6_4(p)   ((((((uint8_t*)(p))[0])>>4))|(((((uint8_t*)(p))[1])&0x3)<<4))
+  51:include/ubtbr/bb.h **** #define EXTRACT6_6(p)   ((((((uint8_t*)(p))[0])>>6))|(((((uint8_t*)(p))[1])&0xf)<<2))
+  52:include/ubtbr/bb.h **** 
+  53:include/ubtbr/bb.h **** // Grab 15 bits from a buffer
+  54:include/ubtbr/bb.h **** #define EXTRACT15_0(p) ( ((((uint8_t*)(p))[0]     )   ) | ((((uint8_t*)(p))[1]&0x7f)<<8) )
+  55:include/ubtbr/bb.h **** #define EXTRACT15_1(p) ( ((((uint8_t*)(p))[0]&0xfe)>>1) | ((((uint8_t*)(p))[1]     )<<7) )
+  56:include/ubtbr/bb.h **** #define EXTRACT15_2(p) ( ((((uint8_t*)(p))[0]&0xfc)>>2) | ((((uint8_t*)(p))[1]     )<<6) | ((((uint
+  57:include/ubtbr/bb.h **** #define EXTRACT15_3(p) ( ((((uint8_t*)(p))[0]&0xf8)>>3) | ((((uint8_t*)(p))[1]     )<<5) | ((((uint
+  58:include/ubtbr/bb.h **** #define EXTRACT15_4(p) ( ((((uint8_t*)(p))[0]&0xf0)>>4) | ((((uint8_t*)(p))[1]     )<<4) | ((((uint
+  59:include/ubtbr/bb.h **** #define EXTRACT15_5(p) ( ((((uint8_t*)(p))[0]&0xe0)>>5) | ((((uint8_t*)(p))[1]     )<<3) | ((((uint
+  60:include/ubtbr/bb.h **** #define EXTRACT15_6(p) ( ((((uint8_t*)(p))[0]&0xc0)>>6) | ((((uint8_t*)(p))[1]     )<<2) | ((((uint
+  61:include/ubtbr/bb.h **** #define EXTRACT15_7(p) ( ((((uint8_t*)(p))[0]&0x80)>>7) | ((((uint8_t*)(p))[1]     )<<1) | ((((uint
+  62:include/ubtbr/bb.h **** 
+  63:include/ubtbr/bb.h **** // Grab 10 bits from a buffer
+  64:include/ubtbr/bb.h **** #define EXTRACT10_0(p) ( ((((uint8_t*)(p))[0])   ) | ((((uint8_t*)(p))[1]&0x03)<<8) )
+  65:include/ubtbr/bb.h **** #define EXTRACT10_1(p) ( ((((uint8_t*)(p))[0])>>1) | ((((uint8_t*)(p))[1]&0x07)<<7) )
+  66:include/ubtbr/bb.h **** #define EXTRACT10_2(p) ( ((((uint8_t*)(p))[0])>>2) | ((((uint8_t*)(p))[1]&0x0f)<<6) )
+  67:include/ubtbr/bb.h **** #define EXTRACT10_3(p) ( ((((uint8_t*)(p))[0])>>3) | ((((uint8_t*)(p))[1]&0x1f)<<5) )
+  68:include/ubtbr/bb.h **** #define EXTRACT10_4(p) ( ((((uint8_t*)(p))[0])>>4) | ((((uint8_t*)(p))[1]&0x3f)<<4) )
+  69:include/ubtbr/bb.h **** #define EXTRACT10_5(p) ( ((((uint8_t*)(p))[0])>>5) | ((((uint8_t*)(p))[1]&0x7f)<<3) )
+ARM GAS  /tmp/cc9wX12x.s 			page 15
+
+
+  70:include/ubtbr/bb.h **** #define EXTRACT10_6(p) ( ((((uint8_t*)(p))[0])>>6) | ((((uint8_t*)(p))[1]     )<<2) )
+  71:include/ubtbr/bb.h **** #define EXTRACT10_7(p) ( ((((uint8_t*)(p))[0])>>7) | ((((uint8_t*)(p))[1]     )<<1) | ((((uint8_t*)
+  72:include/ubtbr/bb.h **** 
+  73:include/ubtbr/bb.h **** // Encode 10 bytes in buffer (warning: buffer must be zeroed)
+  74:include/ubtbr/bb.h **** #define ENCODE15_0(p,val)  (((uint8_t*)(p))[0] =((val)   ),((uint8_t*)(p))[1]=((val)>>8))
+  75:include/ubtbr/bb.h **** #define ENCODE15_1(p,val)  (((uint8_t*)(p))[0]|=((val)<<1),((uint8_t*)(p))[1]=((val)>>7))
+  76:include/ubtbr/bb.h **** #define ENCODE15_2(p,val)  (((uint8_t*)(p))[0]|=((val)<<2),((uint8_t*)(p))[1]=((val)>>6),((uint8_t*
+  77:include/ubtbr/bb.h **** #define ENCODE15_3(p,val)  (((uint8_t*)(p))[0]|=((val)<<3),((uint8_t*)(p))[1]=((val)>>5),((uint8_t*
+  78:include/ubtbr/bb.h **** #define ENCODE15_4(p,val)  (((uint8_t*)(p))[0]|=((val)<<4),((uint8_t*)(p))[1]=((val)>>4),((uint8_t*
+  79:include/ubtbr/bb.h **** #define ENCODE15_5(p,val)  (((uint8_t*)(p))[0]|=((val)<<5),((uint8_t*)(p))[1]=((val)>>3),((uint8_t*
+  80:include/ubtbr/bb.h **** #define ENCODE15_6(p,val)  (((uint8_t*)(p))[0]|=((val)<<6),((uint8_t*)(p))[1]=((val)>>2),((uint8_t*
+  81:include/ubtbr/bb.h **** #define ENCODE15_7(p,val)  (((uint8_t*)(p))[0]|=((val)<<7),((uint8_t*)(p))[1]=((val)>>1),((uint8_t*
+  82:include/ubtbr/bb.h **** 
+  83:include/ubtbr/bb.h **** // warning: buffer must be zeroed
+  84:include/ubtbr/bb.h **** #define ENCODE10_0(p,val)  (((uint8_t*)(p))[0] =((val)   ),((uint8_t*)(p))[1]=((val)>>8))
+  85:include/ubtbr/bb.h **** #define ENCODE10_1(p,val)  (((uint8_t*)(p))[0]|=((val)<<1),((uint8_t*)(p))[1]=((val)>>7))
+  86:include/ubtbr/bb.h **** #define ENCODE10_2(p,val)  (((uint8_t*)(p))[0]|=((val)<<2),((uint8_t*)(p))[1]=((val)>>6))
+  87:include/ubtbr/bb.h **** #define ENCODE10_3(p,val)  (((uint8_t*)(p))[0]|=((val)<<3),((uint8_t*)(p))[1]=((val)>>5))
+  88:include/ubtbr/bb.h **** #define ENCODE10_4(p,val)  (((uint8_t*)(p))[0]|=((val)<<4),((uint8_t*)(p))[1]=((val)>>4))
+  89:include/ubtbr/bb.h **** #define ENCODE10_5(p,val)  (((uint8_t*)(p))[0]|=((val)<<5),((uint8_t*)(p))[1]=((val)>>3))
+  90:include/ubtbr/bb.h **** #define ENCODE10_6(p,val)  (((uint8_t*)(p))[0]|=((val)<<6),((uint8_t*)(p))[1]=((val)>>2))
+  91:include/ubtbr/bb.h **** #define ENCODE10_7(p,val)  (((uint8_t*)(p))[0]|=((val)<<7),((uint8_t*)(p))[1]=((val)>>1),((uint8_t*
+  92:include/ubtbr/bb.h **** 
+  93:include/ubtbr/bb.h **** #define ENCODE24_0(p,val)  (((uint8_t*)(p))[0] =((val)   ),((uint8_t*)(p))[1]=(val)>>8,((uint8_t*)(
+  94:include/ubtbr/bb.h **** #define ENCODE24_2(p,val)  (((uint8_t*)(p))[0]|=((val)<<2),((uint8_t*)(p))[1]=(val)>>6,((uint8_t*)(
+  95:include/ubtbr/bb.h **** #define ENCODE24_4(p,val)  (((uint8_t*)(p))[0]|=((val)<<4),((uint8_t*)(p))[1]=(val)>>4,((uint8_t*)(
+  96:include/ubtbr/bb.h **** #define ENCODE24_6(p,val)  (((uint8_t*)(p))[0]|=((val)<<6),((uint8_t*)(p))[1]=(val)>>2,((uint8_t*)(
+  97:include/ubtbr/bb.h **** 
+  98:include/ubtbr/bb.h **** #define BYTE_ALIGN(nbits)	(((nbits)+7)>>3)
+  99:include/ubtbr/bb.h **** 
+ 100:include/ubtbr/bb.h **** static inline uint8_t reverse8(uint8_t data)
+ 101:include/ubtbr/bb.h **** {
+ 102:include/ubtbr/bb.h **** 	extern const uint8_t rev8_map[256];
+ 103:include/ubtbr/bb.h ****         return rev8_map[data];
+ 290              		.loc 6 103 24 is_stmt 0 view .LVU78
+ 291 006a 2F4B     		ldr	r3, .L23+16
+ 292              	.LBE64:
+ 293              	.LBE63:
+ 294              	.LBE67:
+ 295              	.LBE70:
+  99:src/btphy/tx_task.c **** 		/* encode the header in tx buffer & configure codec */
+ 296              		.loc 1 99 3 view .LVU79
+ 297 006c 04F14007 		add	r7, r4, #64
+ 298              	.LBB71:
+ 299              	.LBB68:
+  48:include/ubtbr/codec.h **** 	codec->crc_state = reverse8(uap)<<8;
+ 300              		.loc 5 48 21 view .LVU80
+ 301 0070 9B5C     		ldrb	r3, [r3, r2]	@ zero_extendqisi2
+  49:include/ubtbr/codec.h **** 	codec->crc_pos = 0;
+  50:include/ubtbr/codec.h **** 	codec->whiten_state = whiten_init;
+  51:include/ubtbr/codec.h **** 	codec->t = NULL;
+  52:include/ubtbr/codec.h **** 	codec->payload_length = 0;
+ 302              		.loc 5 52 24 view .LVU81
+ 303 0072 C4E90811 		strd	r1, r1, [r4, #32]
+  48:include/ubtbr/codec.h **** 	codec->crc_state = reverse8(uap)<<8;
+ 304              		.loc 5 48 34 view .LVU82
+ 305 0076 1B02     		lsls	r3, r3, #8
+ARM GAS  /tmp/cc9wX12x.s 			page 16
+
+
+  53:include/ubtbr/codec.h **** 	codec->air_off_b = 0;
+  54:include/ubtbr/codec.h **** 	codec->air_bytes = 0;
+  55:include/ubtbr/codec.h **** 	codec->coded_total = 0;
+ 306              		.loc 5 55 21 view .LVU83
+ 307 0078 C4E90A11 		strd	r1, r1, [r4, #40]
+  50:include/ubtbr/codec.h **** 	codec->t = NULL;
+ 308              		.loc 5 50 22 view .LVU84
+ 309 007c 2076     		strb	r0, [r4, #24]
+  45:include/ubtbr/codec.h **** 	codec->use_whiten = use_whiten;
+ 310              		.loc 5 45 13 view .LVU85
+ 311 007e 2273     		strb	r2, [r4, #12]
+  46:include/ubtbr/codec.h **** 	codec->rx_raw = rx_raw;
+ 312              		.loc 5 46 2 is_stmt 1 view .LVU86
+  48:include/ubtbr/codec.h **** 	codec->crc_pos = 0;
+ 313              		.loc 5 48 19 is_stmt 0 view .LVU87
+ 314 0080 6383     		strh	r3, [r4, #26]	@ movhi
+ 315              	.LBE68:
+ 316              	.LBE71:
+  99:src/btphy/tx_task.c **** 		/* encode the header in tx buffer & configure codec */
+ 317              		.loc 1 99 3 view .LVU88
+ 318 0082 4FF40372 		mov	r2, #524
+ 319              	.LVL21:
+ 320              	.LBB72:
+ 321              	.LBB69:
+  47:include/ubtbr/codec.h **** 	codec->crc_state = reverse8(uap)<<8;
+ 322              		.loc 5 47 16 view .LVU89
+ 323 0086 6161     		str	r1, [r4, #20]
+  49:include/ubtbr/codec.h **** 	codec->whiten_state = whiten_init;
+ 324              		.loc 5 49 17 view .LVU90
+ 325 0088 A183     		strh	r1, [r4, #28]	@ movhi
+  53:include/ubtbr/codec.h **** 	codec->air_bytes = 0;
+ 326              		.loc 5 53 19 view .LVU91
+ 327 008a 2163     		str	r1, [r4, #48]
+  56:include/ubtbr/codec.h **** 	codec->coded_pos = 0;
+ 328              		.loc 5 56 19 view .LVU92
+ 329 008c 6163     		str	r1, [r4, #52]
+  46:include/ubtbr/codec.h **** 	codec->rx_raw = rx_raw;
+ 330              		.loc 5 46 20 view .LVU93
+ 331 008e 2561     		str	r5, [r4, #16]
+  47:include/ubtbr/codec.h **** 	codec->crc_state = reverse8(uap)<<8;
+ 332              		.loc 5 47 2 is_stmt 1 view .LVU94
+  48:include/ubtbr/codec.h **** 	codec->crc_pos = 0;
+ 333              		.loc 5 48 2 view .LVU95
+ 334              	.LVL22:
+ 335              	.LBB66:
+ 336              	.LBI63:
+ 100:include/ubtbr/bb.h **** {
+ 337              		.loc 6 100 23 view .LVU96
+ 338              	.LBB65:
+ 102:include/ubtbr/bb.h ****         return rev8_map[data];
+ 339              		.loc 6 102 2 view .LVU97
+ 340              		.loc 6 103 9 view .LVU98
+ 341              		.loc 6 103 9 is_stmt 0 view .LVU99
+ 342              	.LBE65:
+ 343              	.LBE66:
+  49:include/ubtbr/codec.h **** 	codec->whiten_state = whiten_init;
+ 344              		.loc 5 49 2 is_stmt 1 view .LVU100
+ARM GAS  /tmp/cc9wX12x.s 			page 17
+
+
+  50:include/ubtbr/codec.h **** 	codec->t = NULL;
+ 345              		.loc 5 50 2 view .LVU101
+  51:include/ubtbr/codec.h **** 	codec->payload_length = 0;
+ 346              		.loc 5 51 2 view .LVU102
+  52:include/ubtbr/codec.h **** 	codec->air_off_b = 0;
+ 347              		.loc 5 52 2 view .LVU103
+  53:include/ubtbr/codec.h **** 	codec->air_bytes = 0;
+ 348              		.loc 5 53 2 view .LVU104
+  54:include/ubtbr/codec.h **** 	codec->coded_total = 0;
+ 349              		.loc 5 54 2 view .LVU105
+  55:include/ubtbr/codec.h **** 	codec->coded_pos = 0;
+ 350              		.loc 5 55 2 view .LVU106
+ 351              		.loc 5 56 2 view .LVU107
+ 352              		.loc 5 56 2 is_stmt 0 view .LVU108
+ 353              	.LBE69:
+ 354              	.LBE72:
+  99:src/btphy/tx_task.c **** 		/* encode the header in tx buffer & configure codec */
+ 355              		.loc 1 99 3 is_stmt 1 view .LVU109
+ 356 0090 3846     		mov	r0, r7
+ 357 0092 FFF7FEFF 		bl	memset
+ 358              	.LVL23:
+ 101:src/btphy/tx_task.c **** 
+ 359              		.loc 1 101 3 view .LVU110
+ 360 0096 A26B     		ldr	r2, [r4, #56]
+ 361 0098 96F82830 		ldrb	r3, [r6, #40]	@ zero_extendqisi2
+ 362 009c 0092     		str	r2, [sp]
+ 363 009e A268     		ldr	r2, [r4, #8]
+ 364 00a0 3946     		mov	r1, r7
+ 365 00a2 04F10C00 		add	r0, r4, #12
+ 366 00a6 FFF7FEFF 		bl	bbcodec_encode_header
+ 367              	.LVL24:
+ 103:src/btphy/tx_task.c **** 		tx_task.data_size = tx_task.codec.air_bytes;
+ 368              		.loc 1 103 3 view .LVU111
+ 104:src/btphy/tx_task.c **** 		nslots = tx_task.codec.t->nslots;
+ 369              		.loc 1 104 36 is_stmt 0 view .LVU112
+ 370 00aa A66A     		ldr	r6, [r4, #40]
+ 105:src/btphy/tx_task.c **** 
+ 371              		.loc 1 105 10 view .LVU113
+ 372 00ac 226A     		ldr	r2, [r4, #32]
+ 107:src/btphy/tx_task.c **** 		{
+ 373              		.loc 1 107 14 view .LVU114
+ 374 00ae A36B     		ldr	r3, [r4, #56]
+ 103:src/btphy/tx_task.c **** 		tx_task.data_size = tx_task.codec.air_bytes;
+ 375              		.loc 1 103 13 view .LVU115
+ 376 00b0 C4F84C72 		str	r7, [r4, #588]
+ 104:src/btphy/tx_task.c **** 		nslots = tx_task.codec.t->nslots;
+ 377              		.loc 1 104 3 is_stmt 1 view .LVU116
+ 104:src/btphy/tx_task.c **** 		nslots = tx_task.codec.t->nslots;
+ 378              		.loc 1 104 21 is_stmt 0 view .LVU117
+ 379 00b4 E663     		str	r6, [r4, #60]
+ 105:src/btphy/tx_task.c **** 
+ 380              		.loc 1 105 3 is_stmt 1 view .LVU118
+ 105:src/btphy/tx_task.c **** 
+ 381              		.loc 1 105 10 is_stmt 0 view .LVU119
+ 382 00b6 1578     		ldrb	r5, [r2]	@ zero_extendqisi2
+ 383              	.LVL25:
+ 107:src/btphy/tx_task.c **** 		{
+ARM GAS  /tmp/cc9wX12x.s 			page 18
+
+
+ 384              		.loc 1 107 3 is_stmt 1 view .LVU120
+ 107:src/btphy/tx_task.c **** 		{
+ 385              		.loc 1 107 6 is_stmt 0 view .LVU121
+ 386 00b8 4BB3     		cbz	r3, .L22
+ 110:src/btphy/tx_task.c **** 		}
+ 387              		.loc 1 110 4 is_stmt 1 view .LVU122
+ 388 00ba 04F10C00 		add	r0, r4, #12
+ 389 00be 3946     		mov	r1, r7
+ 390 00c0 A268     		ldr	r2, [r4, #8]
+ 391 00c2 FFF7FEFF 		bl	bbcodec_encode_chunk
+ 392              	.LVL26:
+ 393 00c6 E66B     		ldr	r6, [r4, #60]
+ 394 00c8 D4F84C02 		ldr	r0, [r4, #588]
+ 395              	.L20:
+ 114:src/btphy/tx_task.c **** 		btphy_rf_fifo_write(tx_task.p, len);
+ 396              		.loc 1 114 3 view .LVU123
+ 114:src/btphy/tx_task.c **** 		btphy_rf_fifo_write(tx_task.p, len);
+ 397              		.loc 1 114 7 is_stmt 0 view .LVU124
+ 398 00cc 1C2E     		cmp	r6, #28
+ 399 00ce 28BF     		it	cs
+ 400 00d0 1C26     		movcs	r6, #28
+ 401              	.LVL27:
+ 115:src/btphy/tx_task.c **** 		tx_task.p += len;
+ 402              		.loc 1 115 3 is_stmt 1 view .LVU125
+ 403 00d2 3146     		mov	r1, r6
+ 404 00d4 FFF7FEFF 		bl	btphy_rf_fifo_write
+ 405              	.LVL28:
+ 116:src/btphy/tx_task.c **** 		tx_task.data_size -= len;
+ 406              		.loc 1 116 3 view .LVU126
+ 116:src/btphy/tx_task.c **** 		tx_task.data_size -= len;
+ 407              		.loc 1 116 13 is_stmt 0 view .LVU127
+ 408 00d8 D4F84C32 		ldr	r3, [r4, #588]
+ 117:src/btphy/tx_task.c **** 	}
+ 409              		.loc 1 117 21 view .LVU128
+ 410 00dc E16B     		ldr	r1, [r4, #60]
+ 411 00de 6800     		lsls	r0, r5, #1
+ 116:src/btphy/tx_task.c **** 		tx_task.data_size -= len;
+ 412              		.loc 1 116 13 view .LVU129
+ 413 00e0 3344     		add	r3, r3, r6
+ 117:src/btphy/tx_task.c **** 	}
+ 414              		.loc 1 117 21 view .LVU130
+ 415 00e2 891B     		subs	r1, r1, r6
+ 416 00e4 C0B2     		uxtb	r0, r0
+ 116:src/btphy/tx_task.c **** 		tx_task.data_size -= len;
+ 417              		.loc 1 116 13 view .LVU131
+ 418 00e6 C4F84C32 		str	r3, [r4, #588]
+ 117:src/btphy/tx_task.c **** 	}
+ 419              		.loc 1 117 3 is_stmt 1 view .LVU132
+ 117:src/btphy/tx_task.c **** 	}
+ 420              		.loc 1 117 21 is_stmt 0 view .LVU133
+ 421 00ea E163     		str	r1, [r4, #60]
+ 422              	.LVL29:
+ 423              	.L19:
+ 120:src/btphy/tx_task.c **** 
+ 424              		.loc 1 120 2 is_stmt 1 view .LVU134
+ 425 00ec 0024     		movs	r4, #0
+ 426 00ee 6FF00203 		mvn	r3, #2
+ARM GAS  /tmp/cc9wX12x.s 			page 19
+
+
+ 427 00f2 2246     		mov	r2, r4
+ 428 00f4 CDE90043 		strd	r4, r3, [sp]
+ 429 00f8 0C49     		ldr	r1, .L23+20
+ 430 00fa 2346     		mov	r3, r4
+ 431 00fc FFF7FEFF 		bl	tdma_schedule
+ 432              	.LVL30:
+ 122:src/btphy/tx_task.c **** }
+ 433              		.loc 1 122 2 view .LVU135
+ 123:src/btphy/tx_task.c **** 
+ 434              		.loc 1 123 1 is_stmt 0 view .LVU136
+ 435 0100 2046     		mov	r0, r4
+ 436 0102 03B0     		add	sp, sp, #12
+ 437              		.cfi_remember_state
+ 438              		.cfi_def_cfa_offset 20
+ 439              		@ sp needed
+ 440 0104 F0BD     		pop	{r4, r5, r6, r7, pc}
+ 441              	.LVL31:
+ 442              	.L14:
+ 443              		.cfi_restore_state
+ 444              	.LBB73:
+ 445              	.LBB54:
+  55:include/ubtbr/btphy.h **** 	{
+ 446              		.loc 3 55 2 view .LVU137
+ 447 0106 052B     		cmp	r3, #5
+ 448 0108 82D1     		bne	.L16
+ 449              	.L15:
+  60:include/ubtbr/btphy.h **** 	default:
+ 450              		.loc 3 60 3 is_stmt 1 view .LVU138
+  60:include/ubtbr/btphy.h **** 	default:
+ 451              		.loc 3 60 15 is_stmt 0 view .LVU139
+ 452 010a B568     		ldr	r5, [r6, #8]
+ 453 010c 81E7     		b	.L17
+ 454              	.LVL32:
+ 455              	.L22:
+  60:include/ubtbr/btphy.h **** 	default:
+ 456              		.loc 3 60 15 view .LVU140
+ 457              	.LBE54:
+ 458              	.LBE73:
+ 459 010e 3846     		mov	r0, r7
+ 460 0110 DCE7     		b	.L20
+ 461              	.LVL33:
+ 462              	.L21:
+  60:include/ubtbr/btphy.h **** 	default:
+ 463              		.loc 3 60 15 view .LVU141
+ 464 0112 0220     		movs	r0, #2
+ 465 0114 EAE7     		b	.L19
+ 466              	.L24:
+ 467 0116 00BF     		.align	2
+ 468              	.L23:
+ 469 0118 00000000 		.word	btphy
+ 470 011c 00000000 		.word	hop_state
+ 471 0120 00000000 		.word	.LANCHOR0
+ 472 0124 2D000000 		.word	btphy+45
+ 473 0128 00000000 		.word	rev8_map
+ 474 012c 00000000 		.word	tx_finalize
+ 475              		.cfi_endproc
+ 476              	.LFE27:
+ARM GAS  /tmp/cc9wX12x.s 			page 20
+
+
+ 478              		.section	.rodata.str1.4,"aMS",%progbits,1
+ 479              		.align	2
+ 480              	.LC0:
+ 481 0000 4449457C 		.ascii	"DIE|No p in tx_fifo_cb (size %d)\012\012\000"
+ 481      4E6F2070 
+ 481      20696E20 
+ 481      74785F66 
+ 481      69666F5F 
+ 482              		.section	.text.tx_fifo_cb,"ax",%progbits
+ 483              		.align	1
+ 484              		.p2align 2,,3
+ 485              		.syntax unified
+ 486              		.thumb
+ 487              		.thumb_func
+ 488              		.fpu softvfp
+ 490              	tx_fifo_cb:
+ 491              	.LVL34:
+ 492              	.LFB26:
+  49:src/btphy/tx_task.c **** 	unsigned len;
+ 493              		.loc 1 49 1 is_stmt 1 view -0
+ 494              		.cfi_startproc
+ 495              		@ args = 0, pretend = 0, frame = 0
+ 496              		@ frame_needed = 0, uses_anonymous_args = 0
+  49:src/btphy/tx_task.c **** 	unsigned len;
+ 497              		.loc 1 49 1 is_stmt 0 view .LVU143
+ 498 0000 70B5     		push	{r4, r5, r6, lr}
+ 499              		.cfi_def_cfa_offset 16
+ 500              		.cfi_offset 4, -16
+ 501              		.cfi_offset 5, -12
+ 502              		.cfi_offset 6, -8
+ 503              		.cfi_offset 14, -4
+  50:src/btphy/tx_task.c **** 
+ 504              		.loc 1 50 2 is_stmt 1 view .LVU144
+  52:src/btphy/tx_task.c **** 		DIE("No p in tx_fifo_cb (size %d)\n", tx_task.data_size);
+ 505              		.loc 1 52 2 view .LVU145
+  52:src/btphy/tx_task.c **** 		DIE("No p in tx_fifo_cb (size %d)\n", tx_task.data_size);
+ 506              		.loc 1 52 13 is_stmt 0 view .LVU146
+ 507 0002 134C     		ldr	r4, .L29
+ 508 0004 D4F84C02 		ldr	r0, [r4, #588]
+ 509              	.LVL35:
+  52:src/btphy/tx_task.c **** 		DIE("No p in tx_fifo_cb (size %d)\n", tx_task.data_size);
+ 510              		.loc 1 52 5 view .LVU147
+ 511 0008 E8B1     		cbz	r0, .L28
+  55:src/btphy/tx_task.c **** 	btphy_rf_fifo_write(tx_task.p, len);
+ 512              		.loc 1 55 2 is_stmt 1 view .LVU148
+  55:src/btphy/tx_task.c **** 	btphy_rf_fifo_write(tx_task.p, len);
+ 513              		.loc 1 55 6 is_stmt 0 view .LVU149
+ 514 000a E56B     		ldr	r5, [r4, #60]
+ 515 000c 102D     		cmp	r5, #16
+ 516 000e 28BF     		it	cs
+ 517 0010 1025     		movcs	r5, #16
+ 518              	.LVL36:
+  56:src/btphy/tx_task.c **** 
+ 519              		.loc 1 56 2 is_stmt 1 view .LVU150
+ 520 0012 2946     		mov	r1, r5
+ 521 0014 FFF7FEFF 		bl	btphy_rf_fifo_write
+ 522              	.LVL37:
+ARM GAS  /tmp/cc9wX12x.s 			page 21
+
+
+  58:src/btphy/tx_task.c **** 	tx_task.data_size -= len;
+ 523              		.loc 1 58 2 view .LVU151
+  58:src/btphy/tx_task.c **** 	tx_task.data_size -= len;
+ 524              		.loc 1 58 12 is_stmt 0 view .LVU152
+ 525 0018 D4F84C32 		ldr	r3, [r4, #588]
+  59:src/btphy/tx_task.c **** 	if (tx_task.data_size == 0)
+ 526              		.loc 1 59 20 view .LVU153
+ 527 001c E16B     		ldr	r1, [r4, #60]
+  58:src/btphy/tx_task.c **** 	tx_task.data_size -= len;
+ 528              		.loc 1 58 12 view .LVU154
+ 529 001e 2B44     		add	r3, r3, r5
+  59:src/btphy/tx_task.c **** 	if (tx_task.data_size == 0)
+ 530              		.loc 1 59 20 view .LVU155
+ 531 0020 4D1B     		subs	r5, r1, r5
+ 532              	.LVL38:
+  58:src/btphy/tx_task.c **** 	tx_task.data_size -= len;
+ 533              		.loc 1 58 12 view .LVU156
+ 534 0022 C4F84C32 		str	r3, [r4, #588]
+  59:src/btphy/tx_task.c **** 	if (tx_task.data_size == 0)
+ 535              		.loc 1 59 2 is_stmt 1 view .LVU157
+  59:src/btphy/tx_task.c **** 	if (tx_task.data_size == 0)
+ 536              		.loc 1 59 20 is_stmt 0 view .LVU158
+ 537 0026 E563     		str	r5, [r4, #60]
+  60:src/btphy/tx_task.c **** 	{
+ 538              		.loc 1 60 2 is_stmt 1 view .LVU159
+  60:src/btphy/tx_task.c **** 	{
+ 539              		.loc 1 60 5 is_stmt 0 view .LVU160
+ 540 0028 1DB9     		cbnz	r5, .L27
+  62:src/btphy/tx_task.c **** 	}
+ 541              		.loc 1 62 3 is_stmt 1 view .LVU161
+  69:src/btphy/tx_task.c **** 
+ 542              		.loc 1 69 1 is_stmt 0 view .LVU162
+ 543 002a BDE87040 		pop	{r4, r5, r6, lr}
+ 544              		.cfi_remember_state
+ 545              		.cfi_restore 14
+ 546              		.cfi_restore 6
+ 547              		.cfi_restore 5
+ 548              		.cfi_restore 4
+ 549              		.cfi_def_cfa_offset 0
+  62:src/btphy/tx_task.c **** 	}
+ 550              		.loc 1 62 3 view .LVU163
+ 551 002e FFF7FEBF 		b	btphy_rf_disable_int
+ 552              	.LVL39:
+ 553              	.L27:
+ 554              		.cfi_restore_state
+  67:src/btphy/tx_task.c **** 	}
+ 555              		.loc 1 67 3 is_stmt 1 view .LVU164
+ 556 0032 A36B     		ldr	r3, [r4, #56]
+ 557 0034 A268     		ldr	r2, [r4, #8]
+ 558 0036 04F14001 		add	r1, r4, #64
+ 559 003a 04F10C00 		add	r0, r4, #12
+  69:src/btphy/tx_task.c **** 
+ 560              		.loc 1 69 1 is_stmt 0 view .LVU165
+ 561 003e BDE87040 		pop	{r4, r5, r6, lr}
+ 562              		.cfi_remember_state
+ 563              		.cfi_restore 14
+ 564              		.cfi_restore 6
+ARM GAS  /tmp/cc9wX12x.s 			page 22
+
+
+ 565              		.cfi_restore 5
+ 566              		.cfi_restore 4
+ 567              		.cfi_def_cfa_offset 0
+  67:src/btphy/tx_task.c **** 	}
+ 568              		.loc 1 67 3 view .LVU166
+ 569 0042 FFF7FEBF 		b	bbcodec_encode_chunk
+ 570              	.LVL40:
+ 571              	.L28:
+ 572              		.cfi_restore_state
+ 573              	.LBB76:
+ 574              	.LBI76:
+  48:src/btphy/tx_task.c **** {
+ 575              		.loc 1 48 13 is_stmt 1 view .LVU167
+ 576              	.LBB77:
+  53:src/btphy/tx_task.c **** 
+ 577              		.loc 1 53 3 view .LVU168
+ 578 0046 E16B     		ldr	r1, [r4, #60]
+ 579 0048 0248     		ldr	r0, .L29+4
+ 580 004a FFF7FEFF 		bl	die
+ 581              	.LVL41:
+ 582              	.L30:
+ 583 004e 00BF     		.align	2
+ 584              	.L29:
+ 585 0050 00000000 		.word	.LANCHOR0
+ 586 0054 00000000 		.word	.LC0
+ 587              	.LBE77:
+ 588              	.LBE76:
+ 589              		.cfi_endproc
+ 590              	.LFE26:
+ 592              		.section	.rodata.str1.4
+ 593 0023 00       		.align	2
+ 594              	.LC1:
+ 595 0024 54583A20 		.ascii	"TX: RF not FS_ON\012\000"
+ 595      5246206E 
+ 595      6F742046 
+ 595      535F4F4E 
+ 595      0A00
+ 596 0036 0000     		.align	2
+ 597              	.LC2:
+ 598 0038 4449457C 		.ascii	"DIE|txe: wrong clkn %x\012\000"
+ 598      7478653A 
+ 598      2077726F 
+ 598      6E672063 
+ 598      6C6B6E20 
+ 599              		.section	.text.tx_execute,"ax",%progbits
+ 600              		.align	1
+ 601              		.p2align 2,,3
+ 602              		.syntax unified
+ 603              		.thumb
+ 604              		.thumb_func
+ 605              		.fpu softvfp
+ 607              	tx_execute:
+ 608              	.LVL42:
+ 609              	.LFB28:
+ 126:src/btphy/tx_task.c **** 	if (!FS_TUNED())
+ 610              		.loc 1 126 1 view -0
+ 611              		.cfi_startproc
+ARM GAS  /tmp/cc9wX12x.s 			page 23
+
+
+ 612              		@ args = 0, pretend = 0, frame = 0
+ 613              		@ frame_needed = 0, uses_anonymous_args = 0
+ 126:src/btphy/tx_task.c **** 	if (!FS_TUNED())
+ 614              		.loc 1 126 1 is_stmt 0 view .LVU170
+ 615 0000 10B5     		push	{r4, lr}
+ 616              		.cfi_def_cfa_offset 8
+ 617              		.cfi_offset 4, -8
+ 618              		.cfi_offset 14, -4
+ 127:src/btphy/tx_task.c **** 	{
+ 619              		.loc 1 127 2 is_stmt 1 view .LVU171
+ 127:src/btphy/tx_task.c **** 	{
+ 620              		.loc 1 127 7 is_stmt 0 view .LVU172
+ 621 0002 FFF7FEFF 		bl	cc2400_status
+ 622              	.LVL43:
+ 127:src/btphy/tx_task.c **** 	{
+ 623              		.loc 1 127 5 view .LVU173
+ 624 0006 10F00404 		ands	r4, r0, #4
+ 625 000a 22D0     		beq	.L49
+ 626              	.LBB94:
+ 627              	.LBI94:
+ 125:src/btphy/tx_task.c **** {
+ 628              		.loc 1 125 12 is_stmt 1 view .LVU174
+ 629              	.LVL44:
+ 630              	.LBB95:
+ 138:src/btphy/tx_task.c **** 	if (tx_task.data_size)
+ 631              		.loc 1 138 2 view .LVU175
+ 632              	.LBB96:
+ 633              	.LBI96:
+  46:include/ubtbr/rf.h **** {
+ 634              		.loc 2 46 20 view .LVU176
+ 635              	.LBB97:
+  48:include/ubtbr/rf.h **** 	TXLED_SET;
+ 636              		.loc 2 48 2 view .LVU177
+ 637 000c 6320     		movs	r0, #99
+ 638 000e FFF7FEFF 		bl	cc2400_strobe
+ 639              	.LVL45:
+  49:include/ubtbr/rf.h **** }
+ 640              		.loc 2 49 2 view .LVU178
+ 641 0012 4FF48071 		mov	r1, #256
+ 642              	.LBE97:
+ 643              	.LBE96:
+ 139:src/btphy/tx_task.c **** 		btphy_rf_enable_int(tx_fifo_cb, NULL, 1);
+ 644              		.loc 1 139 13 is_stmt 0 view .LVU179
+ 645 0016 1F4B     		ldr	r3, .L53
+ 646              	.LBB100:
+ 647              	.LBB98:
+  49:include/ubtbr/rf.h **** }
+ 648              		.loc 2 49 2 view .LVU180
+ 649 0018 1F4A     		ldr	r2, .L53+4
+ 650              	.LBE98:
+ 651              	.LBE100:
+ 139:src/btphy/tx_task.c **** 		btphy_rf_enable_int(tx_fifo_cb, NULL, 1);
+ 652              		.loc 1 139 5 view .LVU181
+ 653 001a DB6B     		ldr	r3, [r3, #60]
+ 654              	.LBB101:
+ 655              	.LBB99:
+  49:include/ubtbr/rf.h **** }
+ARM GAS  /tmp/cc9wX12x.s 			page 24
+
+
+ 656              		.loc 2 49 2 view .LVU182
+ 657 001c 1160     		str	r1, [r2]
+ 658              	.LBE99:
+ 659              	.LBE101:
+ 139:src/btphy/tx_task.c **** 		btphy_rf_enable_int(tx_fifo_cb, NULL, 1);
+ 660              		.loc 1 139 2 is_stmt 1 view .LVU183
+ 139:src/btphy/tx_task.c **** 		btphy_rf_enable_int(tx_fifo_cb, NULL, 1);
+ 661              		.loc 1 139 5 is_stmt 0 view .LVU184
+ 662 001e 73B9     		cbnz	r3, .L50
+ 141:src/btphy/tx_task.c **** 		DIE("txe: wrong clkn %x", btphy_cur_clkn());
+ 663              		.loc 1 141 2 is_stmt 1 view .LVU185
+ 664              	.LBB102:
+ 665              	.LBI102:
+  53:include/ubtbr/btphy.h **** {
+ 666              		.loc 3 53 24 view .LVU186
+ 667              	.LBB103:
+  55:include/ubtbr/btphy.h **** 	{
+ 668              		.loc 3 55 2 view .LVU187
+  55:include/ubtbr/btphy.h **** 	{
+ 669              		.loc 3 55 14 is_stmt 0 view .LVU188
+ 670 0020 1E4A     		ldr	r2, .L53+8
+ 671 0022 1378     		ldrb	r3, [r2]	@ zero_extendqisi2
+  55:include/ubtbr/btphy.h **** 	{
+ 672              		.loc 3 55 2 view .LVU189
+ 673 0024 032B     		cmp	r3, #3
+ 674 0026 06D8     		bhi	.L35
+ 675              	.L52:
+ 676 0028 012B     		cmp	r3, #1
+ 677 002a 06D8     		bhi	.L36
+ 678              	.L37:
+ 679              		.loc 3 62 3 is_stmt 1 view .LVU190
+ 680              		.loc 3 62 15 is_stmt 0 view .LVU191
+ 681 002c 5168     		ldr	r1, [r2, #4]
+ 682              	.L38:
+ 683              	.LBE103:
+ 684              	.LBE102:
+ 141:src/btphy/tx_task.c **** 		DIE("txe: wrong clkn %x", btphy_cur_clkn());
+ 685              		.loc 1 141 5 view .LVU192
+ 686 002e C907     		lsls	r1, r1, #31
+ 687 0030 24D4     		bmi	.L51
+ 688              	.LVL46:
+ 141:src/btphy/tx_task.c **** 		DIE("txe: wrong clkn %x", btphy_cur_clkn());
+ 689              		.loc 1 141 5 view .LVU193
+ 690              	.LBE95:
+ 691              	.LBE94:
+ 145:src/btphy/tx_task.c **** 
+ 692              		.loc 1 145 1 view .LVU194
+ 693 0032 0020     		movs	r0, #0
+ 694 0034 10BD     		pop	{r4, pc}
+ 695              	.LVL47:
+ 696              	.L35:
+ 697              	.LBB114:
+ 698              	.LBB112:
+ 699              	.LBB106:
+ 700              	.LBB104:
+  55:include/ubtbr/btphy.h **** 	{
+ 701              		.loc 3 55 2 view .LVU195
+ARM GAS  /tmp/cc9wX12x.s 			page 25
+
+
+ 702 0036 052B     		cmp	r3, #5
+ 703 0038 F8D1     		bne	.L37
+ 704              	.L36:
+  60:include/ubtbr/btphy.h **** 	default:
+ 705              		.loc 3 60 3 is_stmt 1 view .LVU196
+  60:include/ubtbr/btphy.h **** 	default:
+ 706              		.loc 3 60 15 is_stmt 0 view .LVU197
+ 707 003a 9168     		ldr	r1, [r2, #8]
+ 708 003c F7E7     		b	.L38
+ 709              	.L50:
+ 710              	.LBE104:
+ 711              	.LBE106:
+ 140:src/btphy/tx_task.c **** 	if (btphy_cur_clkn() & 1)
+ 712              		.loc 1 140 3 is_stmt 1 view .LVU198
+ 713 003e 0122     		movs	r2, #1
+ 714 0040 0021     		movs	r1, #0
+ 715 0042 1748     		ldr	r0, .L53+12
+ 716 0044 FFF7FEFF 		bl	btphy_rf_enable_int
+ 717              	.LVL48:
+ 141:src/btphy/tx_task.c **** 		DIE("txe: wrong clkn %x", btphy_cur_clkn());
+ 718              		.loc 1 141 2 view .LVU199
+ 719              	.LBB107:
+  53:include/ubtbr/btphy.h **** {
+ 720              		.loc 3 53 24 view .LVU200
+ 721              	.LBB105:
+  55:include/ubtbr/btphy.h **** 	{
+ 722              		.loc 3 55 2 view .LVU201
+  55:include/ubtbr/btphy.h **** 	{
+ 723              		.loc 3 55 14 is_stmt 0 view .LVU202
+ 724 0048 144A     		ldr	r2, .L53+8
+ 725 004a 1378     		ldrb	r3, [r2]	@ zero_extendqisi2
+  55:include/ubtbr/btphy.h **** 	{
+ 726              		.loc 3 55 2 view .LVU203
+ 727 004c 032B     		cmp	r3, #3
+ 728 004e F2D8     		bhi	.L35
+ 729 0050 EAE7     		b	.L52
+ 730              	.LVL49:
+ 731              	.L49:
+  55:include/ubtbr/btphy.h **** 	{
+ 732              		.loc 3 55 2 view .LVU204
+ 733              	.LBE105:
+ 734              	.LBE107:
+ 735              	.LBE112:
+ 736              	.LBE114:
+ 130:src/btphy/tx_task.c **** 		// Just do nothing 
+ 737              		.loc 1 130 3 is_stmt 1 view .LVU205
+ 738 0052 1448     		ldr	r0, .L53+16
+ 739 0054 FFF7FEFF 		bl	cprintf
+ 740              	.LVL50:
+ 132:src/btphy/tx_task.c **** 		// TODO: error callback
+ 741              		.loc 1 132 3 view .LVU206
+ 742              	.LBB115:
+ 743              	.LBI115:
+ 169:src/btphy/tx_task.c **** {
+ 744              		.loc 1 169 6 view .LVU207
+ 745              	.LBB116:
+ 171:src/btphy/tx_task.c **** 	tx_task.user_hdr = NULL;
+ARM GAS  /tmp/cc9wX12x.s 			page 26
+
+
+ 746              		.loc 1 171 2 view .LVU208
+ 747 0058 FFF7FEFF 		bl	btphy_rf_disable_int
+ 748              	.LVL51:
+ 172:src/btphy/tx_task.c **** 	tx_task.user_data = NULL;
+ 749              		.loc 1 172 2 view .LVU209
+ 172:src/btphy/tx_task.c **** 	tx_task.user_data = NULL;
+ 750              		.loc 1 172 19 is_stmt 0 view .LVU210
+ 751 005c 0D4B     		ldr	r3, .L53
+ 752              	.LBE116:
+ 753              	.LBE115:
+ 754              	.LBB118:
+ 755              	.LBB119:
+  41:include/ubtbr/rf.h **** 	TXLED_CLR;
+ 756              		.loc 2 41 2 view .LVU211
+ 757 005e 6420     		movs	r0, #100
+ 758              	.LBE119:
+ 759              	.LBE118:
+ 760              	.LBB122:
+ 761              	.LBB117:
+ 172:src/btphy/tx_task.c **** 	tx_task.user_data = NULL;
+ 762              		.loc 1 172 19 view .LVU212
+ 763 0060 9C60     		str	r4, [r3, #8]
+ 173:src/btphy/tx_task.c **** 	tx_task.p = NULL;
+ 764              		.loc 1 173 2 is_stmt 1 view .LVU213
+ 173:src/btphy/tx_task.c **** 	tx_task.p = NULL;
+ 765              		.loc 1 173 20 is_stmt 0 view .LVU214
+ 766 0062 9C63     		str	r4, [r3, #56]
+ 767              		.loc 1 174 2 is_stmt 1 view .LVU215
+ 768              		.loc 1 174 12 is_stmt 0 view .LVU216
+ 769 0064 C3F84C42 		str	r4, [r3, #588]
+ 770              	.LBE117:
+ 771              	.LBE122:
+ 134:src/btphy/tx_task.c **** 		return 0;
+ 772              		.loc 1 134 3 is_stmt 1 view .LVU217
+ 773              	.LBB123:
+ 774              	.LBI118:
+  39:include/ubtbr/rf.h **** {
+ 775              		.loc 2 39 20 view .LVU218
+ 776              	.LBB120:
+  41:include/ubtbr/rf.h **** 	TXLED_CLR;
+ 777              		.loc 2 41 2 view .LVU219
+ 778 0068 FFF7FEFF 		bl	cc2400_strobe
+ 779              	.LVL52:
+  42:include/ubtbr/rf.h **** 	RXLED_CLR;
+ 780              		.loc 2 42 2 view .LVU220
+ 781 006c 4FF48071 		mov	r1, #256
+  43:include/ubtbr/rf.h **** }
+ 782              		.loc 2 43 2 is_stmt 0 view .LVU221
+ 783 0070 1022     		movs	r2, #16
+  42:include/ubtbr/rf.h **** 	RXLED_CLR;
+ 784              		.loc 2 42 2 view .LVU222
+ 785 0072 0D4B     		ldr	r3, .L53+20
+ 786              	.LBE120:
+ 787              	.LBE123:
+ 145:src/btphy/tx_task.c **** 
+ 788              		.loc 1 145 1 view .LVU223
+ 789 0074 0020     		movs	r0, #0
+ARM GAS  /tmp/cc9wX12x.s 			page 27
+
+
+ 790              	.LBB124:
+ 791              	.LBB121:
+  42:include/ubtbr/rf.h **** 	RXLED_CLR;
+ 792              		.loc 2 42 2 view .LVU224
+ 793 0076 1960     		str	r1, [r3]
+  43:include/ubtbr/rf.h **** }
+ 794              		.loc 2 43 2 is_stmt 1 view .LVU225
+ 795 0078 1A60     		str	r2, [r3]
+ 796              	.LBE121:
+ 797              	.LBE124:
+ 135:src/btphy/tx_task.c **** 	}
+ 798              		.loc 1 135 3 view .LVU226
+ 145:src/btphy/tx_task.c **** 
+ 799              		.loc 1 145 1 is_stmt 0 view .LVU227
+ 800 007a 10BD     		pop	{r4, pc}
+ 801              	.LVL53:
+ 802              	.L51:
+ 803              	.LBB125:
+ 804              	.LBB113:
+ 142:src/btphy/tx_task.c **** 
+ 805              		.loc 1 142 3 is_stmt 1 view .LVU228
+ 806              	.LBB108:
+ 807              	.LBI108:
+  53:include/ubtbr/btphy.h **** {
+ 808              		.loc 3 53 24 view .LVU229
+ 809              	.LBB109:
+  55:include/ubtbr/btphy.h **** 	{
+ 810              		.loc 3 55 2 view .LVU230
+ 811 007c 032B     		cmp	r3, #3
+ 812 007e 05D8     		bhi	.L39
+ 813 0080 012B     		cmp	r3, #1
+ 814 0082 05D8     		bhi	.L40
+ 815              	.L41:
+ 816              		.loc 3 62 3 view .LVU231
+ 817              		.loc 3 62 15 is_stmt 0 view .LVU232
+ 818 0084 5168     		ldr	r1, [r2, #4]
+ 819              	.L42:
+ 820              	.LBE109:
+ 821              	.LBE108:
+ 142:src/btphy/tx_task.c **** 
+ 822              		.loc 1 142 3 view .LVU233
+ 823 0086 0948     		ldr	r0, .L53+24
+ 824 0088 FFF7FEFF 		bl	die
+ 825              	.LVL54:
+ 826              	.L39:
+ 827              	.LBB111:
+ 828              	.LBB110:
+  55:include/ubtbr/btphy.h **** 	{
+ 829              		.loc 3 55 2 view .LVU234
+ 830 008c 052B     		cmp	r3, #5
+ 831 008e F9D1     		bne	.L41
+ 832              	.L40:
+  60:include/ubtbr/btphy.h **** 	default:
+ 833              		.loc 3 60 3 is_stmt 1 view .LVU235
+  60:include/ubtbr/btphy.h **** 	default:
+ 834              		.loc 3 60 15 is_stmt 0 view .LVU236
+ 835 0090 9168     		ldr	r1, [r2, #8]
+ARM GAS  /tmp/cc9wX12x.s 			page 28
+
+
+ 836 0092 F8E7     		b	.L42
+ 837              	.L54:
+ 838              		.align	2
+ 839              	.L53:
+ 840 0094 00000000 		.word	.LANCHOR0
+ 841 0098 38C00920 		.word	537509944
+ 842 009c 00000000 		.word	btphy
+ 843 00a0 00000000 		.word	tx_fifo_cb
+ 844 00a4 24000000 		.word	.LC1
+ 845 00a8 3CC00920 		.word	537509948
+ 846 00ac 38000000 		.word	.LC2
+ 847              	.LBE110:
+ 848              	.LBE111:
+ 849              	.LBE113:
+ 850              	.LBE125:
+ 851              		.cfi_endproc
+ 852              	.LFE28:
+ 854              		.section	.text.tx_task_reset,"ax",%progbits
+ 855              		.align	1
+ 856              		.p2align 2,,3
+ 857              		.global	tx_task_reset
+ 858              		.syntax unified
+ 859              		.thumb
+ 860              		.thumb_func
+ 861              		.fpu softvfp
+ 863              	tx_task_reset:
+ 864              	.LFB30:
+ 170:src/btphy/tx_task.c **** 	btphy_rf_disable_int();
+ 865              		.loc 1 170 1 is_stmt 1 view -0
+ 866              		.cfi_startproc
+ 867              		@ args = 0, pretend = 0, frame = 0
+ 868              		@ frame_needed = 0, uses_anonymous_args = 0
+ 869 0000 08B5     		push	{r3, lr}
+ 870              		.cfi_def_cfa_offset 8
+ 871              		.cfi_offset 3, -8
+ 872              		.cfi_offset 14, -4
+ 171:src/btphy/tx_task.c **** 	tx_task.user_hdr = NULL;
+ 873              		.loc 1 171 2 view .LVU238
+ 874 0002 FFF7FEFF 		bl	btphy_rf_disable_int
+ 875              	.LVL55:
+ 172:src/btphy/tx_task.c **** 	tx_task.user_data = NULL;
+ 876              		.loc 1 172 2 view .LVU239
+ 172:src/btphy/tx_task.c **** 	tx_task.user_data = NULL;
+ 877              		.loc 1 172 19 is_stmt 0 view .LVU240
+ 878 0006 0022     		movs	r2, #0
+ 879 0008 024B     		ldr	r3, .L56
+ 880 000a 9A60     		str	r2, [r3, #8]
+ 173:src/btphy/tx_task.c **** 	tx_task.p = NULL;
+ 881              		.loc 1 173 2 is_stmt 1 view .LVU241
+ 173:src/btphy/tx_task.c **** 	tx_task.p = NULL;
+ 882              		.loc 1 173 20 is_stmt 0 view .LVU242
+ 883 000c 9A63     		str	r2, [r3, #56]
+ 884              		.loc 1 174 2 is_stmt 1 view .LVU243
+ 885              		.loc 1 174 12 is_stmt 0 view .LVU244
+ 886 000e C3F84C22 		str	r2, [r3, #588]
+ 175:src/btphy/tx_task.c **** }
+ 887              		.loc 1 175 1 view .LVU245
+ARM GAS  /tmp/cc9wX12x.s 			page 29
+
+
+ 888 0012 08BD     		pop	{r3, pc}
+ 889              	.L57:
+ 890              		.align	2
+ 891              	.L56:
+ 892 0014 00000000 		.word	.LANCHOR0
+ 893              		.cfi_endproc
+ 894              	.LFE30:
+ 896              		.section	.rodata.str1.4
+ 897              		.align	2
+ 898              	.LC3:
+ 899 0050 4449457C 		.ascii	"DIE|txs: already got pkt\012\000"
+ 899      7478733A 
+ 899      20616C72 
+ 899      65616479 
+ 899      20676F74 
+ 900              		.section	.text.tx_task_schedule,"ax",%progbits
+ 901              		.align	1
+ 902              		.p2align 2,,3
+ 903              		.global	tx_task_schedule
+ 904              		.syntax unified
+ 905              		.thumb
+ 906              		.thumb_func
+ 907              		.fpu softvfp
+ 909              	tx_task_schedule:
+ 910              	.LVL56:
+ 911              	.LFB31:
+ 176:src/btphy/tx_task.c **** 
+ 177:src/btphy/tx_task.c **** void tx_task_schedule(unsigned delay, tx_task_cb_t cb, void*cbarg, bbhdr_t *hdr, uint8_t *data)
+ 178:src/btphy/tx_task.c **** {
+ 912              		.loc 1 178 1 is_stmt 1 view -0
+ 913              		.cfi_startproc
+ 914              		@ args = 4, pretend = 0, frame = 0
+ 915              		@ frame_needed = 0, uses_anonymous_args = 0
+ 916              		.loc 1 178 1 is_stmt 0 view .LVU247
+ 917 0000 F8B5     		push	{r3, r4, r5, r6, r7, lr}
+ 918              		.cfi_def_cfa_offset 24
+ 919              		.cfi_offset 3, -24
+ 920              		.cfi_offset 4, -20
+ 921              		.cfi_offset 5, -16
+ 922              		.cfi_offset 6, -12
+ 923              		.cfi_offset 7, -8
+ 924              		.cfi_offset 14, -4
+ 179:src/btphy/tx_task.c **** 	unsigned bitsize = 0;
+ 925              		.loc 1 179 2 is_stmt 1 view .LVU248
+ 926              	.LVL57:
+ 180:src/btphy/tx_task.c **** 	if (tx_task.user_hdr)
+ 927              		.loc 1 180 2 view .LVU249
+ 928              		.loc 1 180 13 is_stmt 0 view .LVU250
+ 929 0002 0B4C     		ldr	r4, .L61
+ 178:src/btphy/tx_task.c **** 	unsigned bitsize = 0;
+ 930              		.loc 1 178 1 view .LVU251
+ 931 0004 0E46     		mov	r6, r1
+ 932              		.loc 1 180 5 view .LVU252
+ 933 0006 A768     		ldr	r7, [r4, #8]
+ 178:src/btphy/tx_task.c **** 	unsigned bitsize = 0;
+ 934              		.loc 1 178 1 view .LVU253
+ 935 0008 1546     		mov	r5, r2
+ARM GAS  /tmp/cc9wX12x.s 			page 30
+
+
+ 936 000a DDF818C0 		ldr	ip, [sp, #24]
+ 937              		.loc 1 180 5 view .LVU254
+ 938 000e 5FB9     		cbnz	r7, .L60
+ 181:src/btphy/tx_task.c **** 		DIE("txs: already got pkt");
+ 182:src/btphy/tx_task.c **** 	tx_task.cb = cb;
+ 939              		.loc 1 182 2 is_stmt 1 view .LVU255
+ 183:src/btphy/tx_task.c **** 	tx_task.cb_arg = cbarg;
+ 184:src/btphy/tx_task.c **** 	tx_task.user_hdr = hdr;
+ 185:src/btphy/tx_task.c **** 	tx_task.user_data = data;
+ 186:src/btphy/tx_task.c **** 	tdma_schedule_set(delay, tx_sched_set, 0);
+ 940              		.loc 1 186 2 is_stmt 0 view .LVU256
+ 941 0010 3A46     		mov	r2, r7
+ 942              	.LVL58:
+ 183:src/btphy/tx_task.c **** 	tx_task.cb_arg = cbarg;
+ 943              		.loc 1 183 17 view .LVU257
+ 944 0012 C4E90065 		strd	r6, r5, [r4]
+ 184:src/btphy/tx_task.c **** 	tx_task.user_data = data;
+ 945              		.loc 1 184 2 is_stmt 1 view .LVU258
+ 184:src/btphy/tx_task.c **** 	tx_task.user_data = data;
+ 946              		.loc 1 184 19 is_stmt 0 view .LVU259
+ 947 0016 A360     		str	r3, [r4, #8]
+ 185:src/btphy/tx_task.c **** 	tdma_schedule_set(delay, tx_sched_set, 0);
+ 948              		.loc 1 185 2 is_stmt 1 view .LVU260
+ 185:src/btphy/tx_task.c **** 	tdma_schedule_set(delay, tx_sched_set, 0);
+ 949              		.loc 1 185 20 is_stmt 0 view .LVU261
+ 950 0018 C4F838C0 		str	ip, [r4, #56]
+ 951              		.loc 1 186 2 is_stmt 1 view .LVU262
+ 952 001c 0549     		ldr	r1, .L61+4
+ 953              	.LVL59:
+ 954              		.loc 1 186 2 is_stmt 0 view .LVU263
+ 955 001e C0B2     		uxtb	r0, r0
+ 956              	.LVL60:
+ 187:src/btphy/tx_task.c **** }
+ 957              		.loc 1 187 1 view .LVU264
+ 958 0020 BDE8F840 		pop	{r3, r4, r5, r6, r7, lr}
+ 959              		.cfi_remember_state
+ 960              		.cfi_restore 14
+ 961              		.cfi_restore 7
+ 962              		.cfi_restore 6
+ 963              		.cfi_restore 5
+ 964              		.cfi_restore 4
+ 965              		.cfi_restore 3
+ 966              		.cfi_def_cfa_offset 0
+ 967              	.LVL61:
+ 186:src/btphy/tx_task.c **** }
+ 968              		.loc 1 186 2 view .LVU265
+ 969 0024 FFF7FEBF 		b	tdma_schedule_set
+ 970              	.LVL62:
+ 971              	.L60:
+ 972              		.cfi_restore_state
+ 181:src/btphy/tx_task.c **** 	tx_task.cb = cb;
+ 973              		.loc 1 181 3 is_stmt 1 view .LVU266
+ 974 0028 0348     		ldr	r0, .L61+8
+ 975              	.LVL63:
+ 181:src/btphy/tx_task.c **** 	tx_task.cb = cb;
+ 976              		.loc 1 181 3 is_stmt 0 view .LVU267
+ 977 002a FFF7FEFF 		bl	die
+ARM GAS  /tmp/cc9wX12x.s 			page 31
+
+
+ 978              	.LVL64:
+ 979              	.L62:
+ 181:src/btphy/tx_task.c **** 	tx_task.cb = cb;
+ 980              		.loc 1 181 3 view .LVU268
+ 981 002e 00BF     		.align	2
+ 982              	.L61:
+ 983 0030 00000000 		.word	.LANCHOR0
+ 984 0034 00000000 		.word	.LANCHOR1
+ 985 0038 50000000 		.word	.LC3
+ 986              		.cfi_endproc
+ 987              	.LFE31:
+ 989              		.global	tx_sched_set
+ 990              		.section	.rodata
+ 991              		.align	2
+ 992              		.set	.LANCHOR1,. + 0
+ 995              	tx_sched_set:
+ 996 0000 00000000 		.word	tx_prepare
+ 997 0004 00       		.byte	0
+ 998 0005 00       		.byte	0
+ 999 0006 0000     		.space	2
+ 1000 0008 0000     		.short	0
+ 1001 000a 0000     		.short	0
+ 1002 000c 00000000 		.word	0
+ 1003 0010 00       		.byte	0
+ 1004 0011 00       		.byte	0
+ 1005 0012 00000000 		.space	6
+ 1005      0000
+ 1006 0018 00000000 		.word	tx_execute
+ 1007 001c 00       		.byte	0
+ 1008 001d 00       		.byte	0
+ 1009 001e 0000     		.space	2
+ 1010 0020 FDFF     		.short	-3
+ 1011 0022 0000     		.short	0
+ 1012 0024 00000000 		.word	0
+ 1013 0028 00       		.byte	0
+ 1014 0029 00       		.byte	0
+ 1015 002a 00000000 		.space	6
+ 1015      0000
+ 1016 0030 00000000 		.word	tdma_end_set
+ 1017 0034 00       		.byte	0
+ 1018 0035 00       		.byte	0
+ 1019 0036 00000000 		.space	6
+ 1019      0000
+ 1020              		.bss
+ 1021              		.align	2
+ 1022              		.set	.LANCHOR0,. + 0
+ 1025              	tx_task:
+ 1026 0000 00000000 		.space	592
+ 1026      00000000 
+ 1026      00000000 
+ 1026      00000000 
+ 1026      00000000 
+ 1027              		.text
+ 1028              	.Letext0:
+ 1029              		.file 7 "/usr/lib/gcc/arm-none-eabi/9.2.1/include/stddef.h"
+ 1030              		.file 8 "/usr/include/newlib/sys/_types.h"
+ 1031              		.file 9 "/usr/include/newlib/sys/reent.h"
+ARM GAS  /tmp/cc9wX12x.s 			page 32
+
+
+ 1032              		.file 10 "/usr/include/newlib/sys/lock.h"
+ 1033              		.file 11 "/usr/lib/gcc/arm-none-eabi/9.2.1/include/stdint.h"
+ 1034              		.file 12 "../../host/libubertooth/src/ubertooth_interface.h"
+ 1035              		.file 13 "../common/ubertooth.h"
+ 1036              		.file 14 "include/ubtbr/tdma_sched.h"
+ 1037              		.file 15 "include/ubtbr/tx_task.h"
+ 1038              		.file 16 "/usr/include/newlib/string.h"
+ 1039              		.file 17 "include/ubtbr/debug.h"
+ARM GAS  /tmp/cc9wX12x.s 			page 33
+
+
+DEFINED SYMBOLS
+                            *ABS*:0000000000000000 tx_task.c
+     /tmp/cc9wX12x.s:16     .text.tx_finalize:0000000000000000 $t
+     /tmp/cc9wX12x.s:24     .text.tx_finalize:0000000000000000 tx_finalize
+     /tmp/cc9wX12x.s:129    .text.tx_finalize:000000000000004c $d
+     /tmp/cc9wX12x.s:136    .text.tx_prepare:0000000000000000 $t
+     /tmp/cc9wX12x.s:143    .text.tx_prepare:0000000000000000 tx_prepare
+     /tmp/cc9wX12x.s:469    .text.tx_prepare:0000000000000118 $d
+     /tmp/cc9wX12x.s:479    .rodata.str1.4:0000000000000000 $d
+     /tmp/cc9wX12x.s:483    .text.tx_fifo_cb:0000000000000000 $t
+     /tmp/cc9wX12x.s:490    .text.tx_fifo_cb:0000000000000000 tx_fifo_cb
+     /tmp/cc9wX12x.s:585    .text.tx_fifo_cb:0000000000000050 $d
+     /tmp/cc9wX12x.s:600    .text.tx_execute:0000000000000000 $t
+     /tmp/cc9wX12x.s:607    .text.tx_execute:0000000000000000 tx_execute
+     /tmp/cc9wX12x.s:840    .text.tx_execute:0000000000000094 $d
+     /tmp/cc9wX12x.s:855    .text.tx_task_reset:0000000000000000 $t
+     /tmp/cc9wX12x.s:863    .text.tx_task_reset:0000000000000000 tx_task_reset
+     /tmp/cc9wX12x.s:892    .text.tx_task_reset:0000000000000014 $d
+     /tmp/cc9wX12x.s:901    .text.tx_task_schedule:0000000000000000 $t
+     /tmp/cc9wX12x.s:909    .text.tx_task_schedule:0000000000000000 tx_task_schedule
+     /tmp/cc9wX12x.s:983    .text.tx_task_schedule:0000000000000030 $d
+     /tmp/cc9wX12x.s:995    .rodata:0000000000000000 tx_sched_set
+     /tmp/cc9wX12x.s:991    .rodata:0000000000000000 $d
+     /tmp/cc9wX12x.s:1021   .bss:0000000000000000 $d
+     /tmp/cc9wX12x.s:1025   .bss:0000000000000000 tx_task
+
+UNDEFINED SYMBOLS
+cc2400_get
+cc2400_strobe
+btphy_rf_disable_int
+hop_channel
+btphy_rf_tune_chan
+cc2400_set
+btphy_rf_fifo_write
+btphy_whiten_seed
+memset
+bbcodec_encode_header
+bbcodec_encode_chunk
+tdma_schedule
+btphy
+hop_state
+rev8_map
+die
+cc2400_status
+btphy_rf_enable_int
+cprintf
+tdma_schedule_set
+tdma_end_set

@@ -1,0 +1,3031 @@
+ARM GAS  /tmp/ccekfF7I.s 			page 1
+
+
+   1              		.cpu cortex-m3
+   2              		.eabi_attribute 20, 1
+   3              		.eabi_attribute 21, 1
+   4              		.eabi_attribute 23, 3
+   5              		.eabi_attribute 24, 1
+   6              		.eabi_attribute 25, 1
+   7              		.eabi_attribute 26, 1
+   8              		.eabi_attribute 30, 2
+   9              		.eabi_attribute 34, 1
+  10              		.eabi_attribute 18, 4
+  11              		.file	"codec.c"
+  12              		.text
+  13              	.Ltext0:
+  14              		.cfi_sections	.debug_frame
+  15              		.section	.rodata.str1.4,"aMS",%progbits,1
+  16              		.align	2
+  17              	.LC0:
+  18 0000 284E7969 		.ascii	"(Nyi plt %d)\000"
+  18      20706C74 
+  18      20256429 
+  18      00
+  19              		.section	.text.bbcodec_decode_header,"ax",%progbits
+  20              		.align	1
+  21              		.p2align 2,,3
+  22              		.global	bbcodec_decode_header
+  23              		.arch armv7-m
+  24              		.syntax unified
+  25              		.thumb
+  26              		.thumb_func
+  27              		.fpu softvfp
+  29              	bbcodec_decode_header:
+  30              	.LVL0:
+  31              	.LFB22:
+  32              		.file 1 "src/codec/codec.c"
+   1:src/codec/codec.c **** /* Bluetooth codec
+   2:src/codec/codec.c ****  *
+   3:src/codec/codec.c ****  * Copyright 2020 Etienne Helluy-Lafont, Univ. Lille, CNRS.
+   4:src/codec/codec.c ****  *
+   5:src/codec/codec.c ****  * This file is part of Project Ubertooth.
+   6:src/codec/codec.c ****  *
+   7:src/codec/codec.c ****  * This program is free software; you can redistribute it and/or modify
+   8:src/codec/codec.c ****  * it under the terms of the GNU General Public License as published by
+   9:src/codec/codec.c ****  * the Free Software Foundation; either version 2, or (at your option)
+  10:src/codec/codec.c ****  * any later version.
+  11:src/codec/codec.c ****  *
+  12:src/codec/codec.c ****  * This program is distributed in the hope that it will be useful,
+  13:src/codec/codec.c ****  * but WITHOUT ANY WARRANTY; without even the implied warranty of
+  14:src/codec/codec.c ****  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  15:src/codec/codec.c ****  * GNU General Public License for more details.
+  16:src/codec/codec.c ****  *
+  17:src/codec/codec.c ****  * You should have received a copy of the GNU General Public License
+  18:src/codec/codec.c ****  * along with this program; see the file COPYING.  If not, write to
+  19:src/codec/codec.c ****  * the Free Software Foundation, Inc., 51 Franklin Street,
+  20:src/codec/codec.c ****  * Boston, MA 02110-1301, USA.
+  21:src/codec/codec.c ****  */
+  22:src/codec/codec.c **** #include <stdlib.h>
+  23:src/codec/codec.c **** #include <string.h>
+ARM GAS  /tmp/ccekfF7I.s 			page 2
+
+
+  24:src/codec/codec.c **** #include <ubtbr/cfg.h>
+  25:src/codec/codec.c **** #include <ubtbr/defines.h>
+  26:src/codec/codec.c **** #include <ubtbr/bb.h>
+  27:src/codec/codec.c **** #include <ubtbr/codec.h>
+  28:src/codec/codec.c **** 
+  29:src/codec/codec.c **** #include <ubtbr/btphy.h>
+  30:src/codec/codec.c **** 
+  31:src/codec/codec.c **** const bbcodec_types_t bbcodec_acl_types[16] = {
+  32:src/codec/codec.c **** /* 				ns   	hlen 	plen 	fec23 	crc	*/
+  33:src/codec/codec.c **** 	[BB_TYPE_NULL]	= {	1,	0,	0,	0,	0},
+  34:src/codec/codec.c **** 	[BB_TYPE_POLL]	= {	1,	0,	0,	0,	0},
+  35:src/codec/codec.c **** 	[BB_TYPE_FHS]	= {	1,	0,	18,	1,	1},
+  36:src/codec/codec.c **** 	[BB_TYPE_DM1]	= {	1,	1,	17,	1,	1},
+  37:src/codec/codec.c **** 	[BB_TYPE_DH1]	= {	1,	1,	27,	0,	1},
+  38:src/codec/codec.c **** 	[BB_TYPE_DM3]	= {	3,	2,	121,	1,	1},
+  39:src/codec/codec.c **** 	[BB_TYPE_DH3]	= {	3,	2,	183,	0,	1},
+  40:src/codec/codec.c **** 	[BB_TYPE_DM5]	= {	5,	2,	224,	1,	1},
+  41:src/codec/codec.c **** 	[BB_TYPE_DH5]	= {	5,	2,	339,	0,	1} 
+  42:src/codec/codec.c **** };
+  43:src/codec/codec.c **** 
+  44:src/codec/codec.c **** /* Unwhiten n bits from packed input into packed output. 
+  45:src/codec/codec.c ****  * update whiten seed in packet.
+  46:src/codec/codec.c ****  */
+  47:src/codec/codec.c **** static inline void bbcodec_unwhiten(uint8_t *whiten_state, uint8_t *out, uint8_t *in, unsigned bit_
+  48:src/codec/codec.c **** {
+  49:src/codec/codec.c **** 	whiten(out, in, bit_count, whiten_state);
+  50:src/codec/codec.c **** }
+  51:src/codec/codec.c **** 
+  52:src/codec/codec.c **** /* Payload must contain at least two decoded bytes */
+  53:src/codec/codec.c **** static void bbcodec_calc_payload_length(bbcodec_t *codec, uint8_t *payload)
+  54:src/codec/codec.c **** {
+  55:src/codec/codec.c **** 	const bbcodec_types_t *t = codec->t;
+  56:src/codec/codec.c **** 	unsigned payload_bits, hdr_len;
+  57:src/codec/codec.c **** 
+  58:src/codec/codec.c **** 	if (t->payload_bytes != 0 && payload == NULL)
+  59:src/codec/codec.c **** 		DIE("No payload for type %p\n", codec->t);
+  60:src/codec/codec.c **** 
+  61:src/codec/codec.c **** 	hdr_len = t->payload_header_bytes;
+  62:src/codec/codec.c **** 
+  63:src/codec/codec.c **** 	if (codec->rx_raw)
+  64:src/codec/codec.c **** 	{
+  65:src/codec/codec.c **** 		codec->payload_length = t->payload_bytes;
+  66:src/codec/codec.c **** 	}
+  67:src/codec/codec.c **** 	else
+  68:src/codec/codec.c **** 	{
+  69:src/codec/codec.c **** 		switch(hdr_len)
+  70:src/codec/codec.c **** 		{
+  71:src/codec/codec.c **** 		case 1:
+  72:src/codec/codec.c **** 			codec->payload_length = payload[0]>>3;
+  73:src/codec/codec.c **** 			break;
+  74:src/codec/codec.c **** 		case 2:
+  75:src/codec/codec.c **** 			codec->payload_length = 0x3ff & ((payload[0]|(payload[1]<<8))>>3);
+  76:src/codec/codec.c **** 			break;
+  77:src/codec/codec.c **** 		default: // 0
+  78:src/codec/codec.c **** 			codec->payload_length = t->payload_bytes;
+  79:src/codec/codec.c **** 			break;
+  80:src/codec/codec.c **** 		}
+ARM GAS  /tmp/ccekfF7I.s 			page 3
+
+
+  81:src/codec/codec.c **** 		if (codec->payload_length > t->payload_bytes)
+  82:src/codec/codec.c **** 		{
+  83:src/codec/codec.c **** 			BB_DEBUG("(Bad size %d for type %d)", codec->payload_length,
+  84:src/codec/codec.c **** 				t->payload_bytes);
+  85:src/codec/codec.c **** 			codec->payload_length = 0;
+  86:src/codec/codec.c **** 		}
+  87:src/codec/codec.c **** 	}
+  88:src/codec/codec.c **** 	codec->coded_total = (hdr_len + codec->payload_length);
+  89:src/codec/codec.c **** 	if (t->has_crc)
+  90:src/codec/codec.c **** 		codec->coded_total += 2;
+  91:src/codec/codec.c **** 	if (t->has_fec23)
+  92:src/codec/codec.c **** 		payload_bits = codec->coded_total*12;
+  93:src/codec/codec.c **** 	else
+  94:src/codec/codec.c **** 		payload_bits = codec->coded_total*8;
+  95:src/codec/codec.c **** 	codec->air_bytes = BYTE_ALIGN(58+payload_bits);
+  96:src/codec/codec.c **** }
+  97:src/codec/codec.c **** 
+  98:src/codec/codec.c **** /* Set codec type according to header type
+  99:src/codec/codec.c ****  * Decode payload length in payload_header if any */
+ 100:src/codec/codec.c **** static void bbcodec_set_payload_type(bbcodec_t *codec, unsigned type)
+ 101:src/codec/codec.c **** {
+ 102:src/codec/codec.c **** 	/* FIXME: only acl supported */
+ 103:src/codec/codec.c **** 	codec->t = &bbcodec_acl_types[type&0xf];
+ 104:src/codec/codec.c **** 
+ 105:src/codec/codec.c **** 	if (codec->t->nslots == 0)
+ 106:src/codec/codec.c **** 	{
+ 107:src/codec/codec.c **** 		cprintf("(Nyi plt %d)", type);
+ 108:src/codec/codec.c **** 		/* Fallback to null.. */
+ 109:src/codec/codec.c **** 		codec->t = &bbcodec_acl_types[0];
+ 110:src/codec/codec.c **** 	}
+ 111:src/codec/codec.c **** }
+ 112:src/codec/codec.c **** 
+ 113:src/codec/codec.c **** int bbcodec_decode_header(bbcodec_t *codec, bbhdr_t *out_hdr, uint8_t *in_data)
+ 114:src/codec/codec.c **** {
+  33              		.loc 1 114 1 view -0
+  34              		.cfi_startproc
+  35              		@ args = 0, pretend = 0, frame = 16
+  36              		@ frame_needed = 0, uses_anonymous_args = 0
+  37              		.loc 1 114 1 is_stmt 0 view .LVU1
+  38 0000 2DE9F04F 		push	{r4, r5, r6, r7, r8, r9, r10, fp, lr}
+  39              		.cfi_def_cfa_offset 36
+  40              		.cfi_offset 4, -36
+  41              		.cfi_offset 5, -32
+  42              		.cfi_offset 6, -28
+  43              		.cfi_offset 7, -24
+  44              		.cfi_offset 8, -20
+  45              		.cfi_offset 9, -16
+  46              		.cfi_offset 10, -12
+  47              		.cfi_offset 11, -8
+  48              		.cfi_offset 14, -4
+  49 0004 85B0     		sub	sp, sp, #20
+  50              		.cfi_def_cfa_offset 56
+ 115:src/codec/codec.c **** 	int be;
+  51              		.loc 1 115 2 is_stmt 1 view .LVU2
+ 116:src/codec/codec.c **** 	uint8_t hdr_bytes[3];
+  52              		.loc 1 116 2 view .LVU3
+ 117:src/codec/codec.c **** 	uint32_t h32, hdr_data;
+ARM GAS  /tmp/ccekfF7I.s 			page 4
+
+
+  53              		.loc 1 117 2 view .LVU4
+ 118:src/codec/codec.c **** 	uint8_t hec;
+  54              		.loc 1 118 2 view .LVU5
+ 119:src/codec/codec.c **** 
+ 120:src/codec/codec.c **** 	/* Unfec13 header */
+ 121:src/codec/codec.c **** 	be = unfec13_hdr(hdr_bytes, in_data);
+  55              		.loc 1 121 2 view .LVU6
+  56              	.LVL1:
+  57              	.LBB38:
+  58              	.LBI38:
+  59              		.file 2 "include/ubtbr/bb.h"
+   1:include/ubtbr/bb.h **** #ifndef __BB_H
+   2:include/ubtbr/bb.h **** #define __BB_H
+   3:include/ubtbr/bb.h **** #include <stdint.h>
+   4:include/ubtbr/bb.h **** #include <ubertooth_interface.h>
+   5:include/ubtbr/bb.h **** #include <ubtbr/cfg.h>
+   6:include/ubtbr/bb.h **** #include <ubtbr/debug.h>
+   7:include/ubtbr/bb.h **** 
+   8:include/ubtbr/bb.h **** /* BLUETOOTH CORE SPECIFICATION Version 5.1 | Vol 2, Part B | Table 6.2 */
+   9:include/ubtbr/bb.h **** enum bbhdr_type_e {
+  10:include/ubtbr/bb.h **** 	BB_TYPE_NULL	= 0,
+  11:include/ubtbr/bb.h **** 	BB_TYPE_POLL	= 1,
+  12:include/ubtbr/bb.h **** 	BB_TYPE_FHS	= 2,
+  13:include/ubtbr/bb.h **** 	BB_TYPE_DM1	= 3,
+  14:include/ubtbr/bb.h **** 	BB_TYPE_DH1	= 4,
+  15:include/ubtbr/bb.h **** 	BB_TYPE_HV1	= 5,
+  16:include/ubtbr/bb.h **** 	BB_TYPE_HV2	= 6,
+  17:include/ubtbr/bb.h **** 	BB_TYPE_HV3	= 7,
+  18:include/ubtbr/bb.h **** 	BB_TYPE_DV	= 8,
+  19:include/ubtbr/bb.h **** 	BB_TYPE_AUX1	= 9,
+  20:include/ubtbr/bb.h **** 	BB_TYPE_DM3	= 10,
+  21:include/ubtbr/bb.h **** 	BB_TYPE_DH3	= 11,
+  22:include/ubtbr/bb.h **** 	BB_TYPE_EV4	= 12,
+  23:include/ubtbr/bb.h **** 	BB_TYPE_EV5	= 13,
+  24:include/ubtbr/bb.h **** 	BB_TYPE_DM5	= 14,
+  25:include/ubtbr/bb.h **** 	BB_TYPE_DH5	= 15,
+  26:include/ubtbr/bb.h **** };
+  27:include/ubtbr/bb.h **** 
+  28:include/ubtbr/bb.h **** typedef struct fhs_info_s {
+  29:include/ubtbr/bb.h **** 	uint64_t bdaddr;
+  30:include/ubtbr/bb.h **** 	uint32_t clk27_2;
+  31:include/ubtbr/bb.h **** 	uint8_t lt_addr;
+  32:include/ubtbr/bb.h **** } fhs_info_t;
+  33:include/ubtbr/bb.h **** 
+  34:include/ubtbr/bb.h **** /* All sizes are excluding the 4bit preamble, which
+  35:include/ubtbr/bb.h ****  * is prepended to the packet by the cc2400 */
+  36:include/ubtbr/bb.h **** #define BB_ACCESS_CODE_SIZE 		68
+  37:include/ubtbr/bb.h **** #define BB_SHORT_ACCESS_CODE_SIZE 	64
+  38:include/ubtbr/bb.h **** #define BB_FEC13_SIZE(n)		((n)*3)
+  39:include/ubtbr/bb.h **** #define BB_FEC23_SIZE(n)		((n)*3/2)
+  40:include/ubtbr/bb.h **** #define BB_HEADER_SIZE			BB_FEC13_SIZE(18)
+  41:include/ubtbr/bb.h **** #define BB_FHS_PKT_SIZE 		(BB_ACCESS_CODE_SIZE+BB_HEADER_SIZE+BB_FEC23_SIZE(160))
+  42:include/ubtbr/bb.h **** #define BB_POLL_PKT_SIZE 		(BB_ACCESS_CODE_SIZE+BB_HEADER_SIZE)
+  43:include/ubtbr/bb.h **** 
+  44:include/ubtbr/bb.h **** #define GIAC 0x9e8b33
+  45:include/ubtbr/bb.h **** 
+  46:include/ubtbr/bb.h **** /* Declare those helpers here, to be able to inline some functions */
+ARM GAS  /tmp/ccekfF7I.s 			page 5
+
+
+  47:include/ubtbr/bb.h **** // Grab 6 bits from a buffer
+  48:include/ubtbr/bb.h **** #define EXTRACT6_0(p)   ((((((uint8_t*)(p))[0])>>0)&0x3F))
+  49:include/ubtbr/bb.h **** #define EXTRACT6_2(p)   ((((((uint8_t*)(p))[0])>>2)&0x3F))
+  50:include/ubtbr/bb.h **** #define EXTRACT6_4(p)   ((((((uint8_t*)(p))[0])>>4))|(((((uint8_t*)(p))[1])&0x3)<<4))
+  51:include/ubtbr/bb.h **** #define EXTRACT6_6(p)   ((((((uint8_t*)(p))[0])>>6))|(((((uint8_t*)(p))[1])&0xf)<<2))
+  52:include/ubtbr/bb.h **** 
+  53:include/ubtbr/bb.h **** // Grab 15 bits from a buffer
+  54:include/ubtbr/bb.h **** #define EXTRACT15_0(p) ( ((((uint8_t*)(p))[0]     )   ) | ((((uint8_t*)(p))[1]&0x7f)<<8) )
+  55:include/ubtbr/bb.h **** #define EXTRACT15_1(p) ( ((((uint8_t*)(p))[0]&0xfe)>>1) | ((((uint8_t*)(p))[1]     )<<7) )
+  56:include/ubtbr/bb.h **** #define EXTRACT15_2(p) ( ((((uint8_t*)(p))[0]&0xfc)>>2) | ((((uint8_t*)(p))[1]     )<<6) | ((((uint
+  57:include/ubtbr/bb.h **** #define EXTRACT15_3(p) ( ((((uint8_t*)(p))[0]&0xf8)>>3) | ((((uint8_t*)(p))[1]     )<<5) | ((((uint
+  58:include/ubtbr/bb.h **** #define EXTRACT15_4(p) ( ((((uint8_t*)(p))[0]&0xf0)>>4) | ((((uint8_t*)(p))[1]     )<<4) | ((((uint
+  59:include/ubtbr/bb.h **** #define EXTRACT15_5(p) ( ((((uint8_t*)(p))[0]&0xe0)>>5) | ((((uint8_t*)(p))[1]     )<<3) | ((((uint
+  60:include/ubtbr/bb.h **** #define EXTRACT15_6(p) ( ((((uint8_t*)(p))[0]&0xc0)>>6) | ((((uint8_t*)(p))[1]     )<<2) | ((((uint
+  61:include/ubtbr/bb.h **** #define EXTRACT15_7(p) ( ((((uint8_t*)(p))[0]&0x80)>>7) | ((((uint8_t*)(p))[1]     )<<1) | ((((uint
+  62:include/ubtbr/bb.h **** 
+  63:include/ubtbr/bb.h **** // Grab 10 bits from a buffer
+  64:include/ubtbr/bb.h **** #define EXTRACT10_0(p) ( ((((uint8_t*)(p))[0])   ) | ((((uint8_t*)(p))[1]&0x03)<<8) )
+  65:include/ubtbr/bb.h **** #define EXTRACT10_1(p) ( ((((uint8_t*)(p))[0])>>1) | ((((uint8_t*)(p))[1]&0x07)<<7) )
+  66:include/ubtbr/bb.h **** #define EXTRACT10_2(p) ( ((((uint8_t*)(p))[0])>>2) | ((((uint8_t*)(p))[1]&0x0f)<<6) )
+  67:include/ubtbr/bb.h **** #define EXTRACT10_3(p) ( ((((uint8_t*)(p))[0])>>3) | ((((uint8_t*)(p))[1]&0x1f)<<5) )
+  68:include/ubtbr/bb.h **** #define EXTRACT10_4(p) ( ((((uint8_t*)(p))[0])>>4) | ((((uint8_t*)(p))[1]&0x3f)<<4) )
+  69:include/ubtbr/bb.h **** #define EXTRACT10_5(p) ( ((((uint8_t*)(p))[0])>>5) | ((((uint8_t*)(p))[1]&0x7f)<<3) )
+  70:include/ubtbr/bb.h **** #define EXTRACT10_6(p) ( ((((uint8_t*)(p))[0])>>6) | ((((uint8_t*)(p))[1]     )<<2) )
+  71:include/ubtbr/bb.h **** #define EXTRACT10_7(p) ( ((((uint8_t*)(p))[0])>>7) | ((((uint8_t*)(p))[1]     )<<1) | ((((uint8_t*)
+  72:include/ubtbr/bb.h **** 
+  73:include/ubtbr/bb.h **** // Encode 10 bytes in buffer (warning: buffer must be zeroed)
+  74:include/ubtbr/bb.h **** #define ENCODE15_0(p,val)  (((uint8_t*)(p))[0] =((val)   ),((uint8_t*)(p))[1]=((val)>>8))
+  75:include/ubtbr/bb.h **** #define ENCODE15_1(p,val)  (((uint8_t*)(p))[0]|=((val)<<1),((uint8_t*)(p))[1]=((val)>>7))
+  76:include/ubtbr/bb.h **** #define ENCODE15_2(p,val)  (((uint8_t*)(p))[0]|=((val)<<2),((uint8_t*)(p))[1]=((val)>>6),((uint8_t*
+  77:include/ubtbr/bb.h **** #define ENCODE15_3(p,val)  (((uint8_t*)(p))[0]|=((val)<<3),((uint8_t*)(p))[1]=((val)>>5),((uint8_t*
+  78:include/ubtbr/bb.h **** #define ENCODE15_4(p,val)  (((uint8_t*)(p))[0]|=((val)<<4),((uint8_t*)(p))[1]=((val)>>4),((uint8_t*
+  79:include/ubtbr/bb.h **** #define ENCODE15_5(p,val)  (((uint8_t*)(p))[0]|=((val)<<5),((uint8_t*)(p))[1]=((val)>>3),((uint8_t*
+  80:include/ubtbr/bb.h **** #define ENCODE15_6(p,val)  (((uint8_t*)(p))[0]|=((val)<<6),((uint8_t*)(p))[1]=((val)>>2),((uint8_t*
+  81:include/ubtbr/bb.h **** #define ENCODE15_7(p,val)  (((uint8_t*)(p))[0]|=((val)<<7),((uint8_t*)(p))[1]=((val)>>1),((uint8_t*
+  82:include/ubtbr/bb.h **** 
+  83:include/ubtbr/bb.h **** // warning: buffer must be zeroed
+  84:include/ubtbr/bb.h **** #define ENCODE10_0(p,val)  (((uint8_t*)(p))[0] =((val)   ),((uint8_t*)(p))[1]=((val)>>8))
+  85:include/ubtbr/bb.h **** #define ENCODE10_1(p,val)  (((uint8_t*)(p))[0]|=((val)<<1),((uint8_t*)(p))[1]=((val)>>7))
+  86:include/ubtbr/bb.h **** #define ENCODE10_2(p,val)  (((uint8_t*)(p))[0]|=((val)<<2),((uint8_t*)(p))[1]=((val)>>6))
+  87:include/ubtbr/bb.h **** #define ENCODE10_3(p,val)  (((uint8_t*)(p))[0]|=((val)<<3),((uint8_t*)(p))[1]=((val)>>5))
+  88:include/ubtbr/bb.h **** #define ENCODE10_4(p,val)  (((uint8_t*)(p))[0]|=((val)<<4),((uint8_t*)(p))[1]=((val)>>4))
+  89:include/ubtbr/bb.h **** #define ENCODE10_5(p,val)  (((uint8_t*)(p))[0]|=((val)<<5),((uint8_t*)(p))[1]=((val)>>3))
+  90:include/ubtbr/bb.h **** #define ENCODE10_6(p,val)  (((uint8_t*)(p))[0]|=((val)<<6),((uint8_t*)(p))[1]=((val)>>2))
+  91:include/ubtbr/bb.h **** #define ENCODE10_7(p,val)  (((uint8_t*)(p))[0]|=((val)<<7),((uint8_t*)(p))[1]=((val)>>1),((uint8_t*
+  92:include/ubtbr/bb.h **** 
+  93:include/ubtbr/bb.h **** #define ENCODE24_0(p,val)  (((uint8_t*)(p))[0] =((val)   ),((uint8_t*)(p))[1]=(val)>>8,((uint8_t*)(
+  94:include/ubtbr/bb.h **** #define ENCODE24_2(p,val)  (((uint8_t*)(p))[0]|=((val)<<2),((uint8_t*)(p))[1]=(val)>>6,((uint8_t*)(
+  95:include/ubtbr/bb.h **** #define ENCODE24_4(p,val)  (((uint8_t*)(p))[0]|=((val)<<4),((uint8_t*)(p))[1]=(val)>>4,((uint8_t*)(
+  96:include/ubtbr/bb.h **** #define ENCODE24_6(p,val)  (((uint8_t*)(p))[0]|=((val)<<6),((uint8_t*)(p))[1]=(val)>>2,((uint8_t*)(
+  97:include/ubtbr/bb.h **** 
+  98:include/ubtbr/bb.h **** #define BYTE_ALIGN(nbits)	(((nbits)+7)>>3)
+  99:include/ubtbr/bb.h **** 
+ 100:include/ubtbr/bb.h **** static inline uint8_t reverse8(uint8_t data)
+ 101:include/ubtbr/bb.h **** {
+ 102:include/ubtbr/bb.h **** 	extern const uint8_t rev8_map[256];
+ 103:include/ubtbr/bb.h ****         return rev8_map[data];
+ARM GAS  /tmp/ccekfF7I.s 			page 6
+
+
+ 104:include/ubtbr/bb.h **** }
+ 105:include/ubtbr/bb.h **** static inline uint16_t reverse16(uint16_t data)
+ 106:include/ubtbr/bb.h **** {
+ 107:include/ubtbr/bb.h ****         return (uint16_t)reverse8(data>>8) | (uint16_t)(reverse8(data&0xff)<<8);
+ 108:include/ubtbr/bb.h **** }
+ 109:include/ubtbr/bb.h **** static inline uint32_t reverse32(uint32_t data)
+ 110:include/ubtbr/bb.h **** {
+ 111:include/ubtbr/bb.h ****         return (uint32_t)reverse16(data>>16)|((uint32_t)reverse16(data&0xffff)<<16);
+ 112:include/ubtbr/bb.h **** }
+ 113:include/ubtbr/bb.h **** 
+ 114:include/ubtbr/bb.h **** #ifdef DEBUG_CODE
+ 115:include/ubtbr/bb.h **** /* Debug helpers */
+ 116:include/ubtbr/bb.h **** void print_hex(uint8_t *pkt, unsigned size);
+ 117:include/ubtbr/bb.h **** uint8_t *pack_chars(char *src, unsigned *size);
+ 118:include/ubtbr/bb.h **** void unfec13_precal(void);
+ 119:include/ubtbr/bb.h **** void hec_precal(void);
+ 120:include/ubtbr/bb.h **** void fec13_slow(uint8_t *out, uint8_t *in, uint8_t nbits);
+ 121:include/ubtbr/bb.h **** void whiten_precal_st(void);
+ 122:include/ubtbr/bb.h **** void whiten_precal_word(void);
+ 123:include/ubtbr/bb.h **** void fec13_precal(void);
+ 124:include/ubtbr/bb.h **** void fec23_precal(void);
+ 125:include/ubtbr/bb.h **** void crc_precal(void);
+ 126:include/ubtbr/bb.h **** 
+ 127:include/ubtbr/bb.h **** /* Bitstream utilities */
+ 128:include/ubtbr/bb.h **** static inline uint8_t get_bit(const uint8_t *p, unsigned idx)
+ 129:include/ubtbr/bb.h **** {
+ 130:include/ubtbr/bb.h **** 	return 1 & (p[idx>>3]>>(idx&7));
+ 131:include/ubtbr/bb.h **** }
+ 132:include/ubtbr/bb.h **** static inline void set_bit(uint8_t *p, unsigned idx, unsigned val)
+ 133:include/ubtbr/bb.h **** {
+ 134:include/ubtbr/bb.h **** 	unsigned bi = idx&7;
+ 135:include/ubtbr/bb.h **** 
+ 136:include/ubtbr/bb.h **** 	p[idx>>3] &= ~(1<<bi);
+ 137:include/ubtbr/bb.h **** 	p[idx>>3] |= ((1&val)<<bi);
+ 138:include/ubtbr/bb.h **** }
+ 139:include/ubtbr/bb.h **** #endif
+ 140:include/ubtbr/bb.h **** 
+ 141:include/ubtbr/bb.h **** /* HEC / CRC */
+ 142:include/ubtbr/bb.h **** static inline uint8_t hec_compute(uint16_t data, uint8_t hec) 
+ 143:include/ubtbr/bb.h **** {
+ 144:include/ubtbr/bb.h **** 	extern const uint8_t hec_tbl[32];
+ 145:include/ubtbr/bb.h **** 
+ 146:include/ubtbr/bb.h **** 	hec = reverse8(hec);
+ 147:include/ubtbr/bb.h **** #if 1
+ 148:include/ubtbr/bb.h **** 	hec = (hec>>5) ^ hec_tbl[(data^hec)&0x1f];
+ 149:include/ubtbr/bb.h **** 	hec = (hec>>5) ^ hec_tbl[((data>>5)^hec)&0x1f];
+ 150:include/ubtbr/bb.h **** #else
+ 151:include/ubtbr/bb.h **** 	/* slow version */
+ 152:include/ubtbr/bb.h **** 	int i;
+ 153:include/ubtbr/bb.h **** 	uint8_t b;
+ 154:include/ubtbr/bb.h **** 	for (i=0;i<10;i++){
+ 155:include/ubtbr/bb.h **** 		b = 1&(data^hec);
+ 156:include/ubtbr/bb.h **** 		data>>=1;	
+ 157:include/ubtbr/bb.h **** 		hec>>=1;
+ 158:include/ubtbr/bb.h **** 		if (b)
+ 159:include/ubtbr/bb.h **** 			hec ^= 0xe5;
+ 160:include/ubtbr/bb.h **** 	}
+ARM GAS  /tmp/ccekfF7I.s 			page 7
+
+
+ 161:include/ubtbr/bb.h **** #endif
+ 162:include/ubtbr/bb.h **** 	return hec;
+ 163:include/ubtbr/bb.h **** }
+ 164:include/ubtbr/bb.h **** 
+ 165:include/ubtbr/bb.h **** static inline uint16_t crc_compute(const uint8_t *in, unsigned nbytes, uint16_t crc)
+ 166:include/ubtbr/bb.h **** {
+ 167:include/ubtbr/bb.h **** 	extern const uint16_t crc_tbl[256];
+ 168:include/ubtbr/bb.h **** 	uint16_t i;
+ 169:include/ubtbr/bb.h **** 
+ 170:include/ubtbr/bb.h **** 	for(i = 0; i < nbytes; i++)
+ 171:include/ubtbr/bb.h **** 	{
+ 172:include/ubtbr/bb.h **** 		crc = (crc>>8) ^ crc_tbl[0xff & (in[i]^crc)];
+ 173:include/ubtbr/bb.h **** 	}
+ 174:include/ubtbr/bb.h **** 	return crc;
+ 175:include/ubtbr/bb.h **** }
+ 176:include/ubtbr/bb.h **** 
+ 177:include/ubtbr/bb.h **** /* Fast function to unfec13 the packet header  
+ 178:include/ubtbr/bb.h ****  * in: 18*3bits = 9*6lut = 54 syms, out: 18 bits;
+ 179:include/ubtbr/bb.h ****  * starts at 68: 8/4
+ 180:include/ubtbr/bb.h ****  */
+ 181:include/ubtbr/bb.h **** static inline int unfec13_hdr(uint8_t *out, uint8_t *pkt_data)
+  60              		.loc 2 181 19 view .LVU7
+  61              	.LBB39:
+ 182:include/ubtbr/bb.h **** {
+ 183:include/ubtbr/bb.h **** 	extern const uint16_t unfec13_tbl[64];
+  62              		.loc 2 183 2 view .LVU8
+ 184:include/ubtbr/bb.h **** 	uint32_t v0, v1, v2, v3, v4, v5, v6,v7,v8;
+  63              		.loc 2 184 2 view .LVU9
+ 185:include/ubtbr/bb.h **** 	/* Skip 4 bits of trailer */
+ 186:include/ubtbr/bb.h **** 	uint8_t *in = pkt_data;
+  64              		.loc 2 186 2 view .LVU10
+ 187:include/ubtbr/bb.h **** 
+ 188:include/ubtbr/bb.h **** 	/* 9 lut accesses */
+ 189:include/ubtbr/bb.h **** 	v0 = unfec13_tbl[EXTRACT6_4(in+0)]; 	// b0
+  65              		.loc 2 189 2 view .LVU11
+  66              		.loc 2 189 19 is_stmt 0 view .LVU12
+  67 0006 92F801E0 		ldrb	lr, [r2, #1]	@ zero_extendqisi2
+  68              		.loc 2 189 18 view .LVU13
+  69 000a 5F4E     		ldr	r6, .L13
+ 190:include/ubtbr/bb.h **** 	v1 = unfec13_tbl[EXTRACT6_2(in+1)];	// b1
+ 191:include/ubtbr/bb.h **** 	v2 = unfec13_tbl[EXTRACT6_0(in+2)]; 	// b2
+ 192:include/ubtbr/bb.h **** 	v3 = unfec13_tbl[EXTRACT6_6(in+2)];	
+ 193:include/ubtbr/bb.h **** 	v4 = unfec13_tbl[EXTRACT6_4(in+3)];	// b3
+  70              		.loc 2 193 19 view .LVU14
+  71 000c 1779     		ldrb	r7, [r2, #4]	@ zero_extendqisi2
+ 190:include/ubtbr/bb.h **** 	v1 = unfec13_tbl[EXTRACT6_2(in+1)];	// b1
+  72              		.loc 2 190 19 view .LVU15
+  73 000e 4FEA9E05 		lsr	r5, lr, #2
+ 190:include/ubtbr/bb.h **** 	v1 = unfec13_tbl[EXTRACT6_2(in+1)];	// b1
+  74              		.loc 2 190 18 view .LVU16
+  75 0012 36F815A0 		ldrh	r10, [r6, r5, lsl #1]
+ 194:include/ubtbr/bb.h **** 	v5 = unfec13_tbl[EXTRACT6_2(in+4)];	// b4
+  76              		.loc 2 194 19 view .LVU17
+  77 0016 BD08     		lsrs	r5, r7, #2
+ 193:include/ubtbr/bb.h **** 	v5 = unfec13_tbl[EXTRACT6_2(in+4)];	// b4
+  78              		.loc 2 193 19 view .LVU18
+  79 0018 3F01     		lsls	r7, r7, #4
+ARM GAS  /tmp/ccekfF7I.s 			page 8
+
+
+  80 001a 07F03007 		and	r7, r7, #48
+  81              	.LBE39:
+  82              	.LBE38:
+ 114:src/codec/codec.c **** 	int be;
+  83              		.loc 1 114 1 view .LVU19
+  84 001e 0191     		str	r1, [sp, #4]
+  85              	.LBB42:
+  86              	.LBB40:
+ 193:include/ubtbr/bb.h **** 	v5 = unfec13_tbl[EXTRACT6_2(in+4)];	// b4
+  87              		.loc 2 193 19 view .LVU20
+  88 0020 3946     		mov	r1, r7
+  89              	.LVL2:
+ 191:include/ubtbr/bb.h **** 	v3 = unfec13_tbl[EXTRACT6_6(in+2)];	
+  90              		.loc 2 191 19 view .LVU21
+  91 0022 92F802B0 		ldrb	fp, [r2, #2]	@ zero_extendqisi2
+ 192:include/ubtbr/bb.h **** 	v4 = unfec13_tbl[EXTRACT6_4(in+3)];	// b3
+  92              		.loc 2 192 19 view .LVU22
+  93 0026 92F803C0 		ldrb	ip, [r2, #3]	@ zero_extendqisi2
+ 195:include/ubtbr/bb.h **** 	v6 = unfec13_tbl[EXTRACT6_0(in+5)];	// b5
+  94              		.loc 2 195 19 view .LVU23
+  95 002a 92F80590 		ldrb	r9, [r2, #5]	@ zero_extendqisi2
+ 191:include/ubtbr/bb.h **** 	v3 = unfec13_tbl[EXTRACT6_6(in+2)];	
+  96              		.loc 2 191 19 view .LVU24
+  97 002e 0BF03F04 		and	r4, fp, #63
+ 192:include/ubtbr/bb.h **** 	v4 = unfec13_tbl[EXTRACT6_4(in+3)];	// b3
+  98              		.loc 2 192 19 view .LVU25
+  99 0032 4FEA8C07 		lsl	r7, ip, #2
+ 189:include/ubtbr/bb.h **** 	v1 = unfec13_tbl[EXTRACT6_2(in+1)];	// b1
+ 100              		.loc 2 189 19 view .LVU26
+ 101 0036 1378     		ldrb	r3, [r2]	@ zero_extendqisi2
+ 191:include/ubtbr/bb.h **** 	v3 = unfec13_tbl[EXTRACT6_6(in+2)];	
+ 102              		.loc 2 191 18 view .LVU27
+ 103 0038 36F81440 		ldrh	r4, [r6, r4, lsl #1]
+ 189:include/ubtbr/bb.h **** 	v1 = unfec13_tbl[EXTRACT6_2(in+1)];	// b1
+ 104              		.loc 2 189 19 view .LVU28
+ 105 003c 4FEA0E1E 		lsl	lr, lr, #4
+ 192:include/ubtbr/bb.h **** 	v4 = unfec13_tbl[EXTRACT6_4(in+3)];	// b3
+ 106              		.loc 2 192 19 view .LVU29
+ 107 0040 07F03C07 		and	r7, r7, #60
+ 194:include/ubtbr/bb.h **** 	v6 = unfec13_tbl[EXTRACT6_0(in+5)];	// b5
+ 108              		.loc 2 194 18 view .LVU30
+ 109 0044 36F81580 		ldrh	r8, [r6, r5, lsl #1]
+ 192:include/ubtbr/bb.h **** 	v4 = unfec13_tbl[EXTRACT6_4(in+3)];	// b3
+ 110              		.loc 2 192 19 view .LVU31
+ 111 0048 47EA9B17 		orr	r7, r7, fp, lsr #6
+ 112              		.loc 2 195 19 view .LVU32
+ 113 004c 09F03F05 		and	r5, r9, #63
+ 196:include/ubtbr/bb.h **** 	v7 = unfec13_tbl[EXTRACT6_6(in+5)];	// 
+ 114              		.loc 2 196 19 view .LVU33
+ 115 0050 92F806B0 		ldrb	fp, [r2, #6]	@ zero_extendqisi2
+ 189:include/ubtbr/bb.h **** 	v1 = unfec13_tbl[EXTRACT6_2(in+1)];	// b1
+ 116              		.loc 2 189 19 view .LVU34
+ 117 0054 0EF0300E 		and	lr, lr, #48
+ 195:include/ubtbr/bb.h **** 	v7 = unfec13_tbl[EXTRACT6_6(in+5)];	// 
+ 118              		.loc 2 195 18 view .LVU35
+ 119 0058 36F81550 		ldrh	r5, [r6, r5, lsl #1]
+ 189:include/ubtbr/bb.h **** 	v1 = unfec13_tbl[EXTRACT6_2(in+1)];	// b1
+ARM GAS  /tmp/ccekfF7I.s 			page 9
+
+
+ 120              		.loc 2 189 19 view .LVU36
+ 121 005c 4EEA131E 		orr	lr, lr, r3, lsr #4
+ 197:include/ubtbr/bb.h **** 	v8 = unfec13_tbl[EXTRACT6_4(in+6)]; 	// b6
+ 122              		.loc 2 197 19 view .LVU37
+ 123 0060 D279     		ldrb	r2, [r2, #7]	@ zero_extendqisi2
+ 124              	.LVL3:
+ 198:include/ubtbr/bb.h **** 
+ 199:include/ubtbr/bb.h **** 	out[0] = v0|(v1<<2)|(v2<<4)|(v3<<6);
+ 200:include/ubtbr/bb.h **** 	out[1] = v4|(v5<<2)|(v6<<4)|(v7<<6);
+ 201:include/ubtbr/bb.h **** 	out[2] = v8;
+ 202:include/ubtbr/bb.h **** 	
+ 203:include/ubtbr/bb.h **** 	// bit error
+ 204:include/ubtbr/bb.h **** 	return (v0+v1+v2+v3+v4+v5+v6+v7+v8)>>14;
+ 125              		.loc 2 204 27 view .LVU38
+ 126 0062 0AEB0403 		add	r3, r10, r4
+ 199:include/ubtbr/bb.h **** 	out[1] = v4|(v5<<2)|(v6<<4)|(v7<<6);
+ 127              		.loc 2 199 25 view .LVU39
+ 128 0066 2401     		lsls	r4, r4, #4
+ 199:include/ubtbr/bb.h **** 	out[1] = v4|(v5<<2)|(v6<<4)|(v7<<6);
+ 129              		.loc 2 199 21 view .LVU40
+ 130 0068 44EA8A04 		orr	r4, r4, r10, lsl #2
+ 189:include/ubtbr/bb.h **** 	v1 = unfec13_tbl[EXTRACT6_2(in+1)];	// b1
+ 131              		.loc 2 189 18 view .LVU41
+ 132 006c 36F81EE0 		ldrh	lr, [r6, lr, lsl #1]
+ 133              	.LVL4:
+ 190:include/ubtbr/bb.h **** 	v2 = unfec13_tbl[EXTRACT6_0(in+2)]; 	// b2
+ 134              		.loc 2 190 2 is_stmt 1 view .LVU42
+ 191:include/ubtbr/bb.h **** 	v3 = unfec13_tbl[EXTRACT6_6(in+2)];	
+ 135              		.loc 2 191 2 view .LVU43
+ 192:include/ubtbr/bb.h **** 	v4 = unfec13_tbl[EXTRACT6_4(in+3)];	// b3
+ 136              		.loc 2 192 2 view .LVU44
+ 137              		.loc 2 204 27 is_stmt 0 view .LVU45
+ 138 0070 4344     		add	r3, r3, r8
+ 196:include/ubtbr/bb.h **** 	v8 = unfec13_tbl[EXTRACT6_4(in+6)]; 	// b6
+ 139              		.loc 2 196 19 view .LVU46
+ 140 0072 4FEA8B0A 		lsl	r10, fp, #2
+ 141              	.LVL5:
+ 192:include/ubtbr/bb.h **** 	v4 = unfec13_tbl[EXTRACT6_4(in+3)];	// b3
+ 142              		.loc 2 192 18 view .LVU47
+ 143 0076 36F81770 		ldrh	r7, [r6, r7, lsl #1]
+ 144              	.LVL6:
+ 193:include/ubtbr/bb.h **** 	v5 = unfec13_tbl[EXTRACT6_2(in+4)];	// b4
+ 145              		.loc 2 193 2 is_stmt 1 view .LVU48
+ 146              		.loc 2 204 27 is_stmt 0 view .LVU49
+ 147 007a 2B44     		add	r3, r3, r5
+ 193:include/ubtbr/bb.h **** 	v5 = unfec13_tbl[EXTRACT6_2(in+4)];	// b4
+ 148              		.loc 2 193 19 view .LVU50
+ 149 007c 41EA1C1C 		orr	ip, r1, ip, lsr #4
+ 197:include/ubtbr/bb.h **** 
+ 150              		.loc 2 197 19 view .LVU51
+ 151 0080 1201     		lsls	r2, r2, #4
+ 196:include/ubtbr/bb.h **** 	v8 = unfec13_tbl[EXTRACT6_4(in+6)]; 	// b6
+ 152              		.loc 2 196 19 view .LVU52
+ 153 0082 0AF03C0A 		and	r10, r10, #60
+ 193:include/ubtbr/bb.h **** 	v5 = unfec13_tbl[EXTRACT6_2(in+4)];	// b4
+ 154              		.loc 2 193 18 view .LVU53
+ 155 0086 36F81CC0 		ldrh	ip, [r6, ip, lsl #1]
+ARM GAS  /tmp/ccekfF7I.s 			page 10
+
+
+ 156              		.loc 2 204 27 view .LVU54
+ 157 008a 7344     		add	r3, r3, lr
+ 158              	.LVL7:
+ 194:include/ubtbr/bb.h **** 	v6 = unfec13_tbl[EXTRACT6_0(in+5)];	// b5
+ 159              		.loc 2 194 2 is_stmt 1 view .LVU55
+ 195:include/ubtbr/bb.h **** 	v7 = unfec13_tbl[EXTRACT6_6(in+5)];	// 
+ 160              		.loc 2 195 2 view .LVU56
+ 196:include/ubtbr/bb.h **** 	v8 = unfec13_tbl[EXTRACT6_4(in+6)]; 	// b6
+ 161              		.loc 2 196 2 view .LVU57
+ 197:include/ubtbr/bb.h **** 
+ 162              		.loc 2 197 19 is_stmt 0 view .LVU58
+ 163 008c 02F03002 		and	r2, r2, #48
+ 200:include/ubtbr/bb.h **** 	out[2] = v8;
+ 164              		.loc 2 200 25 view .LVU59
+ 165 0090 2D01     		lsls	r5, r5, #4
+ 166              	.LVL8:
+ 196:include/ubtbr/bb.h **** 	v8 = unfec13_tbl[EXTRACT6_4(in+6)]; 	// b6
+ 167              		.loc 2 196 19 view .LVU60
+ 168 0092 4AEA9919 		orr	r9, r10, r9, lsr #6
+ 169              	.LVL9:
+ 200:include/ubtbr/bb.h **** 	out[2] = v8;
+ 170              		.loc 2 200 21 view .LVU61
+ 171 0096 45EA8805 		orr	r5, r5, r8, lsl #2
+ 172              		.loc 2 204 27 view .LVU62
+ 173 009a 3B44     		add	r3, r3, r7
+ 196:include/ubtbr/bb.h **** 	v8 = unfec13_tbl[EXTRACT6_4(in+6)]; 	// b6
+ 174              		.loc 2 196 18 view .LVU63
+ 175 009c 36F81980 		ldrh	r8, [r6, r9, lsl #1]
+ 176              	.LVL10:
+ 197:include/ubtbr/bb.h **** 
+ 177              		.loc 2 197 2 is_stmt 1 view .LVU64
+ 197:include/ubtbr/bb.h **** 
+ 178              		.loc 2 197 19 is_stmt 0 view .LVU65
+ 179 00a0 42EA1B1B 		orr	fp, r2, fp, lsr #4
+ 180              		.loc 2 204 27 view .LVU66
+ 181 00a4 03EB0C02 		add	r2, r3, ip
+ 197:include/ubtbr/bb.h **** 
+ 182              		.loc 2 197 18 view .LVU67
+ 183 00a8 36F81B30 		ldrh	r3, [r6, fp, lsl #1]
+ 184              	.LVL11:
+ 199:include/ubtbr/bb.h **** 	out[1] = v4|(v5<<2)|(v6<<4)|(v7<<6);
+ 185              		.loc 2 199 2 is_stmt 1 view .LVU68
+ 199:include/ubtbr/bb.h **** 	out[1] = v4|(v5<<2)|(v6<<4)|(v7<<6);
+ 186              		.loc 2 199 21 is_stmt 0 view .LVU69
+ 187 00ac 44EA0E0E 		orr	lr, r4, lr
+ 188              	.LVL12:
+ 200:include/ubtbr/bb.h **** 	out[2] = v8;
+ 189              		.loc 2 200 21 view .LVU70
+ 190 00b0 45EA0C0C 		orr	ip, r5, ip
+ 191              	.LVL13:
+ 192              		.loc 2 204 30 view .LVU71
+ 193 00b4 4244     		add	r2, r2, r8
+ 199:include/ubtbr/bb.h **** 	out[1] = v4|(v5<<2)|(v6<<4)|(v7<<6);
+ 194              		.loc 2 199 29 view .LVU72
+ 195 00b6 4EEA8717 		orr	r7, lr, r7, lsl #6
+ 196              	.LVL14:
+ 197              		.loc 2 204 33 view .LVU73
+ARM GAS  /tmp/ccekfF7I.s 			page 11
+
+
+ 198 00ba 1A44     		add	r2, r2, r3
+ 200:include/ubtbr/bb.h **** 	out[2] = v8;
+ 199              		.loc 2 200 29 view .LVU74
+ 200 00bc 4CEA881E 		orr	lr, ip, r8, lsl #6
+ 199:include/ubtbr/bb.h **** 	out[1] = v4|(v5<<2)|(v6<<4)|(v7<<6);
+ 201              		.loc 2 199 29 view .LVU75
+ 202 00c0 FFB2     		uxtb	r7, r7
+ 200:include/ubtbr/bb.h **** 	out[2] = v8;
+ 203              		.loc 2 200 29 view .LVU76
+ 204 00c2 5FFA8EFC 		uxtb	ip, lr
+ 201:include/ubtbr/bb.h **** 	
+ 205              		.loc 2 201 9 view .LVU77
+ 206 00c6 DBB2     		uxtb	r3, r3
+ 207              	.LVL15:
+ 201:include/ubtbr/bb.h **** 	
+ 208              		.loc 2 201 9 view .LVU78
+ 209              	.LBE40:
+ 210              	.LBE42:
+ 122:src/codec/codec.c **** 	if (be>3)
+ 211              		.loc 1 122 5 view .LVU79
+ 212 00c8 B2F5803F 		cmp	r2, #65536
+ 114:src/codec/codec.c **** 	int be;
+ 213              		.loc 1 114 1 view .LVU80
+ 214 00cc 0446     		mov	r4, r0
+ 215 00ce 019D     		ldr	r5, [sp, #4]
+ 216              	.LBB43:
+ 217              	.LBB41:
+ 199:include/ubtbr/bb.h **** 	out[1] = v4|(v5<<2)|(v6<<4)|(v7<<6);
+ 218              		.loc 2 199 9 view .LVU81
+ 219 00d0 8DF80C70 		strb	r7, [sp, #12]
+ 200:include/ubtbr/bb.h **** 	out[2] = v8;
+ 220              		.loc 2 200 2 is_stmt 1 view .LVU82
+ 200:include/ubtbr/bb.h **** 	out[2] = v8;
+ 221              		.loc 2 200 9 is_stmt 0 view .LVU83
+ 222 00d4 8DF80DC0 		strb	ip, [sp, #13]
+ 201:include/ubtbr/bb.h **** 	
+ 223              		.loc 2 201 2 is_stmt 1 view .LVU84
+ 201:include/ubtbr/bb.h **** 	
+ 224              		.loc 2 201 9 is_stmt 0 view .LVU85
+ 225 00d8 8DF80E30 		strb	r3, [sp, #14]
+ 226              		.loc 2 204 2 is_stmt 1 view .LVU86
+ 227              	.LVL16:
+ 228              		.loc 2 204 2 is_stmt 0 view .LVU87
+ 229              	.LBE41:
+ 230              	.LBE43:
+ 231              		.loc 1 122 2 is_stmt 1 view .LVU88
+ 232              		.loc 1 122 5 is_stmt 0 view .LVU89
+ 233 00dc 51D2     		bcs	.L5
+ 123:src/codec/codec.c **** 	{
+ 124:src/codec/codec.c **** 		BB_DEBUG("(hdr be: %d)", be);
+ 125:src/codec/codec.c **** 		return -1;
+ 126:src/codec/codec.c **** 	}
+ 127:src/codec/codec.c **** 
+ 128:src/codec/codec.c **** 	/* Unwhiten header */
+ 129:src/codec/codec.c **** 	if (codec->use_whiten)
+ 234              		.loc 1 129 2 is_stmt 1 view .LVU90
+ 235              		.loc 1 129 5 is_stmt 0 view .LVU91
+ARM GAS  /tmp/ccekfF7I.s 			page 12
+
+
+ 236 00de 4268     		ldr	r2, [r0, #4]
+ 237 00e0 002A     		cmp	r2, #0
+ 238 00e2 38D1     		bne	.L11
+ 239              	.LVL17:
+ 240              	.L4:
+ 130:src/codec/codec.c **** 		bbcodec_unwhiten(&codec->whiten_state, hdr_bytes, hdr_bytes, 18);
+ 131:src/codec/codec.c **** 
+ 132:src/codec/codec.c **** 	/* Decode header */
+ 133:src/codec/codec.c **** 	h32 = hdr_bytes[0]|((uint32_t)hdr_bytes[1]<<8)|((uint32_t)hdr_bytes[2]<<16);
+ 241              		.loc 1 133 2 is_stmt 1 view .LVU92
+ 242              		.loc 1 133 72 is_stmt 0 view .LVU93
+ 243 00e4 4FEA034E 		lsl	lr, r3, #16
+ 244              		.loc 1 133 6 view .LVU94
+ 245 00e8 4EEA0C2E 		orr	lr, lr, ip, lsl #8
+ 246 00ec 4EEA070E 		orr	lr, lr, r7
+ 247              	.LVL18:
+ 134:src/codec/codec.c **** 	hdr_data = h32&0x3ff;
+ 248              		.loc 1 134 2 is_stmt 1 view .LVU95
+ 135:src/codec/codec.c **** 	out_hdr->hec =(h32>>10);
+ 249              		.loc 1 135 15 is_stmt 0 view .LVU96
+ 250 00f0 CEF38726 		ubfx	r6, lr, #10, #8
+ 136:src/codec/codec.c **** 	out_hdr->lt_addr = hdr_data & 7;
+ 251              		.loc 1 136 30 view .LVU97
+ 252 00f4 0EF00702 		and	r2, lr, #7
+ 137:src/codec/codec.c **** 	out_hdr->type   = (hdr_data>>3) & 0xf;
+ 138:src/codec/codec.c **** 	out_hdr->flags  = (hdr_data>>7) & 7;
+ 253              		.loc 1 138 29 view .LVU98
+ 254 00f8 CEF3C213 		ubfx	r3, lr, #7, #3
+ 137:src/codec/codec.c **** 	out_hdr->type   = (hdr_data>>3) & 0xf;
+ 255              		.loc 1 137 34 view .LVU99
+ 256 00fc CEF3C301 		ubfx	r1, lr, #3, #4
+ 136:src/codec/codec.c **** 	out_hdr->lt_addr = hdr_data & 7;
+ 257              		.loc 1 136 19 view .LVU100
+ 258 0100 2A70     		strb	r2, [r5]
+ 135:src/codec/codec.c **** 	out_hdr->lt_addr = hdr_data & 7;
+ 259              		.loc 1 135 15 view .LVU101
+ 260 0102 EE70     		strb	r6, [r5, #3]
+ 137:src/codec/codec.c **** 	out_hdr->type   = (hdr_data>>3) & 0xf;
+ 261              		.loc 1 137 18 view .LVU102
+ 262 0104 6970     		strb	r1, [r5, #1]
+ 263              		.loc 1 138 34 view .LVU103
+ 264 0106 AB70     		strb	r3, [r5, #2]
+ 265              	.LBB44:
+ 266              	.LBB45:
+ 267              	.LBB46:
+ 268              	.LBB47:
+ 103:include/ubtbr/bb.h **** }
+ 269              		.loc 2 103 24 view .LVU104
+ 270 0108 2378     		ldrb	r3, [r4]	@ zero_extendqisi2
+ 271 010a 204A     		ldr	r2, .L13+4
+ 272              	.LBE47:
+ 273              	.LBE46:
+ 274              	.LBE45:
+ 275              	.LBE44:
+ 134:src/codec/codec.c **** 	out_hdr->hec =(h32>>10);
+ 276              		.loc 1 134 11 view .LVU105
+ 277 010c CEF3090E 		ubfx	lr, lr, #0, #10
+ARM GAS  /tmp/ccekfF7I.s 			page 13
+
+
+ 278              	.LVL19:
+ 135:src/codec/codec.c **** 	out_hdr->lt_addr = hdr_data & 7;
+ 279              		.loc 1 135 2 is_stmt 1 view .LVU106
+ 136:src/codec/codec.c **** 	out_hdr->type   = (hdr_data>>3) & 0xf;
+ 280              		.loc 1 136 2 view .LVU107
+ 137:src/codec/codec.c **** 	out_hdr->flags  = (hdr_data>>7) & 7;
+ 281              		.loc 1 137 2 view .LVU108
+ 282              		.loc 1 138 2 view .LVU109
+ 139:src/codec/codec.c **** 
+ 140:src/codec/codec.c **** 	/* Check HEC */
+ 141:src/codec/codec.c **** 	hec = hec_compute(hdr_data, codec->uap);
+ 283              		.loc 1 141 2 view .LVU110
+ 284              	.LBB52:
+ 285              	.LBI44:
+ 142:include/ubtbr/bb.h **** {
+ 286              		.loc 2 142 23 view .LVU111
+ 287              	.LBB50:
+ 144:include/ubtbr/bb.h **** 
+ 288              		.loc 2 144 2 view .LVU112
+ 146:include/ubtbr/bb.h **** #if 1
+ 289              		.loc 2 146 2 view .LVU113
+ 290              	.LBB49:
+ 291              	.LBI46:
+ 100:include/ubtbr/bb.h **** {
+ 292              		.loc 2 100 23 view .LVU114
+ 293              	.LBB48:
+ 102:include/ubtbr/bb.h ****         return rev8_map[data];
+ 294              		.loc 2 102 2 view .LVU115
+ 103:include/ubtbr/bb.h **** }
+ 295              		.loc 2 103 9 view .LVU116
+ 103:include/ubtbr/bb.h **** }
+ 296              		.loc 2 103 24 is_stmt 0 view .LVU117
+ 297 0110 D05C     		ldrb	r0, [r2, r3]	@ zero_extendqisi2
+ 298              	.LVL20:
+ 103:include/ubtbr/bb.h **** }
+ 299              		.loc 2 103 24 view .LVU118
+ 300              	.LBE48:
+ 301              	.LBE49:
+ 148:include/ubtbr/bb.h **** 	hec = (hec>>5) ^ hec_tbl[((data>>5)^hec)&0x1f];
+ 302              		.loc 2 148 2 is_stmt 1 view .LVU119
+ 148:include/ubtbr/bb.h **** 	hec = (hec>>5) ^ hec_tbl[((data>>5)^hec)&0x1f];
+ 303              		.loc 2 148 26 is_stmt 0 view .LVU120
+ 304 0112 1F4D     		ldr	r5, .L13+8
+ 148:include/ubtbr/bb.h **** 	hec = (hec>>5) ^ hec_tbl[((data>>5)^hec)&0x1f];
+ 305              		.loc 2 148 32 view .LVU121
+ 306 0114 8EEA0002 		eor	r2, lr, r0
+ 148:include/ubtbr/bb.h **** 	hec = (hec>>5) ^ hec_tbl[((data>>5)^hec)&0x1f];
+ 307              		.loc 2 148 37 view .LVU122
+ 308 0118 02F01F02 		and	r2, r2, #31
+ 148:include/ubtbr/bb.h **** 	hec = (hec>>5) ^ hec_tbl[((data>>5)^hec)&0x1f];
+ 309              		.loc 2 148 6 view .LVU123
+ 310 011c AB5C     		ldrb	r3, [r5, r2]	@ zero_extendqisi2
+ 311 011e 83EA5013 		eor	r3, r3, r0, lsr #5
+ 312              	.LVL21:
+ 149:include/ubtbr/bb.h **** #else
+ 313              		.loc 2 149 2 is_stmt 1 view .LVU124
+ 162:include/ubtbr/bb.h **** }
+ARM GAS  /tmp/ccekfF7I.s 			page 14
+
+
+ 314              		.loc 2 162 2 view .LVU125
+ 162:include/ubtbr/bb.h **** }
+ 315              		.loc 2 162 2 is_stmt 0 view .LVU126
+ 316              	.LBE50:
+ 317              	.LBE52:
+ 142:src/codec/codec.c **** 	/* FIXME: Why on earth is the high bit wrong half of the time ? */
+ 143:src/codec/codec.c **** 	if ((hec&0x7f) != (0x7f&out_hdr->hec))
+ 318              		.loc 1 143 2 is_stmt 1 view .LVU127
+ 319              	.LBB53:
+ 320              	.LBB51:
+ 149:include/ubtbr/bb.h **** #else
+ 321              		.loc 2 149 37 is_stmt 0 view .LVU128
+ 322 0122 83EA5E1E 		eor	lr, r3, lr, lsr #5
+ 323              	.LVL22:
+ 149:include/ubtbr/bb.h **** #else
+ 324              		.loc 2 149 42 view .LVU129
+ 325 0126 0EF01F0E 		and	lr, lr, #31
+ 326              	.LBE51:
+ 327              	.LBE53:
+ 328              		.loc 1 143 17 view .LVU130
+ 329 012a 15F80E00 		ldrb	r0, [r5, lr]	@ zero_extendqisi2
+ 330 012e 86EA5313 		eor	r3, r6, r3, lsr #5
+ 331              		.loc 1 143 17 view .LVU131
+ 332 0132 5840     		eors	r0, r0, r3
+ 333              		.loc 1 143 5 view .LVU132
+ 334 0134 10F07F00 		ands	r0, r0, #127
+ 335 0138 23D1     		bne	.L5
+ 144:src/codec/codec.c **** 	{
+ 145:src/codec/codec.c **** 		BB_DEBUG("(heccal %x, pkt %x)", hec, out_hdr->hec);
+ 146:src/codec/codec.c **** 		return -1;
+ 147:src/codec/codec.c **** 	}
+ 148:src/codec/codec.c **** 	codec->air_off_b = 58;
+ 336              		.loc 1 148 2 is_stmt 1 view .LVU133
+ 337              		.loc 1 148 19 is_stmt 0 view .LVU134
+ 338 013a 3A22     		movs	r2, #58
+ 339              	.LBB54:
+ 340              	.LBB55:
+ 103:src/codec/codec.c **** 
+ 341              		.loc 1 103 13 view .LVU135
+ 342 013c 154D     		ldr	r5, .L13+12
+ 103:src/codec/codec.c **** 
+ 343              		.loc 1 103 13 view .LVU136
+ 344 013e 01EB4103 		add	r3, r1, r1, lsl #1
+ 105:src/codec/codec.c **** 	{
+ 345              		.loc 1 105 5 view .LVU137
+ 346 0142 15F81360 		ldrb	r6, [r5, r3, lsl #1]	@ zero_extendqisi2
+ 103:src/codec/codec.c **** 
+ 347              		.loc 1 103 13 view .LVU138
+ 348 0146 05EB4307 		add	r7, r5, r3, lsl #1
+ 103:src/codec/codec.c **** 
+ 349              		.loc 1 103 11 view .LVU139
+ 350 014a 6761     		str	r7, [r4, #20]
+ 351              	.LBE55:
+ 352              	.LBE54:
+ 353              		.loc 1 148 19 view .LVU140
+ 354 014c 6262     		str	r2, [r4, #36]
+ 149:src/codec/codec.c **** 
+ARM GAS  /tmp/ccekfF7I.s 			page 15
+
+
+ 150:src/codec/codec.c **** 	bbcodec_set_payload_type(codec, out_hdr->type);
+ 355              		.loc 1 150 2 is_stmt 1 view .LVU141
+ 356              	.LVL23:
+ 357              	.LBB59:
+ 358              	.LBI54:
+ 100:src/codec/codec.c **** {
+ 359              		.loc 1 100 13 view .LVU142
+ 360              	.LBB56:
+ 103:src/codec/codec.c **** 
+ 361              		.loc 1 103 2 view .LVU143
+ 105:src/codec/codec.c **** 	{
+ 362              		.loc 1 105 2 view .LVU144
+ 105:src/codec/codec.c **** 	{
+ 363              		.loc 1 105 5 is_stmt 0 view .LVU145
+ 364 014e 86B1     		cbz	r6, .L12
+ 365              	.LVL24:
+ 366              	.L1:
+ 105:src/codec/codec.c **** 	{
+ 367              		.loc 1 105 5 view .LVU146
+ 368              	.LBE56:
+ 369              	.LBE59:
+ 151:src/codec/codec.c **** 
+ 152:src/codec/codec.c **** 	return 0;
+ 153:src/codec/codec.c **** }
+ 370              		.loc 1 153 1 view .LVU147
+ 371 0150 05B0     		add	sp, sp, #20
+ 372              		.cfi_remember_state
+ 373              		.cfi_def_cfa_offset 36
+ 374              		@ sp needed
+ 375 0152 BDE8F08F 		pop	{r4, r5, r6, r7, r8, r9, r10, fp, pc}
+ 376              	.LVL25:
+ 377              	.L11:
+ 378              		.cfi_restore_state
+ 130:src/codec/codec.c **** 
+ 379              		.loc 1 130 3 is_stmt 1 view .LVU148
+ 380              	.LBB60:
+ 381              	.LBI60:
+  47:src/codec/codec.c **** {
+ 382              		.loc 1 47 20 view .LVU149
+ 383              	.LBB61:
+  49:src/codec/codec.c **** }
+ 384              		.loc 1 49 2 view .LVU150
+ 385 0156 03A9     		add	r1, sp, #12
+ 386              	.LVL26:
+  49:src/codec/codec.c **** }
+ 387              		.loc 1 49 2 is_stmt 0 view .LVU151
+ 388 0158 04F10C03 		add	r3, r4, #12
+ 389              	.LVL27:
+  49:src/codec/codec.c **** }
+ 390              		.loc 1 49 2 view .LVU152
+ 391 015c 0846     		mov	r0, r1
+ 392              	.LVL28:
+  49:src/codec/codec.c **** }
+ 393              		.loc 1 49 2 view .LVU153
+ 394 015e 1222     		movs	r2, #18
+ 395 0160 FFF7FEFF 		bl	whiten
+ 396              	.LVL29:
+ARM GAS  /tmp/ccekfF7I.s 			page 16
+
+
+  49:src/codec/codec.c **** }
+ 397              		.loc 1 49 2 view .LVU154
+ 398 0164 9DF80C70 		ldrb	r7, [sp, #12]	@ zero_extendqisi2
+ 399 0168 9DF80DC0 		ldrb	ip, [sp, #13]	@ zero_extendqisi2
+ 400 016c 9DF80E30 		ldrb	r3, [sp, #14]	@ zero_extendqisi2
+  50:src/codec/codec.c **** 
+ 401              		.loc 1 50 1 view .LVU155
+ 402 0170 B8E7     		b	.L4
+ 403              	.LVL30:
+ 404              	.L12:
+  50:src/codec/codec.c **** 
+ 405              		.loc 1 50 1 view .LVU156
+ 406              	.LBE61:
+ 407              	.LBE60:
+ 408              	.LBB62:
+ 409              	.LBB57:
+ 107:src/codec/codec.c **** 		/* Fallback to null.. */
+ 410              		.loc 1 107 3 is_stmt 1 view .LVU157
+ 411 0172 0948     		ldr	r0, .L13+16
+ 412 0174 FFF7FEFF 		bl	cprintf
+ 413              	.LVL31:
+ 109:src/codec/codec.c **** 	}
+ 414              		.loc 1 109 3 view .LVU158
+ 415              	.LBE57:
+ 416              	.LBE62:
+ 152:src/codec/codec.c **** }
+ 417              		.loc 1 152 9 is_stmt 0 view .LVU159
+ 418 0178 3046     		mov	r0, r6
+ 419              	.LBB63:
+ 420              	.LBB58:
+ 109:src/codec/codec.c **** 	}
+ 421              		.loc 1 109 12 view .LVU160
+ 422 017a 6561     		str	r5, [r4, #20]
+ 423              	.LBE58:
+ 424              	.LBE63:
+ 425              		.loc 1 153 1 view .LVU161
+ 426 017c 05B0     		add	sp, sp, #20
+ 427              		.cfi_remember_state
+ 428              		.cfi_def_cfa_offset 36
+ 429              		@ sp needed
+ 430 017e BDE8F08F 		pop	{r4, r5, r6, r7, r8, r9, r10, fp, pc}
+ 431              	.LVL32:
+ 432              	.L5:
+ 433              		.cfi_restore_state
+ 125:src/codec/codec.c **** 	}
+ 434              		.loc 1 125 10 view .LVU162
+ 435 0182 4FF0FF30 		mov	r0, #-1
+ 436 0186 E3E7     		b	.L1
+ 437              	.L14:
+ 438              		.align	2
+ 439              	.L13:
+ 440 0188 00000000 		.word	unfec13_tbl
+ 441 018c 00000000 		.word	rev8_map
+ 442 0190 00000000 		.word	hec_tbl
+ 443 0194 00000000 		.word	.LANCHOR0
+ 444 0198 00000000 		.word	.LC0
+ 445              		.cfi_endproc
+ARM GAS  /tmp/ccekfF7I.s 			page 17
+
+
+ 446              	.LFE22:
+ 448              		.section	.rodata.str1.4
+ 449 000d 000000   		.align	2
+ 450              	.LC1:
+ 451 0010 4449457C 		.ascii	"DIE|No payload for type %p\012\012\000"
+ 451      4E6F2070 
+ 451      61796C6F 
+ 451      61642066 
+ 451      6F722074 
+ 452              		.section	.text.bbcodec_encode_header,"ax",%progbits
+ 453              		.align	1
+ 454              		.p2align 2,,3
+ 455              		.global	bbcodec_encode_header
+ 456              		.syntax unified
+ 457              		.thumb
+ 458              		.thumb_func
+ 459              		.fpu softvfp
+ 461              	bbcodec_encode_header:
+ 462              	.LVL33:
+ 463              	.LFB23:
+ 154:src/codec/codec.c **** 
+ 155:src/codec/codec.c **** /* encode pkt's header in given buffer
+ 156:src/codec/codec.c ****  * data: packet buffer, must be zeroed by caller
+ 157:src/codec/codec.c ****  */
+ 158:src/codec/codec.c **** void bbcodec_encode_header(bbcodec_t *codec, uint8_t *air_data, bbhdr_t *in_hdr, uint8_t trailer, u
+ 159:src/codec/codec.c **** {
+ 464              		.loc 1 159 1 is_stmt 1 view -0
+ 465              		.cfi_startproc
+ 466              		@ args = 4, pretend = 0, frame = 8
+ 467              		@ frame_needed = 0, uses_anonymous_args = 0
+ 468              		.loc 1 159 1 is_stmt 0 view .LVU164
+ 469 0000 2DE9F041 		push	{r4, r5, r6, r7, r8, lr}
+ 470              		.cfi_def_cfa_offset 24
+ 471              		.cfi_offset 4, -24
+ 472              		.cfi_offset 5, -20
+ 473              		.cfi_offset 6, -16
+ 474              		.cfi_offset 7, -12
+ 475              		.cfi_offset 8, -8
+ 476              		.cfi_offset 14, -4
+ 477 0004 82B0     		sub	sp, sp, #8
+ 478              		.cfi_def_cfa_offset 32
+ 479              		.loc 1 159 1 view .LVU165
+ 480 0006 0546     		mov	r5, r0
+ 481 0008 1646     		mov	r6, r2
+ 160:src/codec/codec.c **** 	uint32_t h32;
+ 161:src/codec/codec.c **** 	uint8_t hdr_bytes[3];
+ 162:src/codec/codec.c **** 	// Write 4bits sw_trailer + 18*3 bits header in air_data
+ 163:src/codec/codec.c **** 	
+ 164:src/codec/codec.c **** 	/* encode the header */
+ 165:src/codec/codec.c **** 	h32 = 7 & in_hdr->lt_addr;
+ 166:src/codec/codec.c **** 	h32 |= (uint32_t)(0xf & in_hdr->type) << 3;
+ 482              		.loc 1 166 9 view .LVU166
+ 483 000a 5478     		ldrb	r4, [r2, #1]	@ zero_extendqisi2
+ 167:src/codec/codec.c **** 	h32 |= (uint32_t)(0x7 & in_hdr->flags) << 7;
+ 484              		.loc 1 167 9 view .LVU167
+ 485 000c 9278     		ldrb	r2, [r2, #2]	@ zero_extendqisi2
+ 486              	.LVL34:
+ARM GAS  /tmp/ccekfF7I.s 			page 18
+
+
+ 487              	.LBB74:
+ 488              	.LBB75:
+ 489              	.LBB76:
+ 490              	.LBB77:
+ 103:include/ubtbr/bb.h **** }
+ 491              		.loc 2 103 24 view .LVU168
+ 492 000e 2F78     		ldrb	r7, [r5]	@ zero_extendqisi2
+ 493 0010 DFF81CC1 		ldr	ip, .L41+12
+ 494              	.LBE77:
+ 495              	.LBE76:
+ 496              	.LBE75:
+ 497              	.LBE74:
+ 165:src/codec/codec.c **** 	h32 |= (uint32_t)(0xf & in_hdr->type) << 3;
+ 498              		.loc 1 165 6 view .LVU169
+ 499 0014 3078     		ldrb	r0, [r6]	@ zero_extendqisi2
+ 500              	.LVL35:
+ 166:src/codec/codec.c **** 	h32 |= (uint32_t)(0x7 & in_hdr->flags) << 7;
+ 501              		.loc 1 166 40 view .LVU170
+ 502 0016 E400     		lsls	r4, r4, #3
+ 503              		.loc 1 167 41 view .LVU171
+ 504 0018 D201     		lsls	r2, r2, #7
+ 505 001a 02F46072 		and	r2, r2, #896
+ 166:src/codec/codec.c **** 	h32 |= (uint32_t)(0x7 & in_hdr->flags) << 7;
+ 506              		.loc 1 166 40 view .LVU172
+ 507 001e 04F07804 		and	r4, r4, #120
+ 508              	.LBB86:
+ 509              	.LBB82:
+ 510              	.LBB80:
+ 511              	.LBB78:
+ 103:include/ubtbr/bb.h **** }
+ 512              		.loc 2 103 24 view .LVU173
+ 513 0022 1CF807E0 		ldrb	lr, [ip, r7]	@ zero_extendqisi2
+ 514              	.LBE78:
+ 515              	.LBE80:
+ 516              	.LBE82:
+ 517              	.LBE86:
+ 518              		.loc 1 167 6 view .LVU174
+ 519 0026 1443     		orrs	r4, r4, r2
+ 165:src/codec/codec.c **** 	h32 |= (uint32_t)(0xf & in_hdr->type) << 3;
+ 520              		.loc 1 165 6 view .LVU175
+ 521 0028 00F00700 		and	r0, r0, #7
+ 522              		.loc 1 167 6 view .LVU176
+ 523 002c 0443     		orrs	r4, r4, r0
+ 524              	.LBB87:
+ 525              	.LBB83:
+ 148:include/ubtbr/bb.h **** 	hec = (hec>>5) ^ hec_tbl[((data>>5)^hec)&0x1f];
+ 526              		.loc 2 148 26 view .LVU177
+ 527 002e DFF804C1 		ldr	ip, .L41+16
+ 148:include/ubtbr/bb.h **** 	hec = (hec>>5) ^ hec_tbl[((data>>5)^hec)&0x1f];
+ 528              		.loc 2 148 32 view .LVU178
+ 529 0032 84EA0E00 		eor	r0, r4, lr
+ 148:include/ubtbr/bb.h **** 	hec = (hec>>5) ^ hec_tbl[((data>>5)^hec)&0x1f];
+ 530              		.loc 2 148 37 view .LVU179
+ 531 0036 00F01F00 		and	r0, r0, #31
+ 148:include/ubtbr/bb.h **** 	hec = (hec>>5) ^ hec_tbl[((data>>5)^hec)&0x1f];
+ 532              		.loc 2 148 6 view .LVU180
+ 533 003a 1CF80020 		ldrb	r2, [ip, r0]	@ zero_extendqisi2
+ARM GAS  /tmp/ccekfF7I.s 			page 19
+
+
+ 534              	.LBE83:
+ 535              	.LBE87:
+ 159:src/codec/codec.c **** 	uint32_t h32;
+ 536              		.loc 1 159 1 view .LVU181
+ 537 003e 0F46     		mov	r7, r1
+ 538              	.LBB88:
+ 539              	.LBB84:
+ 148:include/ubtbr/bb.h **** 	hec = (hec>>5) ^ hec_tbl[((data>>5)^hec)&0x1f];
+ 540              		.loc 2 148 6 view .LVU182
+ 541 0040 82EA5E12 		eor	r2, r2, lr, lsr #5
+ 149:include/ubtbr/bb.h **** #else
+ 542              		.loc 2 149 37 view .LVU183
+ 543 0044 82EA5411 		eor	r1, r2, r4, lsr #5
+ 544              	.LVL36:
+ 149:include/ubtbr/bb.h **** #else
+ 545              		.loc 2 149 42 view .LVU184
+ 546 0048 01F01F01 		and	r1, r1, #31
+ 149:include/ubtbr/bb.h **** #else
+ 547              		.loc 2 149 26 view .LVU185
+ 548 004c 1CF80100 		ldrb	r0, [ip, r1]	@ zero_extendqisi2
+ 549              	.LBE84:
+ 550              	.LBE88:
+ 168:src/codec/codec.c **** 	h32 |= (uint32_t)hec_compute(h32, codec->uap) << 10;
+ 169:src/codec/codec.c **** 
+ 170:src/codec/codec.c **** 	hdr_bytes[0] = 0xff & h32;
+ 171:src/codec/codec.c **** 	hdr_bytes[1] = 0xff & (h32>>8);
+ 172:src/codec/codec.c **** 	hdr_bytes[2] = 0xff & (h32>>16);
+ 173:src/codec/codec.c **** 
+ 174:src/codec/codec.c **** 	/* whiten the header */
+ 175:src/codec/codec.c **** 	if (codec->use_whiten)
+ 551              		.loc 1 175 5 view .LVU186
+ 552 0050 6968     		ldr	r1, [r5, #4]
+ 168:src/codec/codec.c **** 	h32 |= (uint32_t)hec_compute(h32, codec->uap) << 10;
+ 553              		.loc 1 168 9 view .LVU187
+ 554 0052 80EA5212 		eor	r2, r0, r2, lsr #5
+ 168:src/codec/codec.c **** 	h32 |= (uint32_t)hec_compute(h32, codec->uap) << 10;
+ 555              		.loc 1 168 6 view .LVU188
+ 556 0056 44EA8224 		orr	r4, r4, r2, lsl #10
+ 172:src/codec/codec.c **** 
+ 557              		.loc 1 172 28 view .LVU189
+ 558 005a 220C     		lsrs	r2, r4, #16
+ 170:src/codec/codec.c **** 	hdr_bytes[1] = 0xff & (h32>>8);
+ 559              		.loc 1 170 15 view .LVU190
+ 560 005c ADF80440 		strh	r4, [sp, #4]	@ movhi
+ 159:src/codec/codec.c **** 	uint32_t h32;
+ 561              		.loc 1 159 1 view .LVU191
+ 562 0060 9846     		mov	r8, r3
+ 160:src/codec/codec.c **** 	uint8_t hdr_bytes[3];
+ 563              		.loc 1 160 2 is_stmt 1 view .LVU192
+ 161:src/codec/codec.c **** 	// Write 4bits sw_trailer + 18*3 bits header in air_data
+ 564              		.loc 1 161 2 view .LVU193
+ 165:src/codec/codec.c **** 	h32 |= (uint32_t)(0xf & in_hdr->type) << 3;
+ 565              		.loc 1 165 2 view .LVU194
+ 566              	.LVL37:
+ 166:src/codec/codec.c **** 	h32 |= (uint32_t)(0x7 & in_hdr->flags) << 7;
+ 567              		.loc 1 166 2 view .LVU195
+ 167:src/codec/codec.c **** 	h32 |= (uint32_t)hec_compute(h32, codec->uap) << 10;
+ARM GAS  /tmp/ccekfF7I.s 			page 20
+
+
+ 568              		.loc 1 167 2 view .LVU196
+ 168:src/codec/codec.c **** 
+ 569              		.loc 1 168 2 view .LVU197
+ 570              	.LBB89:
+ 571              	.LBI74:
+ 142:include/ubtbr/bb.h **** {
+ 572              		.loc 2 142 23 view .LVU198
+ 573              	.LBB85:
+ 144:include/ubtbr/bb.h **** 
+ 574              		.loc 2 144 2 view .LVU199
+ 146:include/ubtbr/bb.h **** #if 1
+ 575              		.loc 2 146 2 view .LVU200
+ 576              	.LBB81:
+ 577              	.LBI76:
+ 100:include/ubtbr/bb.h **** {
+ 578              		.loc 2 100 23 view .LVU201
+ 579              	.LBB79:
+ 102:include/ubtbr/bb.h ****         return rev8_map[data];
+ 580              		.loc 2 102 2 view .LVU202
+ 103:include/ubtbr/bb.h **** }
+ 581              		.loc 2 103 9 view .LVU203
+ 103:include/ubtbr/bb.h **** }
+ 582              		.loc 2 103 9 is_stmt 0 view .LVU204
+ 583              	.LBE79:
+ 584              	.LBE81:
+ 148:include/ubtbr/bb.h **** 	hec = (hec>>5) ^ hec_tbl[((data>>5)^hec)&0x1f];
+ 585              		.loc 2 148 2 is_stmt 1 view .LVU205
+ 149:include/ubtbr/bb.h **** #else
+ 586              		.loc 2 149 2 view .LVU206
+ 162:include/ubtbr/bb.h **** }
+ 587              		.loc 2 162 2 view .LVU207
+ 162:include/ubtbr/bb.h **** }
+ 588              		.loc 2 162 2 is_stmt 0 view .LVU208
+ 589              	.LBE85:
+ 590              	.LBE89:
+ 170:src/codec/codec.c **** 	hdr_bytes[1] = 0xff & (h32>>8);
+ 591              		.loc 1 170 2 is_stmt 1 view .LVU209
+ 171:src/codec/codec.c **** 	hdr_bytes[2] = 0xff & (h32>>16);
+ 592              		.loc 1 171 2 view .LVU210
+ 172:src/codec/codec.c **** 
+ 593              		.loc 1 172 2 view .LVU211
+ 172:src/codec/codec.c **** 
+ 594              		.loc 1 172 15 is_stmt 0 view .LVU212
+ 595 0062 8DF80620 		strb	r2, [sp, #6]
+ 596              		.loc 1 175 2 is_stmt 1 view .LVU213
+ 597              	.LBB90:
+ 598              	.LBB91:
+  49:src/codec/codec.c **** }
+ 599              		.loc 1 49 2 is_stmt 0 view .LVU214
+ 600 0066 01AC     		add	r4, sp, #4
+ 601              	.LVL38:
+  49:src/codec/codec.c **** }
+ 602              		.loc 1 49 2 view .LVU215
+ 603              	.LBE91:
+ 604              	.LBE90:
+ 605              		.loc 1 175 5 view .LVU216
+ 606 0068 0029     		cmp	r1, #0
+ARM GAS  /tmp/ccekfF7I.s 			page 21
+
+
+ 607 006a 4AD1     		bne	.L37
+ 608              	.LVL39:
+ 609              	.L16:
+ 176:src/codec/codec.c **** 		bbcodec_unwhiten(&codec->whiten_state, hdr_bytes, hdr_bytes, 18);
+ 177:src/codec/codec.c **** 
+ 178:src/codec/codec.c **** 	/* Write trailer of syncword in the buffer */
+ 179:src/codec/codec.c **** 	air_data[0] = trailer;
+ 610              		.loc 1 179 2 is_stmt 1 view .LVU217
+ 180:src/codec/codec.c **** 
+ 181:src/codec/codec.c **** 	/* fec13 & write the header at position 4 */
+ 182:src/codec/codec.c **** 	fec13(air_data, hdr_bytes, 4, 18);
+ 611              		.loc 1 182 2 is_stmt 0 view .LVU218
+ 612 006c 2146     		mov	r1, r4
+ 613 006e 1223     		movs	r3, #18
+ 614 0070 0422     		movs	r2, #4
+ 615 0072 3846     		mov	r0, r7
+ 179:src/codec/codec.c **** 
+ 616              		.loc 1 179 14 view .LVU219
+ 617 0074 87F80080 		strb	r8, [r7]
+ 618              		.loc 1 182 2 is_stmt 1 view .LVU220
+ 619 0078 FFF7FEFF 		bl	fec13
+ 620              	.LVL40:
+ 183:src/codec/codec.c **** 
+ 184:src/codec/codec.c **** 	/* encoder output position */
+ 185:src/codec/codec.c **** 	codec->air_off_b = 58;
+ 621              		.loc 1 185 2 view .LVU221
+ 622              		.loc 1 185 19 is_stmt 0 view .LVU222
+ 623 007c 3A23     		movs	r3, #58
+ 624 007e 6B62     		str	r3, [r5, #36]
+ 186:src/codec/codec.c **** 
+ 187:src/codec/codec.c **** 	/* Configure codec type */
+ 188:src/codec/codec.c **** 	bbcodec_set_payload_type(codec, in_hdr->type);
+ 625              		.loc 1 188 2 is_stmt 1 view .LVU223
+ 626              		.loc 1 188 40 is_stmt 0 view .LVU224
+ 627 0080 7178     		ldrb	r1, [r6, #1]	@ zero_extendqisi2
+ 628              	.LVL41:
+ 629              	.LBB93:
+ 630              	.LBI93:
+ 100:src/codec/codec.c **** {
+ 631              		.loc 1 100 13 is_stmt 1 view .LVU225
+ 632              	.LBB94:
+ 103:src/codec/codec.c **** 
+ 633              		.loc 1 103 2 view .LVU226
+ 103:src/codec/codec.c **** 
+ 634              		.loc 1 103 13 is_stmt 0 view .LVU227
+ 635 0082 284E     		ldr	r6, .L41
+ 636              	.LVL42:
+ 103:src/codec/codec.c **** 
+ 637              		.loc 1 103 36 view .LVU228
+ 638 0084 01F00F02 		and	r2, r1, #15
+ 103:src/codec/codec.c **** 
+ 639              		.loc 1 103 13 view .LVU229
+ 640 0088 02EB4202 		add	r2, r2, r2, lsl #1
+ 105:src/codec/codec.c **** 	{
+ 641              		.loc 1 105 5 view .LVU230
+ 642 008c 16F81240 		ldrb	r4, [r6, r2, lsl #1]	@ zero_extendqisi2
+ 103:src/codec/codec.c **** 
+ARM GAS  /tmp/ccekfF7I.s 			page 22
+
+
+ 643              		.loc 1 103 13 view .LVU231
+ 644 0090 06EB4202 		add	r2, r6, r2, lsl #1
+ 103:src/codec/codec.c **** 
+ 645              		.loc 1 103 11 view .LVU232
+ 646 0094 6A61     		str	r2, [r5, #20]
+ 105:src/codec/codec.c **** 	{
+ 647              		.loc 1 105 2 is_stmt 1 view .LVU233
+ 105:src/codec/codec.c **** 	{
+ 648              		.loc 1 105 5 is_stmt 0 view .LVU234
+ 649 0096 54B3     		cbz	r4, .L17
+ 650 0098 5188     		ldrh	r1, [r2, #2]
+ 651              	.LVL43:
+ 105:src/codec/codec.c **** 	{
+ 652              		.loc 1 105 5 view .LVU235
+ 653              	.LBE94:
+ 654              	.LBE93:
+ 189:src/codec/codec.c **** 
+ 190:src/codec/codec.c **** 	/* Set codec type / payload length */
+ 191:src/codec/codec.c **** 	bbcodec_calc_payload_length(codec, in_data);
+ 655              		.loc 1 191 2 is_stmt 1 view .LVU236
+ 656              	.LBB97:
+ 657              	.LBI97:
+  53:src/codec/codec.c **** {
+ 658              		.loc 1 53 13 view .LVU237
+ 659              	.LBB98:
+  55:src/codec/codec.c **** 	unsigned payload_bits, hdr_len;
+ 660              		.loc 1 55 2 view .LVU238
+  56:src/codec/codec.c **** 
+ 661              		.loc 1 56 2 view .LVU239
+  58:src/codec/codec.c **** 		DIE("No payload for type %p\n", codec->t);
+ 662              		.loc 1 58 2 view .LVU240
+  58:src/codec/codec.c **** 		DIE("No payload for type %p\n", codec->t);
+ 663              		.loc 1 58 5 is_stmt 0 view .LVU241
+ 664 009a 11B1     		cbz	r1, .L19
+  58:src/codec/codec.c **** 		DIE("No payload for type %p\n", codec->t);
+ 665              		.loc 1 58 28 view .LVU242
+ 666 009c 089B     		ldr	r3, [sp, #32]
+ 667 009e 002B     		cmp	r3, #0
+ 668 00a0 3CD0     		beq	.L39
+ 669              	.L19:
+  61:src/codec/codec.c **** 
+ 670              		.loc 1 61 2 is_stmt 1 view .LVU243
+  63:src/codec/codec.c **** 	{
+ 671              		.loc 1 63 5 is_stmt 0 view .LVU244
+ 672 00a2 A868     		ldr	r0, [r5, #8]
+  61:src/codec/codec.c **** 
+ 673              		.loc 1 61 13 view .LVU245
+ 674 00a4 5378     		ldrb	r3, [r2, #1]	@ zero_extendqisi2
+ 675              	.LVL44:
+  63:src/codec/codec.c **** 	{
+ 676              		.loc 1 63 2 is_stmt 1 view .LVU246
+  63:src/codec/codec.c **** 	{
+ 677              		.loc 1 63 5 is_stmt 0 view .LVU247
+ 678 00a6 98B1     		cbz	r0, .L22
+ 679              	.LVL45:
+ 680              	.L21:
+  78:src/codec/codec.c **** 			break;
+ARM GAS  /tmp/ccekfF7I.s 			page 23
+
+
+ 681              		.loc 1 78 4 is_stmt 1 view .LVU248
+  78:src/codec/codec.c **** 			break;
+ 682              		.loc 1 78 26 is_stmt 0 view .LVU249
+ 683 00a8 A961     		str	r1, [r5, #24]
+  79:src/codec/codec.c **** 		}
+ 684              		.loc 1 79 4 is_stmt 1 view .LVU250
+  81:src/codec/codec.c **** 		{
+ 685              		.loc 1 81 3 view .LVU251
+ 686 00aa 0B44     		add	r3, r3, r1
+ 687              	.L23:
+  88:src/codec/codec.c **** 	if (t->has_crc)
+ 688              		.loc 1 88 2 view .LVU252
+  88:src/codec/codec.c **** 	if (t->has_crc)
+ 689              		.loc 1 88 21 is_stmt 0 view .LVU253
+ 690 00ac 2B62     		str	r3, [r5, #32]
+  89:src/codec/codec.c **** 		codec->coded_total += 2;
+ 691              		.loc 1 89 2 is_stmt 1 view .LVU254
+  89:src/codec/codec.c **** 		codec->coded_total += 2;
+ 692              		.loc 1 89 5 is_stmt 0 view .LVU255
+ 693 00ae 5179     		ldrb	r1, [r2, #5]	@ zero_extendqisi2
+ 694 00b0 09B1     		cbz	r1, .L28
+  90:src/codec/codec.c **** 	if (t->has_fec23)
+ 695              		.loc 1 90 3 is_stmt 1 view .LVU256
+  90:src/codec/codec.c **** 	if (t->has_fec23)
+ 696              		.loc 1 90 22 is_stmt 0 view .LVU257
+ 697 00b2 0233     		adds	r3, r3, #2
+ 698 00b4 2B62     		str	r3, [r5, #32]
+ 699              	.L28:
+  91:src/codec/codec.c **** 		payload_bits = codec->coded_total*12;
+ 700              		.loc 1 91 2 is_stmt 1 view .LVU258
+  91:src/codec/codec.c **** 		payload_bits = codec->coded_total*12;
+ 701              		.loc 1 91 5 is_stmt 0 view .LVU259
+ 702 00b6 1279     		ldrb	r2, [r2, #4]	@ zero_extendqisi2
+ 703              	.LVL46:
+  91:src/codec/codec.c **** 		payload_bits = codec->coded_total*12;
+ 704              		.loc 1 91 5 view .LVU260
+ 705 00b8 32B9     		cbnz	r2, .L40
+  94:src/codec/codec.c **** 	codec->air_bytes = BYTE_ALIGN(58+payload_bits);
+ 706              		.loc 1 94 3 is_stmt 1 view .LVU261
+  94:src/codec/codec.c **** 	codec->air_bytes = BYTE_ALIGN(58+payload_bits);
+ 707              		.loc 1 94 16 is_stmt 0 view .LVU262
+ 708 00ba DB00     		lsls	r3, r3, #3
+ 709              	.LVL47:
+ 710              	.L30:
+  95:src/codec/codec.c **** }
+ 711              		.loc 1 95 2 is_stmt 1 view .LVU263
+  95:src/codec/codec.c **** }
+ 712              		.loc 1 95 21 is_stmt 0 view .LVU264
+ 713 00bc 4133     		adds	r3, r3, #65
+ 714              	.LVL48:
+  95:src/codec/codec.c **** }
+ 715              		.loc 1 95 21 view .LVU265
+ 716 00be DB08     		lsrs	r3, r3, #3
+ 717              	.LVL49:
+  95:src/codec/codec.c **** }
+ 718              		.loc 1 95 19 view .LVU266
+ 719 00c0 EB61     		str	r3, [r5, #28]
+ARM GAS  /tmp/ccekfF7I.s 			page 24
+
+
+ 720              	.LVL50:
+  95:src/codec/codec.c **** }
+ 721              		.loc 1 95 19 view .LVU267
+ 722              	.LBE98:
+ 723              	.LBE97:
+ 192:src/codec/codec.c **** }
+ 724              		.loc 1 192 1 view .LVU268
+ 725 00c2 02B0     		add	sp, sp, #8
+ 726              		.cfi_remember_state
+ 727              		.cfi_def_cfa_offset 24
+ 728              		@ sp needed
+ 729 00c4 BDE8F081 		pop	{r4, r5, r6, r7, r8, pc}
+ 730              	.LVL51:
+ 731              	.L40:
+ 732              		.cfi_restore_state
+ 733              	.LBB103:
+ 734              	.LBB99:
+  92:src/codec/codec.c **** 	else
+ 735              		.loc 1 92 3 is_stmt 1 view .LVU269
+  92:src/codec/codec.c **** 	else
+ 736              		.loc 1 92 16 is_stmt 0 view .LVU270
+ 737 00c8 03EB4303 		add	r3, r3, r3, lsl #1
+ 738 00cc 9B00     		lsls	r3, r3, #2
+ 739              	.LVL52:
+  92:src/codec/codec.c **** 	else
+ 740              		.loc 1 92 16 view .LVU271
+ 741 00ce F5E7     		b	.L30
+ 742              	.LVL53:
+ 743              	.L22:
+  69:src/codec/codec.c **** 		{
+ 744              		.loc 1 69 3 is_stmt 1 view .LVU272
+ 745 00d0 012B     		cmp	r3, #1
+ 746 00d2 1ED0     		beq	.L24
+ 747 00d4 022B     		cmp	r3, #2
+ 748 00d6 E7D1     		bne	.L21
+  75:src/codec/codec.c **** 			break;
+ 749              		.loc 1 75 4 view .LVU273
+  75:src/codec/codec.c **** 			break;
+ 750              		.loc 1 75 48 is_stmt 0 view .LVU274
+ 751 00d8 0898     		ldr	r0, [sp, #32]
+ 752 00da 0088     		ldrh	r0, [r0]	@ unaligned
+  75:src/codec/codec.c **** 			break;
+ 753              		.loc 1 75 34 view .LVU275
+ 754 00dc C0F3C900 		ubfx	r0, r0, #3, #10
+  75:src/codec/codec.c **** 			break;
+ 755              		.loc 1 75 26 view .LVU276
+ 756 00e0 A861     		str	r0, [r5, #24]
+  76:src/codec/codec.c **** 		default: // 0
+ 757              		.loc 1 76 4 is_stmt 1 view .LVU277
+ 758              	.L26:
+  81:src/codec/codec.c **** 		{
+ 759              		.loc 1 81 3 view .LVU278
+  81:src/codec/codec.c **** 		{
+ 760              		.loc 1 81 6 is_stmt 0 view .LVU279
+ 761 00e2 8142     		cmp	r1, r0
+  85:src/codec/codec.c **** 		}
+ 762              		.loc 1 85 26 view .LVU280
+ARM GAS  /tmp/ccekfF7I.s 			page 25
+
+
+ 763 00e4 36BF     		itet	cc
+ 764 00e6 0021     		movcc	r1, #0
+ 765 00e8 1B18     		addcs	r3, r3, r0
+ 766              	.LVL54:
+  84:src/codec/codec.c **** 			codec->payload_length = 0;
+ 767              		.loc 1 84 22 is_stmt 1 view .LVU281
+  85:src/codec/codec.c **** 		}
+ 768              		.loc 1 85 4 view .LVU282
+  85:src/codec/codec.c **** 		}
+ 769              		.loc 1 85 26 is_stmt 0 view .LVU283
+ 770 00ea A961     		strcc	r1, [r5, #24]
+ 771 00ec DEE7     		b	.L23
+ 772              	.LVL55:
+ 773              	.L17:
+  85:src/codec/codec.c **** 		}
+ 774              		.loc 1 85 26 view .LVU284
+ 775              	.LBE99:
+ 776              	.LBE103:
+ 777              	.LBB104:
+ 778              	.LBB95:
+ 107:src/codec/codec.c **** 		/* Fallback to null.. */
+ 779              		.loc 1 107 3 is_stmt 1 view .LVU285
+ 780 00ee 0E48     		ldr	r0, .L41+4
+ 781 00f0 FFF7FEFF 		bl	cprintf
+ 782              	.LVL56:
+ 109:src/codec/codec.c **** 	}
+ 783              		.loc 1 109 3 view .LVU286
+ 784              	.LBE95:
+ 785              	.LBE104:
+ 786              	.LBB105:
+ 787              	.LBB100:
+  63:src/codec/codec.c **** 	{
+ 788              		.loc 1 63 5 is_stmt 0 view .LVU287
+ 789 00f4 A968     		ldr	r1, [r5, #8]
+ 790              	.LBE100:
+ 791              	.LBE105:
+ 792              	.LBB106:
+ 793              	.LBB96:
+ 109:src/codec/codec.c **** 	}
+ 794              		.loc 1 109 12 view .LVU288
+ 795 00f6 6E61     		str	r6, [r5, #20]
+ 109:src/codec/codec.c **** 	}
+ 796              		.loc 1 109 12 view .LVU289
+ 797              	.LBE96:
+ 798              	.LBE106:
+ 191:src/codec/codec.c **** }
+ 799              		.loc 1 191 2 is_stmt 1 view .LVU290
+ 800              	.LVL57:
+ 801              	.LBB107:
+  53:src/codec/codec.c **** {
+ 802              		.loc 1 53 13 view .LVU291
+ 803              	.LBB101:
+  55:src/codec/codec.c **** 	unsigned payload_bits, hdr_len;
+ 804              		.loc 1 55 2 view .LVU292
+  56:src/codec/codec.c **** 
+ 805              		.loc 1 56 2 view .LVU293
+  58:src/codec/codec.c **** 		DIE("No payload for type %p\n", codec->t);
+ARM GAS  /tmp/ccekfF7I.s 			page 26
+
+
+ 806              		.loc 1 58 2 view .LVU294
+  61:src/codec/codec.c **** 
+ 807              		.loc 1 61 2 view .LVU295
+  63:src/codec/codec.c **** 	{
+ 808              		.loc 1 63 2 view .LVU296
+  63:src/codec/codec.c **** 	{
+ 809              		.loc 1 63 5 is_stmt 0 view .LVU297
+ 810 00f8 01B1     		cbz	r1, .L38
+ 811              	.LVL58:
+  63:src/codec/codec.c **** 	{
+ 812              		.loc 1 63 5 view .LVU298
+ 813 00fa 2146     		mov	r1, r4
+ 814              	.L38:
+  63:src/codec/codec.c **** 	{
+ 815              		.loc 1 63 5 view .LVU299
+ 816 00fc 3246     		mov	r2, r6
+  61:src/codec/codec.c **** 
+ 817              		.loc 1 61 10 view .LVU300
+ 818 00fe 0B46     		mov	r3, r1
+  65:src/codec/codec.c **** 	}
+ 819              		.loc 1 65 3 is_stmt 1 view .LVU301
+ 820 0100 D2E7     		b	.L21
+ 821              	.LVL59:
+ 822              	.L37:
+  65:src/codec/codec.c **** 	}
+ 823              		.loc 1 65 3 is_stmt 0 view .LVU302
+ 824              	.LBE101:
+ 825              	.LBE107:
+ 176:src/codec/codec.c **** 
+ 826              		.loc 1 176 3 is_stmt 1 view .LVU303
+ 827              	.LBB108:
+ 828              	.LBI90:
+  47:src/codec/codec.c **** {
+ 829              		.loc 1 47 20 view .LVU304
+ 830              	.LBB92:
+  49:src/codec/codec.c **** }
+ 831              		.loc 1 49 2 view .LVU305
+ 832 0102 2146     		mov	r1, r4
+ 833 0104 2046     		mov	r0, r4
+ 834              	.LVL60:
+  49:src/codec/codec.c **** }
+ 835              		.loc 1 49 2 is_stmt 0 view .LVU306
+ 836 0106 1222     		movs	r2, #18
+ 837 0108 05F10C03 		add	r3, r5, #12
+ 838              	.LVL61:
+  49:src/codec/codec.c **** }
+ 839              		.loc 1 49 2 view .LVU307
+ 840 010c FFF7FEFF 		bl	whiten
+ 841              	.LVL62:
+  50:src/codec/codec.c **** 
+ 842              		.loc 1 50 1 view .LVU308
+ 843 0110 ACE7     		b	.L16
+ 844              	.LVL63:
+ 845              	.L24:
+  50:src/codec/codec.c **** 
+ 846              		.loc 1 50 1 view .LVU309
+ 847              	.LBE92:
+ARM GAS  /tmp/ccekfF7I.s 			page 27
+
+
+ 848              	.LBE108:
+ 849              	.LBB109:
+ 850              	.LBB102:
+  72:src/codec/codec.c **** 			break;
+ 851              		.loc 1 72 4 is_stmt 1 view .LVU310
+  72:src/codec/codec.c **** 			break;
+ 852              		.loc 1 72 38 is_stmt 0 view .LVU311
+ 853 0112 0898     		ldr	r0, [sp, #32]
+ 854 0114 0078     		ldrb	r0, [r0]	@ zero_extendqisi2
+ 855 0116 C008     		lsrs	r0, r0, #3
+  72:src/codec/codec.c **** 			break;
+ 856              		.loc 1 72 26 view .LVU312
+ 857 0118 A861     		str	r0, [r5, #24]
+  73:src/codec/codec.c **** 		case 2:
+ 858              		.loc 1 73 4 is_stmt 1 view .LVU313
+ 859 011a E2E7     		b	.L26
+ 860              	.LVL64:
+ 861              	.L39:
+  59:src/codec/codec.c **** 
+ 862              		.loc 1 59 3 view .LVU314
+ 863 011c 1146     		mov	r1, r2
+ 864 011e 0348     		ldr	r0, .L41+8
+ 865 0120 FFF7FEFF 		bl	die
+ 866              	.LVL65:
+ 867              	.L42:
+  59:src/codec/codec.c **** 
+ 868              		.loc 1 59 3 is_stmt 0 view .LVU315
+ 869              		.align	2
+ 870              	.L41:
+ 871 0124 00000000 		.word	.LANCHOR0
+ 872 0128 00000000 		.word	.LC0
+ 873 012c 10000000 		.word	.LC1
+ 874 0130 00000000 		.word	rev8_map
+ 875 0134 00000000 		.word	hec_tbl
+ 876              	.LBE102:
+ 877              	.LBE109:
+ 878              		.cfi_endproc
+ 879              	.LFE23:
+ 881              		.section	.text.bbcodec_encode_chunk,"ax",%progbits
+ 882              		.align	1
+ 883              		.p2align 2,,3
+ 884              		.global	bbcodec_encode_chunk
+ 885              		.syntax unified
+ 886              		.thumb
+ 887              		.thumb_func
+ 888              		.fpu softvfp
+ 890              	bbcodec_encode_chunk:
+ 891              	.LVL66:
+ 892              	.LFB24:
+ 193:src/codec/codec.c **** 
+ 194:src/codec/codec.c **** void bbcodec_encode_chunk(bbcodec_t *codec, uint8_t *air_data, bbhdr_t *in_hdr, uint8_t *in_data)
+ 195:src/codec/codec.c **** {
+ 893              		.loc 1 195 1 is_stmt 1 view -0
+ 894              		.cfi_startproc
+ 895              		@ args = 0, pretend = 0, frame = 80
+ 896              		@ frame_needed = 0, uses_anonymous_args = 0
+ 897              		.loc 1 195 1 is_stmt 0 view .LVU317
+ARM GAS  /tmp/ccekfF7I.s 			page 28
+
+
+ 898 0000 2DE9F043 		push	{r4, r5, r6, r7, r8, r9, lr}
+ 899              		.cfi_def_cfa_offset 28
+ 900              		.cfi_offset 4, -28
+ 901              		.cfi_offset 5, -24
+ 902              		.cfi_offset 6, -20
+ 903              		.cfi_offset 7, -16
+ 904              		.cfi_offset 8, -12
+ 905              		.cfi_offset 9, -8
+ 906              		.cfi_offset 14, -4
+ 907 0004 95B0     		sub	sp, sp, #84
+ 908              		.cfi_def_cfa_offset 112
+ 196:src/codec/codec.c **** 	const bbcodec_types_t *t = codec->t;
+ 909              		.loc 1 196 2 is_stmt 1 view .LVU318
+ 197:src/codec/codec.c **** 	uint8_t tmp[CODEC_TX_CHUNK_SIZE], *inp;
+ 198:src/codec/codec.c **** 	unsigned byte_left, crc_num, byte_num, out_bitlen;
+ 199:src/codec/codec.c **** 
+ 200:src/codec/codec.c **** 	/* Current input pointer */
+ 201:src/codec/codec.c **** 	inp = in_data + codec->coded_pos;
+ 910              		.loc 1 201 23 is_stmt 0 view .LVU319
+ 911 0006 866A     		ldr	r6, [r0, #40]
+ 202:src/codec/codec.c **** 
+ 203:src/codec/codec.c **** 	/* total encode bytes left including crc */
+ 204:src/codec/codec.c **** 	byte_left = codec->coded_total - codec->coded_pos;
+ 912              		.loc 1 204 19 view .LVU320
+ 913 0008 D0F820C0 		ldr	ip, [r0, #32]
+ 195:src/codec/codec.c **** 	const bbcodec_types_t *t = codec->t;
+ 914              		.loc 1 195 1 view .LVU321
+ 915 000c 0446     		mov	r4, r0
+ 916              	.LVL67:
+ 197:src/codec/codec.c **** 	uint8_t tmp[CODEC_TX_CHUNK_SIZE], *inp;
+ 917              		.loc 1 197 2 is_stmt 1 view .LVU322
+ 198:src/codec/codec.c **** 
+ 918              		.loc 1 198 2 view .LVU323
+ 201:src/codec/codec.c **** 
+ 919              		.loc 1 201 2 view .LVU324
+ 205:src/codec/codec.c **** 
+ 206:src/codec/codec.c **** 	/* nothing to do */
+ 207:src/codec/codec.c **** 	if (byte_left == 0)
+ 920              		.loc 1 207 5 is_stmt 0 view .LVU325
+ 921 000e BCEB0600 		subs	r0, ip, r6
+ 922              	.LVL68:
+ 195:src/codec/codec.c **** 	const bbcodec_types_t *t = codec->t;
+ 923              		.loc 1 195 1 view .LVU326
+ 924 0012 0D46     		mov	r5, r1
+ 925              	.LVL69:
+ 204:src/codec/codec.c **** 
+ 926              		.loc 1 204 2 is_stmt 1 view .LVU327
+ 927              		.loc 1 207 2 view .LVU328
+ 928              		.loc 1 207 5 is_stmt 0 view .LVU329
+ 929 0014 45D0     		beq	.L43
+ 208:src/codec/codec.c **** 		return;
+ 209:src/codec/codec.c **** 
+ 210:src/codec/codec.c **** 	/* If the crc calculation is not done yet */
+ 211:src/codec/codec.c **** 	if (!codec->rx_raw && t->has_crc && byte_left > 2)
+ 930              		.loc 1 211 5 view .LVU330
+ 931 0016 A268     		ldr	r2, [r4, #8]
+ 932              	.LVL70:
+ARM GAS  /tmp/ccekfF7I.s 			page 29
+
+
+ 201:src/codec/codec.c **** 
+ 933              		.loc 1 201 6 view .LVU331
+ 934 0018 9919     		adds	r1, r3, r6
+ 935              	.LVL71:
+ 936              		.loc 1 211 2 is_stmt 1 view .LVU332
+ 196:src/codec/codec.c **** 	uint8_t tmp[CODEC_TX_CHUNK_SIZE], *inp;
+ 937              		.loc 1 196 25 is_stmt 0 view .LVU333
+ 938 001a 6669     		ldr	r6, [r4, #20]
+ 939              		.loc 1 211 5 view .LVU334
+ 940 001c 3ABB     		cbnz	r2, .L46
+ 941              		.loc 1 211 21 discriminator 1 view .LVU335
+ 942 001e 7779     		ldrb	r7, [r6, #5]	@ zero_extendqisi2
+ 943 0020 2FB3     		cbz	r7, .L46
+ 944              		.loc 1 211 35 discriminator 2 view .LVU336
+ 945 0022 0228     		cmp	r0, #2
+ 946 0024 23D9     		bls	.L46
+ 212:src/codec/codec.c **** 	{
+ 213:src/codec/codec.c **** 		/* Num bytes we're going to crc */
+ 214:src/codec/codec.c **** 		crc_num = MIN(byte_left-2, CODEC_TX_CHUNK_SIZE);
+ 947              		.loc 1 214 3 is_stmt 1 view .LVU337
+ 948              		.loc 1 214 13 is_stmt 0 view .LVU338
+ 949 0026 A0F10208 		sub	r8, r0, #2
+ 950              		.loc 1 214 11 view .LVU339
+ 951 002a B8F1500F 		cmp	r8, #80
+ 952              	.LBB110:
+ 953              	.LBB111:
+ 170:include/ubtbr/bb.h **** 	{
+ 954              		.loc 2 170 15 view .LVU340
+ 955 002e 1746     		mov	r7, r2
+ 956              	.LBE111:
+ 957              	.LBE110:
+ 958              		.loc 1 214 11 view .LVU341
+ 959 0030 28BF     		it	cs
+ 960 0032 4FF05008 		movcs	r8, #80
+ 961              	.LVL72:
+ 215:src/codec/codec.c **** 
+ 216:src/codec/codec.c **** 		codec->crc_state = crc_compute(inp, crc_num, codec->crc_state);
+ 962              		.loc 1 216 3 is_stmt 1 view .LVU342
+ 963              		.loc 1 216 22 is_stmt 0 view .LVU343
+ 964 0036 B4F80EE0 		ldrh	lr, [r4, #14]
+ 965              	.LVL73:
+ 966              	.LBB113:
+ 967              	.LBI110:
+ 165:include/ubtbr/bb.h **** {
+ 968              		.loc 2 165 24 is_stmt 1 view .LVU344
+ 969              	.LBB112:
+ 167:include/ubtbr/bb.h **** 	uint16_t i;
+ 970              		.loc 2 167 2 view .LVU345
+ 168:include/ubtbr/bb.h **** 
+ 971              		.loc 2 168 2 view .LVU346
+ 170:include/ubtbr/bb.h **** 	{
+ 972              		.loc 2 170 2 view .LVU347
+ 170:include/ubtbr/bb.h **** 	{
+ 973              		.loc 2 170 13 view .LVU348
+ 974 003a DFF89C90 		ldr	r9, .L57
+ 975              	.LVL74:
+ 976              	.L47:
+ARM GAS  /tmp/ccekfF7I.s 			page 30
+
+
+ 172:include/ubtbr/bb.h **** 	}
+ 977              		.loc 2 172 3 view .LVU349
+ 172:include/ubtbr/bb.h **** 	}
+ 978              		.loc 2 172 38 is_stmt 0 view .LVU350
+ 979 003e CF5D     		ldrb	r7, [r1, r7]	@ zero_extendqisi2
+ 170:include/ubtbr/bb.h **** 	{
+ 980              		.loc 2 170 26 view .LVU351
+ 981 0040 0132     		adds	r2, r2, #1
+ 982              	.LVL75:
+ 172:include/ubtbr/bb.h **** 	}
+ 983              		.loc 2 172 41 view .LVU352
+ 984 0042 87EA0E07 		eor	r7, r7, lr
+ 172:include/ubtbr/bb.h **** 	}
+ 985              		.loc 2 172 33 view .LVU353
+ 986 0046 FFB2     		uxtb	r7, r7
+ 172:include/ubtbr/bb.h **** 	}
+ 987              		.loc 2 172 27 view .LVU354
+ 988 0048 39F81770 		ldrh	r7, [r9, r7, lsl #1]
+ 170:include/ubtbr/bb.h **** 	{
+ 989              		.loc 2 170 26 view .LVU355
+ 990 004c 92B2     		uxth	r2, r2
+ 170:include/ubtbr/bb.h **** 	{
+ 991              		.loc 2 170 2 view .LVU356
+ 992 004e 9045     		cmp	r8, r2
+ 172:include/ubtbr/bb.h **** 	}
+ 993              		.loc 2 172 7 view .LVU357
+ 994 0050 87EA1E2E 		eor	lr, r7, lr, lsr #8
+ 995              	.LVL76:
+ 170:include/ubtbr/bb.h **** 	{
+ 996              		.loc 2 170 25 is_stmt 1 view .LVU358
+ 170:include/ubtbr/bb.h **** 	{
+ 997              		.loc 2 170 13 view .LVU359
+ 170:include/ubtbr/bb.h **** 	{
+ 998              		.loc 2 170 15 is_stmt 0 view .LVU360
+ 999 0054 1746     		mov	r7, r2
+ 170:include/ubtbr/bb.h **** 	{
+ 1000              		.loc 2 170 2 view .LVU361
+ 1001 0056 F2D8     		bhi	.L47
+ 174:include/ubtbr/bb.h **** }
+ 1002              		.loc 2 174 2 is_stmt 1 view .LVU362
+ 1003              	.LVL77:
+ 174:include/ubtbr/bb.h **** }
+ 1004              		.loc 2 174 2 is_stmt 0 view .LVU363
+ 1005              	.LBE112:
+ 1006              	.LBE113:
+ 217:src/codec/codec.c **** 
+ 218:src/codec/codec.c **** 		/* If the crc calculation is done, write crc in in_data */
+ 219:src/codec/codec.c **** 		if (codec->coded_pos+byte_left == codec->coded_total)
+ 220:src/codec/codec.c **** 		{
+ 221:src/codec/codec.c **** 			in_data[codec->coded_total-2] = 0xff & codec->crc_state;
+ 1007              		.loc 1 221 34 view .LVU364
+ 1008 0058 9C44     		add	ip, ip, r3
+ 216:src/codec/codec.c **** 
+ 1009              		.loc 1 216 20 view .LVU365
+ 1010 005a A4F80EE0 		strh	lr, [r4, #14]	@ movhi
+ 219:src/codec/codec.c **** 		{
+ 1011              		.loc 1 219 3 is_stmt 1 view .LVU366
+ARM GAS  /tmp/ccekfF7I.s 			page 31
+
+
+ 1012              		.loc 1 221 4 view .LVU367
+ 1013              		.loc 1 221 34 is_stmt 0 view .LVU368
+ 1014 005e 0CF802EC 		strb	lr, [ip, #-2]
+ 1015              	.LVL78:
+ 222:src/codec/codec.c **** 			in_data[codec->coded_total-1] = 0xff & (codec->crc_state>>8);
+ 1016              		.loc 1 222 4 is_stmt 1 view .LVU369
+ 1017              		.loc 1 222 34 is_stmt 0 view .LVU370
+ 1018 0062 276A     		ldr	r7, [r4, #32]
+ 1019 0064 E289     		ldrh	r2, [r4, #14]
+ 1020 0066 3B44     		add	r3, r3, r7
+ 1021              	.LVL79:
+ 1022              		.loc 1 222 34 view .LVU371
+ 1023 0068 120A     		lsrs	r2, r2, #8
+ 1024 006a 03F8012C 		strb	r2, [r3, #-1]
+ 1025              	.LVL80:
+ 1026              	.L46:
+ 223:src/codec/codec.c **** 		}
+ 224:src/codec/codec.c **** 	}
+ 225:src/codec/codec.c **** 
+ 226:src/codec/codec.c **** 	/* Num bytes we're going to encode */
+ 227:src/codec/codec.c **** 	byte_num = MIN(byte_left, CODEC_TX_CHUNK_SIZE);
+ 1027              		.loc 1 227 2 is_stmt 1 view .LVU372
+ 1028              		.loc 1 227 11 is_stmt 0 view .LVU373
+ 1029 006e 5028     		cmp	r0, #80
+ 1030 0070 28BF     		it	cs
+ 1031 0072 5020     		movcs	r0, #80
+ 1032              	.LVL81:
+ 228:src/codec/codec.c **** 
+ 229:src/codec/codec.c **** 	/* whiten the encode bytes */
+ 230:src/codec/codec.c **** 	if (codec->use_whiten)
+ 1033              		.loc 1 230 5 view .LVU374
+ 1034 0074 6368     		ldr	r3, [r4, #4]
+ 227:src/codec/codec.c **** 
+ 1035              		.loc 1 227 11 view .LVU375
+ 1036 0076 0746     		mov	r7, r0
+ 1037              	.LVL82:
+ 1038              		.loc 1 230 2 is_stmt 1 view .LVU376
+ 1039              	.LBB114:
+ 1040              	.LBB115:
+  49:src/codec/codec.c **** }
+ 1041              		.loc 1 49 2 is_stmt 0 view .LVU377
+ 1042 0078 E946     		mov	r9, sp
+ 1043              	.LBE115:
+ 1044              	.LBE114:
+ 231:src/codec/codec.c **** 		bbcodec_unwhiten(&codec->whiten_state, tmp, inp, byte_num*8);
+ 1045              		.loc 1 231 3 view .LVU378
+ 1046 007a 4FEAC008 		lsl	r8, r0, #3
+ 1047              	.LVL83:
+ 1048              	.LBB118:
+ 1049              	.LBI114:
+  47:src/codec/codec.c **** {
+ 1050              		.loc 1 47 20 is_stmt 1 view .LVU379
+ 1051              	.LBB116:
+  49:src/codec/codec.c **** }
+ 1052              		.loc 1 49 2 view .LVU380
+ 1053              	.LBE116:
+ 1054              	.LBE118:
+ARM GAS  /tmp/ccekfF7I.s 			page 32
+
+
+ 230:src/codec/codec.c **** 		bbcodec_unwhiten(&codec->whiten_state, tmp, inp, byte_num*8);
+ 1055              		.loc 1 230 5 is_stmt 0 view .LVU381
+ 1056 007e 03BB     		cbnz	r3, .L48
+ 1057              	.LVL84:
+ 232:src/codec/codec.c **** 
+ 233:src/codec/codec.c **** 	/* Encode data in the air buffer */
+ 234:src/codec/codec.c **** 	if (t->has_fec23)
+ 1058              		.loc 1 234 2 is_stmt 1 view .LVU382
+ 1059              		.loc 1 234 5 is_stmt 0 view .LVU383
+ 1060 0080 3379     		ldrb	r3, [r6, #4]	@ zero_extendqisi2
+ 235:src/codec/codec.c **** 	{
+ 236:src/codec/codec.c **** 		fec23(air_data+(codec->air_off_b>>3), tmp, codec->air_off_b&7, byte_num*8);
+ 1061              		.loc 1 236 24 view .LVU384
+ 1062 0082 626A     		ldr	r2, [r4, #36]
+ 234:src/codec/codec.c **** 	{
+ 1063              		.loc 1 234 5 view .LVU385
+ 1064 0084 83B9     		cbnz	r3, .L56
+ 1065              	.LVL85:
+ 1066              	.L50:
+ 237:src/codec/codec.c **** 		out_bitlen = byte_num*12;
+ 238:src/codec/codec.c **** 	}
+ 239:src/codec/codec.c **** 	else
+ 240:src/codec/codec.c **** 	{
+ 241:src/codec/codec.c **** 		null_encode(air_data+(codec->air_off_b>>3), tmp, codec->air_off_b&7, byte_num);
+ 1067              		.loc 1 241 3 is_stmt 1 view .LVU386
+ 1068 0086 05EBD200 		add	r0, r5, r2, lsr #3
+ 1069 008a 4946     		mov	r1, r9
+ 1070 008c 3B46     		mov	r3, r7
+ 1071 008e 02F00702 		and	r2, r2, #7
+ 1072 0092 FFF7FEFF 		bl	null_encode
+ 1073              	.LVL86:
+ 242:src/codec/codec.c **** 		out_bitlen = byte_num*8;
+ 1074              		.loc 1 242 3 view .LVU387
+ 1075              	.L51:
+ 243:src/codec/codec.c **** 	}
+ 244:src/codec/codec.c **** 
+ 245:src/codec/codec.c **** 	/* Update input position */
+ 246:src/codec/codec.c **** 	codec->coded_pos += byte_num;
+ 1076              		.loc 1 246 2 view .LVU388
+ 247:src/codec/codec.c **** 
+ 248:src/codec/codec.c **** 	/* Update output position */
+ 249:src/codec/codec.c **** 	codec->air_off_b += out_bitlen;
+ 1077              		.loc 1 249 19 is_stmt 0 view .LVU389
+ 1078 0096 D4E90930 		ldrd	r3, r0, [r4, #36]
+ 246:src/codec/codec.c **** 
+ 1079              		.loc 1 246 19 view .LVU390
+ 1080 009a 3844     		add	r0, r0, r7
+ 1081              		.loc 1 249 19 view .LVU391
+ 1082 009c 4344     		add	r3, r3, r8
+ 1083 009e C4E90930 		strd	r3, r0, [r4, #36]
+ 1084              	.LVL87:
+ 1085              	.L43:
+ 250:src/codec/codec.c **** }
+ 1086              		.loc 1 250 1 view .LVU392
+ 1087 00a2 15B0     		add	sp, sp, #84
+ 1088              		.cfi_remember_state
+ 1089              		.cfi_def_cfa_offset 28
+ARM GAS  /tmp/ccekfF7I.s 			page 33
+
+
+ 1090              		@ sp needed
+ 1091 00a4 BDE8F083 		pop	{r4, r5, r6, r7, r8, r9, pc}
+ 1092              	.LVL88:
+ 1093              	.L56:
+ 1094              		.cfi_restore_state
+ 236:src/codec/codec.c **** 		out_bitlen = byte_num*12;
+ 1095              		.loc 1 236 3 is_stmt 1 view .LVU393
+ 1096 00a8 4346     		mov	r3, r8
+ 1097 00aa 05EBD200 		add	r0, r5, r2, lsr #3
+ 1098 00ae 4946     		mov	r1, r9
+ 1099 00b0 02F00702 		and	r2, r2, #7
+ 237:src/codec/codec.c **** 	}
+ 1100              		.loc 1 237 14 is_stmt 0 view .LVU394
+ 1101 00b4 07EB4708 		add	r8, r7, r7, lsl #1
+ 236:src/codec/codec.c **** 		out_bitlen = byte_num*12;
+ 1102              		.loc 1 236 3 view .LVU395
+ 1103 00b8 FFF7FEFF 		bl	fec23
+ 1104              	.LVL89:
+ 237:src/codec/codec.c **** 	}
+ 1105              		.loc 1 237 3 is_stmt 1 view .LVU396
+ 237:src/codec/codec.c **** 	}
+ 1106              		.loc 1 237 14 is_stmt 0 view .LVU397
+ 1107 00bc 4FEA8808 		lsl	r8, r8, #2
+ 1108              	.LVL90:
+ 237:src/codec/codec.c **** 	}
+ 1109              		.loc 1 237 14 view .LVU398
+ 1110 00c0 E9E7     		b	.L51
+ 1111              	.LVL91:
+ 1112              	.L48:
+ 231:src/codec/codec.c **** 
+ 1113              		.loc 1 231 3 is_stmt 1 view .LVU399
+ 1114              	.LBB119:
+ 1115              	.LBB117:
+  49:src/codec/codec.c **** }
+ 1116              		.loc 1 49 2 is_stmt 0 view .LVU400
+ 1117 00c2 4246     		mov	r2, r8
+ 1118 00c4 04F10C03 		add	r3, r4, #12
+ 1119 00c8 4846     		mov	r0, r9
+ 1120              	.LVL92:
+  49:src/codec/codec.c **** }
+ 1121              		.loc 1 49 2 view .LVU401
+ 1122 00ca FFF7FEFF 		bl	whiten
+ 1123              	.LVL93:
+  49:src/codec/codec.c **** }
+ 1124              		.loc 1 49 2 view .LVU402
+ 1125              	.LBE117:
+ 1126              	.LBE119:
+ 234:src/codec/codec.c **** 	{
+ 1127              		.loc 1 234 2 is_stmt 1 view .LVU403
+ 234:src/codec/codec.c **** 	{
+ 1128              		.loc 1 234 5 is_stmt 0 view .LVU404
+ 1129 00ce 3379     		ldrb	r3, [r6, #4]	@ zero_extendqisi2
+ 236:src/codec/codec.c **** 		out_bitlen = byte_num*12;
+ 1130              		.loc 1 236 24 view .LVU405
+ 1131 00d0 626A     		ldr	r2, [r4, #36]
+ 234:src/codec/codec.c **** 	{
+ 1132              		.loc 1 234 5 view .LVU406
+ARM GAS  /tmp/ccekfF7I.s 			page 34
+
+
+ 1133 00d2 002B     		cmp	r3, #0
+ 1134 00d4 D7D0     		beq	.L50
+ 1135 00d6 E7E7     		b	.L56
+ 1136              	.L58:
+ 1137              		.align	2
+ 1138              	.L57:
+ 1139 00d8 00000000 		.word	crc_tbl
+ 1140              		.cfi_endproc
+ 1141              	.LFE24:
+ 1143              		.section	.rodata.str1.4
+ 1144 002d 000000   		.align	2
+ 1145              	.LC2:
+ 1146 0030 4449457C 		.ascii	"DIE|dec_nc: unk pl len\012\012\000"
+ 1146      6465635F 
+ 1146      6E633A20 
+ 1146      756E6B20 
+ 1146      706C206C 
+ 1147 0049 000000   		.align	2
+ 1148              	.LC3:
+ 1149 004c 4449457C 		.ascii	"DIE|dec_nc: error av %d of %d\012\012\000"
+ 1149      6465635F 
+ 1149      6E633A20 
+ 1149      6572726F 
+ 1149      72206176 
+ 1150              		.section	.text.bbcodec_decode_chunk,"ax",%progbits
+ 1151              		.align	1
+ 1152              		.p2align 2,,3
+ 1153              		.global	bbcodec_decode_chunk
+ 1154              		.syntax unified
+ 1155              		.thumb
+ 1156              		.thumb_func
+ 1157              		.fpu softvfp
+ 1159              	bbcodec_decode_chunk:
+ 1160              	.LVL94:
+ 1161              	.LFB26:
+ 251:src/codec/codec.c **** 
+ 252:src/codec/codec.c **** static void bbcodec_decode_update_crc(bbcodec_t *codec, const uint8_t *data)
+ 253:src/codec/codec.c **** {
+ 254:src/codec/codec.c **** 	const uint8_t *crc_data = data+codec->crc_pos;
+ 255:src/codec/codec.c **** 	unsigned crc_num = MIN(codec->coded_total-2,codec->coded_pos)-codec->crc_pos;
+ 256:src/codec/codec.c **** 
+ 257:src/codec/codec.c **** 	if (crc_num)
+ 258:src/codec/codec.c **** 	{
+ 259:src/codec/codec.c **** 		codec->crc_state = crc_compute(crc_data, crc_num, codec->crc_state);
+ 260:src/codec/codec.c **** 		codec->crc_pos += crc_num;
+ 261:src/codec/codec.c **** 	}
+ 262:src/codec/codec.c **** }
+ 263:src/codec/codec.c **** 
+ 264:src/codec/codec.c **** /* Decode 10 host bytes */
+ 265:src/codec/codec.c **** int bbcodec_decode_chunk(bbcodec_t *codec, uint8_t *out, bbhdr_t *in_hdr, uint8_t *in_data, unsigne
+ 266:src/codec/codec.c **** {
+ 1162              		.loc 1 266 1 is_stmt 1 view -0
+ 1163              		.cfi_startproc
+ 1164              		@ args = 4, pretend = 0, frame = 0
+ 1165              		@ frame_needed = 0, uses_anonymous_args = 0
+ 1166              		.loc 1 266 1 is_stmt 0 view .LVU408
+ 1167 0000 2DE9F84F 		push	{r3, r4, r5, r6, r7, r8, r9, r10, fp, lr}
+ARM GAS  /tmp/ccekfF7I.s 			page 35
+
+
+ 1168              		.cfi_def_cfa_offset 40
+ 1169              		.cfi_offset 3, -40
+ 1170              		.cfi_offset 4, -36
+ 1171              		.cfi_offset 5, -32
+ 1172              		.cfi_offset 6, -28
+ 1173              		.cfi_offset 7, -24
+ 1174              		.cfi_offset 8, -20
+ 1175              		.cfi_offset 9, -16
+ 1176              		.cfi_offset 10, -12
+ 1177              		.cfi_offset 11, -8
+ 1178              		.cfi_offset 14, -4
+ 267:src/codec/codec.c **** 	const bbcodec_types_t *t = codec->t;
+ 1179              		.loc 1 267 2 is_stmt 1 view .LVU409
+ 1180              		.loc 1 267 25 is_stmt 0 view .LVU410
+ 1181 0004 4769     		ldr	r7, [r0, #20]
+ 1182              	.LVL95:
+ 268:src/codec/codec.c **** 	int bit_av, in_bitlen, first_chunk = codec->coded_pos == 0;
+ 1183              		.loc 1 268 2 is_stmt 1 view .LVU411
+ 269:src/codec/codec.c **** 	uint8_t *outp;
+ 1184              		.loc 1 269 2 view .LVU412
+ 270:src/codec/codec.c **** 	unsigned byte_num;
+ 1185              		.loc 1 270 2 view .LVU413
+ 271:src/codec/codec.c **** 
+ 272:src/codec/codec.c **** 	/* Check if there is a payload to decode */
+ 273:src/codec/codec.c **** 	if (t->payload_bytes == 0)
+ 1186              		.loc 1 273 2 view .LVU414
+ 266:src/codec/codec.c **** 	const bbcodec_types_t *t = codec->t;
+ 1187              		.loc 1 266 1 is_stmt 0 view .LVU415
+ 1188 0006 0446     		mov	r4, r0
+ 1189              		.loc 1 273 5 view .LVU416
+ 1190 0008 7A88     		ldrh	r2, [r7, #2]
+ 1191              	.LVL96:
+ 266:src/codec/codec.c **** 	const bbcodec_types_t *t = codec->t;
+ 1192              		.loc 1 266 1 view .LVU417
+ 1193 000a 0E46     		mov	r6, r1
+ 1194              		.loc 1 273 5 view .LVU418
+ 1195 000c 002A     		cmp	r2, #0
+ 1196 000e 63D0     		beq	.L84
+ 268:src/codec/codec.c **** 	uint8_t *outp;
+ 1197              		.loc 1 268 44 view .LVU419
+ 1198 0010 D0F82880 		ldr	r8, [r0, #40]
+ 274:src/codec/codec.c **** 		return BBCODEC_DONE;
+ 275:src/codec/codec.c **** 
+ 276:src/codec/codec.c **** 	/* First chunk: we do not know coded position,
+ 277:src/codec/codec.c **** 	 * Just do one full chunk */
+ 278:src/codec/codec.c **** 	if (first_chunk)
+ 1199              		.loc 1 278 2 is_stmt 1 view .LVU420
+ 1200              		.loc 1 278 5 is_stmt 0 view .LVU421
+ 1201 0014 B8F1000F 		cmp	r8, #0
+ 1202 0018 5BD0     		beq	.L83
+ 279:src/codec/codec.c **** 	{
+ 280:src/codec/codec.c **** 		
+ 281:src/codec/codec.c **** 		byte_num = CODEC_RX_CHUNK_SIZE;
+ 282:src/codec/codec.c **** 		outp = out;
+ 283:src/codec/codec.c **** 	}
+ 284:src/codec/codec.c **** 	else{
+ 285:src/codec/codec.c **** 		/* FIXME: hacky assert that payload length was decoded */
+ARM GAS  /tmp/ccekfF7I.s 			page 36
+
+
+ 286:src/codec/codec.c **** 		if(codec->coded_total == 0)
+ 1203              		.loc 1 286 3 is_stmt 1 view .LVU422
+ 1204              		.loc 1 286 11 is_stmt 0 view .LVU423
+ 1205 001a 056A     		ldr	r5, [r0, #32]
+ 1206              		.loc 1 286 5 view .LVU424
+ 1207 001c 002D     		cmp	r5, #0
+ 1208 001e 00F0B380 		beq	.L104
+ 287:src/codec/codec.c **** 			DIE("dec_nc: unk pl len\n");
+ 288:src/codec/codec.c **** 		byte_num = MIN(CODEC_RX_CHUNK_SIZE,codec->coded_total - codec->coded_pos);
+ 1209              		.loc 1 288 3 is_stmt 1 view .LVU425
+ 1210              	.LVL97:
+ 289:src/codec/codec.c **** 		outp = out+codec->coded_pos;
+ 1211              		.loc 1 289 3 view .LVU426
+ 290:src/codec/codec.c **** 	}
+ 291:src/codec/codec.c **** 
+ 292:src/codec/codec.c **** 	if (byte_num == 0)
+ 1212              		.loc 1 292 2 view .LVU427
+ 1213              		.loc 1 292 5 is_stmt 0 view .LVU428
+ 1214 0022 A845     		cmp	r8, r5
+ 1215 0024 58D0     		beq	.L84
+ 288:src/codec/codec.c **** 		outp = out+codec->coded_pos;
+ 1216              		.loc 1 288 14 view .LVU429
+ 1217 0026 A5EB0805 		sub	r5, r5, r8
+ 1218              	.LVL98:
+ 288:src/codec/codec.c **** 		outp = out+codec->coded_pos;
+ 1219              		.loc 1 288 12 view .LVU430
+ 1220 002a 0A2D     		cmp	r5, #10
+ 1221 002c 28BF     		it	cs
+ 1222 002e 0A25     		movcs	r5, #10
+ 289:src/codec/codec.c **** 		outp = out+codec->coded_pos;
+ 1223              		.loc 1 289 8 view .LVU431
+ 1224 0030 01EB080A 		add	r10, r1, r8
+ 1225              	.LVL99:
+ 1226              	.L61:
+ 293:src/codec/codec.c **** 		return BBCODEC_DONE;
+ 294:src/codec/codec.c **** 
+ 295:src/codec/codec.c **** 	bit_av = in_length*8 - codec->air_off_b;
+ 1227              		.loc 1 295 2 is_stmt 1 view .LVU432
+ 1228              		.loc 1 295 30 is_stmt 0 view .LVU433
+ 1229 0034 626A     		ldr	r2, [r4, #36]
+ 1230              	.LVL100:
+ 296:src/codec/codec.c **** 	if (bit_av < 0)
+ 1231              		.loc 1 296 2 is_stmt 1 view .LVU434
+ 1232              		.loc 1 296 5 is_stmt 0 view .LVU435
+ 1233 0036 0A99     		ldr	r1, [sp, #40]
+ 1234              	.LVL101:
+ 1235              		.loc 1 296 5 view .LVU436
+ 1236 0038 D2EBC100 		rsbs	r0, r2, r1, lsl #3
+ 1237              	.LVL102:
+ 1238              		.loc 1 296 5 view .LVU437
+ 1239 003c 00F1A180 		bmi	.L105
+ 297:src/codec/codec.c **** 		DIE("dec_nc: error av %d of %d\n", in_length, codec->air_off_b);
+ 298:src/codec/codec.c **** 
+ 299:src/codec/codec.c **** 	if (t->has_fec23)
+ 1240              		.loc 1 299 2 is_stmt 1 view .LVU438
+ 1241              		.loc 1 299 5 is_stmt 0 view .LVU439
+ 1242 0040 3979     		ldrb	r1, [r7, #4]	@ zero_extendqisi2
+ARM GAS  /tmp/ccekfF7I.s 			page 37
+
+
+ 1243 0042 0029     		cmp	r1, #0
+ 1244 0044 4BD0     		beq	.L64
+ 300:src/codec/codec.c **** 	{
+ 301:src/codec/codec.c **** 		in_bitlen = 12*byte_num;
+ 1245              		.loc 1 301 3 is_stmt 1 view .LVU440
+ 1246              		.loc 1 301 17 is_stmt 0 view .LVU441
+ 1247 0046 05EB4501 		add	r1, r5, r5, lsl #1
+ 302:src/codec/codec.c **** 		if (bit_av < in_bitlen)
+ 1248              		.loc 1 302 6 view .LVU442
+ 1249 004a B0EB810F 		cmp	r0, r1, lsl #2
+ 301:src/codec/codec.c **** 		if (bit_av < in_bitlen)
+ 1250              		.loc 1 301 17 view .LVU443
+ 1251 004e 4FEA8109 		lsl	r9, r1, #2
+ 1252              	.LVL103:
+ 1253              		.loc 1 302 3 is_stmt 1 view .LVU444
+ 1254              		.loc 1 302 6 is_stmt 0 view .LVU445
+ 1255 0052 5EDB     		blt	.L86
+ 303:src/codec/codec.c **** 			return BBCODEC_SHORT;
+ 304:src/codec/codec.c **** 		/* TODO: return unfec23 error for pkt->flags ?
+ 305:src/codec/codec.c **** 		 * For now, we're just relying on CRC to check validity of message. */
+ 306:src/codec/codec.c **** 		unfec23(outp, in_data, codec->air_off_b, 8*byte_num);
+ 1256              		.loc 1 306 3 is_stmt 1 view .LVU446
+ 1257 0054 4FEAC50B 		lsl	fp, r5, #3
+ 1258 0058 1946     		mov	r1, r3
+ 1259 005a 5046     		mov	r0, r10
+ 1260              	.LVL104:
+ 1261              		.loc 1 306 3 is_stmt 0 view .LVU447
+ 1262 005c 5B46     		mov	r3, fp
+ 1263              	.LVL105:
+ 1264              		.loc 1 306 3 view .LVU448
+ 1265 005e FFF7FEFF 		bl	unfec23
+ 1266              	.LVL106:
+ 307:src/codec/codec.c **** 	}
+ 308:src/codec/codec.c **** 	else
+ 309:src/codec/codec.c **** 	{
+ 310:src/codec/codec.c **** 		in_bitlen = 8*byte_num;
+ 311:src/codec/codec.c **** 		if (bit_av < in_bitlen)
+ 312:src/codec/codec.c **** 			return BBCODEC_SHORT;
+ 313:src/codec/codec.c **** 		null_decode(outp, in_data, codec->air_off_b, byte_num);
+ 314:src/codec/codec.c **** 	}
+ 315:src/codec/codec.c **** 	if (codec->use_whiten)
+ 1267              		.loc 1 315 2 is_stmt 1 view .LVU449
+ 1268              		.loc 1 315 5 is_stmt 0 view .LVU450
+ 1269 0062 6368     		ldr	r3, [r4, #4]
+ 1270 0064 002B     		cmp	r3, #0
+ 1271 0066 48D0     		beq	.L66
+ 1272              	.L109:
+ 316:src/codec/codec.c **** 		bbcodec_unwhiten(&codec->whiten_state, outp, outp, byte_num*8);
+ 1273              		.loc 1 316 3 is_stmt 1 view .LVU451
+ 1274              	.LVL107:
+ 1275              	.LBB128:
+ 1276              	.LBI128:
+  47:src/codec/codec.c **** {
+ 1277              		.loc 1 47 20 view .LVU452
+ 1278              	.LBB129:
+  49:src/codec/codec.c **** }
+ 1279              		.loc 1 49 2 view .LVU453
+ARM GAS  /tmp/ccekfF7I.s 			page 38
+
+
+ 1280 0068 5046     		mov	r0, r10
+ 1281 006a 04F10C03 		add	r3, r4, #12
+ 1282              	.LVL108:
+  49:src/codec/codec.c **** }
+ 1283              		.loc 1 49 2 is_stmt 0 view .LVU454
+ 1284 006e 5A46     		mov	r2, fp
+ 1285 0070 5146     		mov	r1, r10
+ 1286 0072 FFF7FEFF 		bl	whiten
+ 1287              	.LVL109:
+  49:src/codec/codec.c **** }
+ 1288              		.loc 1 49 2 view .LVU455
+ 1289              	.LBE129:
+ 1290              	.LBE128:
+ 317:src/codec/codec.c **** 
+ 318:src/codec/codec.c **** 	codec->air_off_b += in_bitlen;
+ 1291              		.loc 1 318 2 is_stmt 1 view .LVU456
+ 319:src/codec/codec.c **** 	codec->coded_pos += byte_num;
+ 1292              		.loc 1 319 19 is_stmt 0 view .LVU457
+ 1293 0076 D4E90930 		ldrd	r3, r0, [r4, #36]
+ 318:src/codec/codec.c **** 	codec->coded_pos += byte_num;
+ 1294              		.loc 1 318 19 view .LVU458
+ 1295 007a 4B44     		add	r3, r3, r9
+ 1296              		.loc 1 319 19 view .LVU459
+ 1297 007c 0544     		add	r5, r5, r0
+ 1298 007e C4E90935 		strd	r3, r5, [r4, #36]
+ 320:src/codec/codec.c **** 
+ 321:src/codec/codec.c **** 	if (first_chunk)
+ 1299              		.loc 1 321 2 is_stmt 1 view .LVU460
+ 1300              		.loc 1 321 5 is_stmt 0 view .LVU461
+ 1301 0082 B8F1000F 		cmp	r8, #0
+ 1302 0086 41D1     		bne	.L106
+ 1303              	.L67:
+ 322:src/codec/codec.c **** 	{
+ 323:src/codec/codec.c **** 		/* Read payload length */
+ 324:src/codec/codec.c **** 		bbcodec_calc_payload_length(codec, out);
+ 1304              		.loc 1 324 3 is_stmt 1 view .LVU462
+ 1305              	.LVL110:
+ 1306              	.LBB130:
+ 1307              	.LBI130:
+  53:src/codec/codec.c **** {
+ 1308              		.loc 1 53 13 view .LVU463
+ 1309              	.LBB131:
+  55:src/codec/codec.c **** 	unsigned payload_bits, hdr_len;
+ 1310              		.loc 1 55 2 view .LVU464
+  55:src/codec/codec.c **** 	unsigned payload_bits, hdr_len;
+ 1311              		.loc 1 55 25 is_stmt 0 view .LVU465
+ 1312 0088 6169     		ldr	r1, [r4, #20]
+ 1313              	.LVL111:
+  56:src/codec/codec.c **** 
+ 1314              		.loc 1 56 2 is_stmt 1 view .LVU466
+  58:src/codec/codec.c **** 		DIE("No payload for type %p\n", codec->t);
+ 1315              		.loc 1 58 2 view .LVU467
+  58:src/codec/codec.c **** 		DIE("No payload for type %p\n", codec->t);
+ 1316              		.loc 1 58 7 is_stmt 0 view .LVU468
+ 1317 008a 4A88     		ldrh	r2, [r1, #2]
+  58:src/codec/codec.c **** 		DIE("No payload for type %p\n", codec->t);
+ 1318              		.loc 1 58 5 view .LVU469
+ARM GAS  /tmp/ccekfF7I.s 			page 39
+
+
+ 1319 008c 0AB1     		cbz	r2, .L69
+  58:src/codec/codec.c **** 		DIE("No payload for type %p\n", codec->t);
+ 1320              		.loc 1 58 28 view .LVU470
+ 1321 008e 002E     		cmp	r6, #0
+ 1322 0090 7DD0     		beq	.L107
+ 1323              	.L69:
+  61:src/codec/codec.c **** 
+ 1324              		.loc 1 61 2 is_stmt 1 view .LVU471
+  63:src/codec/codec.c **** 	{
+ 1325              		.loc 1 63 11 is_stmt 0 view .LVU472
+ 1326 0092 A368     		ldr	r3, [r4, #8]
+  61:src/codec/codec.c **** 
+ 1327              		.loc 1 61 13 view .LVU473
+ 1328 0094 4878     		ldrb	r0, [r1, #1]	@ zero_extendqisi2
+ 1329              	.LVL112:
+  63:src/codec/codec.c **** 	{
+ 1330              		.loc 1 63 2 is_stmt 1 view .LVU474
+  63:src/codec/codec.c **** 	{
+ 1331              		.loc 1 63 5 is_stmt 0 view .LVU475
+ 1332 0096 1BB9     		cbnz	r3, .L103
+  69:src/codec/codec.c **** 		{
+ 1333              		.loc 1 69 3 is_stmt 1 view .LVU476
+ 1334 0098 0128     		cmp	r0, #1
+ 1335 009a 6BD0     		beq	.L72
+ 1336 009c 0228     		cmp	r0, #2
+ 1337 009e 5DD0     		beq	.L73
+ 1338              	.L103:
+  78:src/codec/codec.c **** 			break;
+ 1339              		.loc 1 78 4 view .LVU477
+  78:src/codec/codec.c **** 			break;
+ 1340              		.loc 1 78 26 is_stmt 0 view .LVU478
+ 1341 00a0 A261     		str	r2, [r4, #24]
+  79:src/codec/codec.c **** 		}
+ 1342              		.loc 1 79 4 is_stmt 1 view .LVU479
+  81:src/codec/codec.c **** 		{
+ 1343              		.loc 1 81 3 view .LVU480
+ 1344 00a2 1044     		add	r0, r0, r2
+ 1345              	.LVL113:
+ 1346              	.L71:
+  88:src/codec/codec.c **** 	if (t->has_crc)
+ 1347              		.loc 1 88 2 view .LVU481
+  88:src/codec/codec.c **** 	if (t->has_crc)
+ 1348              		.loc 1 88 21 is_stmt 0 view .LVU482
+ 1349 00a4 2062     		str	r0, [r4, #32]
+  89:src/codec/codec.c **** 		codec->coded_total += 2;
+ 1350              		.loc 1 89 2 is_stmt 1 view .LVU483
+  89:src/codec/codec.c **** 		codec->coded_total += 2;
+ 1351              		.loc 1 89 5 is_stmt 0 view .LVU484
+ 1352 00a6 4A79     		ldrb	r2, [r1, #5]	@ zero_extendqisi2
+ 1353 00a8 0AB1     		cbz	r2, .L77
+  90:src/codec/codec.c **** 	if (t->has_fec23)
+ 1354              		.loc 1 90 3 is_stmt 1 view .LVU485
+  90:src/codec/codec.c **** 	if (t->has_fec23)
+ 1355              		.loc 1 90 22 is_stmt 0 view .LVU486
+ 1356 00aa 0230     		adds	r0, r0, #2
+ 1357 00ac 2062     		str	r0, [r4, #32]
+ 1358              	.L77:
+ARM GAS  /tmp/ccekfF7I.s 			page 40
+
+
+  91:src/codec/codec.c **** 		payload_bits = codec->coded_total*12;
+ 1359              		.loc 1 91 2 is_stmt 1 view .LVU487
+  91:src/codec/codec.c **** 		payload_bits = codec->coded_total*12;
+ 1360              		.loc 1 91 5 is_stmt 0 view .LVU488
+ 1361 00ae 0A79     		ldrb	r2, [r1, #4]	@ zero_extendqisi2
+ 1362 00b0 002A     		cmp	r2, #0
+ 1363 00b2 51D0     		beq	.L78
+  92:src/codec/codec.c **** 	else
+ 1364              		.loc 1 92 3 is_stmt 1 view .LVU489
+  92:src/codec/codec.c **** 	else
+ 1365              		.loc 1 92 16 is_stmt 0 view .LVU490
+ 1366 00b4 00EB4002 		add	r2, r0, r0, lsl #1
+ 1367 00b8 9200     		lsls	r2, r2, #2
+ 1368              	.LVL114:
+ 1369              	.L79:
+  95:src/codec/codec.c **** }
+ 1370              		.loc 1 95 2 is_stmt 1 view .LVU491
+  95:src/codec/codec.c **** }
+ 1371              		.loc 1 95 21 is_stmt 0 view .LVU492
+ 1372 00ba 4132     		adds	r2, r2, #65
+ 1373              	.LVL115:
+  95:src/codec/codec.c **** }
+ 1374              		.loc 1 95 21 view .LVU493
+ 1375 00bc D208     		lsrs	r2, r2, #3
+ 1376              	.LVL116:
+  95:src/codec/codec.c **** }
+ 1377              		.loc 1 95 19 view .LVU494
+ 1378 00be E261     		str	r2, [r4, #28]
+ 1379              	.LVL117:
+ 1380              	.L68:
+  95:src/codec/codec.c **** }
+ 1381              		.loc 1 95 19 view .LVU495
+ 1382              	.LBE131:
+ 1383              	.LBE130:
+ 325:src/codec/codec.c **** 	}
+ 326:src/codec/codec.c **** 	/* update crc */
+ 327:src/codec/codec.c **** 	if (!codec->rx_raw && t->has_crc)
+ 1384              		.loc 1 327 2 is_stmt 1 view .LVU496
+ 1385              		.loc 1 327 5 is_stmt 0 view .LVU497
+ 1386 00c0 0BB9     		cbnz	r3, .L80
+ 1387              		.loc 1 327 21 discriminator 1 view .LVU498
+ 1388 00c2 7A79     		ldrb	r2, [r7, #5]	@ zero_extendqisi2
+ 1389 00c4 42BB     		cbnz	r2, .L108
+ 1390              	.LVL118:
+ 1391              	.L80:
+ 328:src/codec/codec.c **** 	{
+ 329:src/codec/codec.c **** 		bbcodec_decode_update_crc(codec, out);
+ 330:src/codec/codec.c **** 	}
+ 331:src/codec/codec.c **** 	if (codec->coded_pos >= codec->coded_total)
+ 1392              		.loc 1 331 2 is_stmt 1 view .LVU499
+ 1393              		.loc 1 331 5 is_stmt 0 view .LVU500
+ 1394 00c6 8542     		cmp	r5, r0
+ 1395 00c8 34BF     		ite	cc
+ 1396 00ca 0020     		movcc	r0, #0
+ 1397 00cc 0120     		movcs	r0, #1
+ 332:src/codec/codec.c **** 	{
+ 333:src/codec/codec.c **** 		return BBCODEC_DONE;
+ARM GAS  /tmp/ccekfF7I.s 			page 41
+
+
+ 334:src/codec/codec.c **** 	}
+ 335:src/codec/codec.c **** 	return 0;
+ 336:src/codec/codec.c **** }
+ 1398              		.loc 1 336 1 view .LVU501
+ 1399 00ce BDE8F88F 		pop	{r3, r4, r5, r6, r7, r8, r9, r10, fp, pc}
+ 1400              	.LVL119:
+ 1401              	.L83:
+ 1402              		.loc 1 336 1 view .LVU502
+ 1403 00d2 8A46     		mov	r10, r1
+ 281:src/codec/codec.c **** 		outp = out;
+ 1404              		.loc 1 281 12 view .LVU503
+ 1405 00d4 0A25     		movs	r5, #10
+ 1406 00d6 ADE7     		b	.L61
+ 1407              	.LVL120:
+ 1408              	.L84:
+ 274:src/codec/codec.c **** 
+ 1409              		.loc 1 274 10 view .LVU504
+ 1410 00d8 0120     		movs	r0, #1
+ 1411              	.LVL121:
+ 1412              		.loc 1 336 1 view .LVU505
+ 1413 00da BDE8F88F 		pop	{r3, r4, r5, r6, r7, r8, r9, r10, fp, pc}
+ 1414              	.LVL122:
+ 1415              	.L64:
+ 310:src/codec/codec.c **** 		if (bit_av < in_bitlen)
+ 1416              		.loc 1 310 3 is_stmt 1 view .LVU506
+ 311:src/codec/codec.c **** 			return BBCODEC_SHORT;
+ 1417              		.loc 1 311 6 is_stmt 0 view .LVU507
+ 1418 00de B0EBC50F 		cmp	r0, r5, lsl #3
+ 310:src/codec/codec.c **** 		if (bit_av < in_bitlen)
+ 1419              		.loc 1 310 16 view .LVU508
+ 1420 00e2 4FEAC509 		lsl	r9, r5, #3
+ 1421              	.LVL123:
+ 311:src/codec/codec.c **** 			return BBCODEC_SHORT;
+ 1422              		.loc 1 311 3 is_stmt 1 view .LVU509
+ 311:src/codec/codec.c **** 			return BBCODEC_SHORT;
+ 1423              		.loc 1 311 6 is_stmt 0 view .LVU510
+ 1424 00e6 14DB     		blt	.L86
+ 313:src/codec/codec.c **** 	}
+ 1425              		.loc 1 313 3 is_stmt 1 view .LVU511
+ 1426 00e8 1946     		mov	r1, r3
+ 1427 00ea 5046     		mov	r0, r10
+ 1428              	.LVL124:
+ 313:src/codec/codec.c **** 	}
+ 1429              		.loc 1 313 3 is_stmt 0 view .LVU512
+ 1430 00ec 2B46     		mov	r3, r5
+ 1431              	.LVL125:
+ 313:src/codec/codec.c **** 	}
+ 1432              		.loc 1 313 3 view .LVU513
+ 1433 00ee FFF7FEFF 		bl	null_decode
+ 1434              	.LVL126:
+ 315:src/codec/codec.c **** 		bbcodec_unwhiten(&codec->whiten_state, outp, outp, byte_num*8);
+ 1435              		.loc 1 315 2 is_stmt 1 view .LVU514
+ 315:src/codec/codec.c **** 		bbcodec_unwhiten(&codec->whiten_state, outp, outp, byte_num*8);
+ 1436              		.loc 1 315 5 is_stmt 0 view .LVU515
+ 1437 00f2 6368     		ldr	r3, [r4, #4]
+ 313:src/codec/codec.c **** 	}
+ 1438              		.loc 1 313 3 view .LVU516
+ARM GAS  /tmp/ccekfF7I.s 			page 42
+
+
+ 1439 00f4 CB46     		mov	fp, r9
+ 315:src/codec/codec.c **** 		bbcodec_unwhiten(&codec->whiten_state, outp, outp, byte_num*8);
+ 1440              		.loc 1 315 5 view .LVU517
+ 1441 00f6 002B     		cmp	r3, #0
+ 1442 00f8 B6D1     		bne	.L109
+ 1443              	.L66:
+ 318:src/codec/codec.c **** 	codec->coded_pos += byte_num;
+ 1444              		.loc 1 318 2 is_stmt 1 view .LVU518
+ 319:src/codec/codec.c **** 
+ 1445              		.loc 1 319 19 is_stmt 0 view .LVU519
+ 1446 00fa D4E90930 		ldrd	r3, r0, [r4, #36]
+ 318:src/codec/codec.c **** 	codec->coded_pos += byte_num;
+ 1447              		.loc 1 318 19 view .LVU520
+ 1448 00fe 4B44     		add	r3, r3, r9
+ 319:src/codec/codec.c **** 
+ 1449              		.loc 1 319 19 view .LVU521
+ 1450 0100 0544     		add	r5, r5, r0
+ 1451 0102 C4E90935 		strd	r3, r5, [r4, #36]
+ 321:src/codec/codec.c **** 	{
+ 1452              		.loc 1 321 2 is_stmt 1 view .LVU522
+ 321:src/codec/codec.c **** 	{
+ 1453              		.loc 1 321 5 is_stmt 0 view .LVU523
+ 1454 0106 B8F1000F 		cmp	r8, #0
+ 1455 010a BDD0     		beq	.L67
+ 1456              	.L106:
+ 321:src/codec/codec.c **** 	{
+ 1457              		.loc 1 321 5 view .LVU524
+ 1458 010c A368     		ldr	r3, [r4, #8]
+ 1459 010e 206A     		ldr	r0, [r4, #32]
+ 1460 0110 D6E7     		b	.L68
+ 1461              	.LVL127:
+ 1462              	.L86:
+ 303:src/codec/codec.c **** 		/* TODO: return unfec23 error for pkt->flags ?
+ 1463              		.loc 1 303 11 view .LVU525
+ 1464 0112 0220     		movs	r0, #2
+ 1465              	.LVL128:
+ 1466              		.loc 1 336 1 view .LVU526
+ 1467 0114 BDE8F88F 		pop	{r3, r4, r5, r6, r7, r8, r9, r10, fp, pc}
+ 1468              	.LVL129:
+ 1469              	.L108:
+ 329:src/codec/codec.c **** 	}
+ 1470              		.loc 1 329 3 is_stmt 1 view .LVU527
+ 1471              	.LBB134:
+ 1472              	.LBI134:
+ 252:src/codec/codec.c **** {
+ 1473              		.loc 1 252 13 view .LVU528
+ 1474              	.LBB135:
+ 254:src/codec/codec.c **** 	unsigned crc_num = MIN(codec->coded_total-2,codec->coded_pos)-codec->crc_pos;
+ 1475              		.loc 1 254 2 view .LVU529
+ 254:src/codec/codec.c **** 	unsigned crc_num = MIN(codec->coded_total-2,codec->coded_pos)-codec->crc_pos;
+ 1476              		.loc 1 254 38 is_stmt 0 view .LVU530
+ 1477 0118 B4F810C0 		ldrh	ip, [r4, #16]
+ 1478              	.LVL130:
+ 255:src/codec/codec.c **** 
+ 1479              		.loc 1 255 2 is_stmt 1 view .LVU531
+ 255:src/codec/codec.c **** 
+ 1480              		.loc 1 255 21 is_stmt 0 view .LVU532
+ARM GAS  /tmp/ccekfF7I.s 			page 43
+
+
+ 1481 011c 811E     		subs	r1, r0, #2
+ 255:src/codec/codec.c **** 
+ 1482              		.loc 1 255 11 view .LVU533
+ 1483 011e A942     		cmp	r1, r5
+ 1484 0120 94BF     		ite	ls
+ 1485 0122 CCEB0101 		rsbls	r1, ip, r1
+ 1486 0126 CCEB0501 		rsbhi	r1, ip, r5
+ 1487              	.LVL131:
+ 257:src/codec/codec.c **** 	{
+ 1488              		.loc 1 257 2 is_stmt 1 view .LVU534
+ 257:src/codec/codec.c **** 	{
+ 1489              		.loc 1 257 5 is_stmt 0 view .LVU535
+ 1490 012a 0029     		cmp	r1, #0
+ 1491 012c CBD0     		beq	.L80
+ 259:src/codec/codec.c **** 		codec->crc_pos += crc_num;
+ 1492              		.loc 1 259 3 is_stmt 1 view .LVU536
+ 1493              	.LBB136:
+ 1494              	.LBB137:
+ 170:include/ubtbr/bb.h **** 	{
+ 1495              		.loc 2 170 15 is_stmt 0 view .LVU537
+ 1496 012e 1A46     		mov	r2, r3
+ 1497              	.LBE137:
+ 1498              	.LBE136:
+ 259:src/codec/codec.c **** 		codec->crc_pos += crc_num;
+ 1499              		.loc 1 259 22 view .LVU538
+ 1500 0130 E789     		ldrh	r7, [r4, #14]
+ 1501              	.LVL132:
+ 1502              	.LBB139:
+ 1503              	.LBI136:
+ 165:include/ubtbr/bb.h **** {
+ 1504              		.loc 2 165 24 is_stmt 1 view .LVU539
+ 1505              	.LBB138:
+ 167:include/ubtbr/bb.h **** 	uint16_t i;
+ 1506              		.loc 2 167 2 view .LVU540
+ 168:include/ubtbr/bb.h **** 
+ 1507              		.loc 2 168 2 view .LVU541
+ 170:include/ubtbr/bb.h **** 	{
+ 1508              		.loc 2 170 2 view .LVU542
+ 170:include/ubtbr/bb.h **** 	{
+ 1509              		.loc 2 170 13 view .LVU543
+ 1510 0132 DFF86CE0 		ldr	lr, .L110+12
+ 1511 0136 6644     		add	r6, r6, ip
+ 1512              	.LVL133:
+ 1513              	.L81:
+ 172:include/ubtbr/bb.h **** 	}
+ 1514              		.loc 2 172 3 view .LVU544
+ 172:include/ubtbr/bb.h **** 	}
+ 1515              		.loc 2 172 38 is_stmt 0 view .LVU545
+ 1516 0138 B25C     		ldrb	r2, [r6, r2]	@ zero_extendqisi2
+ 170:include/ubtbr/bb.h **** 	{
+ 1517              		.loc 2 170 26 view .LVU546
+ 1518 013a 0133     		adds	r3, r3, #1
+ 1519              	.LVL134:
+ 172:include/ubtbr/bb.h **** 	}
+ 1520              		.loc 2 172 41 view .LVU547
+ 1521 013c 7A40     		eors	r2, r2, r7
+ 172:include/ubtbr/bb.h **** 	}
+ARM GAS  /tmp/ccekfF7I.s 			page 44
+
+
+ 1522              		.loc 2 172 33 view .LVU548
+ 1523 013e D2B2     		uxtb	r2, r2
+ 172:include/ubtbr/bb.h **** 	}
+ 1524              		.loc 2 172 27 view .LVU549
+ 1525 0140 3EF81220 		ldrh	r2, [lr, r2, lsl #1]
+ 170:include/ubtbr/bb.h **** 	{
+ 1526              		.loc 2 170 26 view .LVU550
+ 1527 0144 9BB2     		uxth	r3, r3
+ 170:include/ubtbr/bb.h **** 	{
+ 1528              		.loc 2 170 2 view .LVU551
+ 1529 0146 9942     		cmp	r1, r3
+ 172:include/ubtbr/bb.h **** 	}
+ 1530              		.loc 2 172 7 view .LVU552
+ 1531 0148 82EA1727 		eor	r7, r2, r7, lsr #8
+ 1532              	.LVL135:
+ 170:include/ubtbr/bb.h **** 	{
+ 1533              		.loc 2 170 25 is_stmt 1 view .LVU553
+ 170:include/ubtbr/bb.h **** 	{
+ 1534              		.loc 2 170 13 view .LVU554
+ 170:include/ubtbr/bb.h **** 	{
+ 1535              		.loc 2 170 15 is_stmt 0 view .LVU555
+ 1536 014c 1A46     		mov	r2, r3
+ 170:include/ubtbr/bb.h **** 	{
+ 1537              		.loc 2 170 2 view .LVU556
+ 1538 014e F3D8     		bhi	.L81
+ 174:include/ubtbr/bb.h **** }
+ 1539              		.loc 2 174 2 is_stmt 1 view .LVU557
+ 1540              	.LVL136:
+ 174:include/ubtbr/bb.h **** }
+ 1541              		.loc 2 174 2 is_stmt 0 view .LVU558
+ 1542              	.LBE138:
+ 1543              	.LBE139:
+ 260:src/codec/codec.c **** 	}
+ 1544              		.loc 1 260 18 view .LVU559
+ 1545 0150 6144     		add	r1, r1, ip
+ 1546              	.LVL137:
+ 260:src/codec/codec.c **** 	}
+ 1547              		.loc 1 260 18 view .LVU560
+ 1548 0152 2182     		strh	r1, [r4, #16]	@ movhi
+ 259:src/codec/codec.c **** 		codec->crc_pos += crc_num;
+ 1549              		.loc 1 259 20 view .LVU561
+ 1550 0154 E781     		strh	r7, [r4, #14]	@ movhi
+ 260:src/codec/codec.c **** 	}
+ 1551              		.loc 1 260 3 is_stmt 1 view .LVU562
+ 1552 0156 B6E7     		b	.L80
+ 1553              	.LVL138:
+ 1554              	.L78:
+ 260:src/codec/codec.c **** 	}
+ 1555              		.loc 1 260 3 is_stmt 0 view .LVU563
+ 1556              	.LBE135:
+ 1557              	.LBE134:
+ 1558              	.LBB140:
+ 1559              	.LBB132:
+  94:src/codec/codec.c **** 	codec->air_bytes = BYTE_ALIGN(58+payload_bits);
+ 1560              		.loc 1 94 3 is_stmt 1 view .LVU564
+  94:src/codec/codec.c **** 	codec->air_bytes = BYTE_ALIGN(58+payload_bits);
+ 1561              		.loc 1 94 16 is_stmt 0 view .LVU565
+ARM GAS  /tmp/ccekfF7I.s 			page 45
+
+
+ 1562 0158 C200     		lsls	r2, r0, #3
+ 1563              	.LVL139:
+  94:src/codec/codec.c **** 	codec->air_bytes = BYTE_ALIGN(58+payload_bits);
+ 1564              		.loc 1 94 16 view .LVU566
+ 1565 015a AEE7     		b	.L79
+ 1566              	.LVL140:
+ 1567              	.L73:
+  75:src/codec/codec.c **** 			break;
+ 1568              		.loc 1 75 4 is_stmt 1 view .LVU567
+  75:src/codec/codec.c **** 			break;
+ 1569              		.loc 1 75 48 is_stmt 0 view .LVU568
+ 1570 015c B6F800C0 		ldrh	ip, [r6]	@ unaligned
+  75:src/codec/codec.c **** 			break;
+ 1571              		.loc 1 75 34 view .LVU569
+ 1572 0160 CCF3C90C 		ubfx	ip, ip, #3, #10
+  75:src/codec/codec.c **** 			break;
+ 1573              		.loc 1 75 26 view .LVU570
+ 1574 0164 C4F818C0 		str	ip, [r4, #24]
+  76:src/codec/codec.c **** 		default: // 0
+ 1575              		.loc 1 76 4 is_stmt 1 view .LVU571
+ 1576              	.L75:
+  81:src/codec/codec.c **** 		{
+ 1577              		.loc 1 81 3 view .LVU572
+  81:src/codec/codec.c **** 		{
+ 1578              		.loc 1 81 6 is_stmt 0 view .LVU573
+ 1579 0168 6245     		cmp	r2, ip
+  85:src/codec/codec.c **** 		}
+ 1580              		.loc 1 85 26 view .LVU574
+ 1581 016a 36BF     		itet	cc
+ 1582 016c 0022     		movcc	r2, #0
+ 1583 016e 6044     		addcs	r0, r0, ip
+ 1584              	.LVL141:
+  84:src/codec/codec.c **** 			codec->payload_length = 0;
+ 1585              		.loc 1 84 22 is_stmt 1 view .LVU575
+  85:src/codec/codec.c **** 		}
+ 1586              		.loc 1 85 4 view .LVU576
+  85:src/codec/codec.c **** 		}
+ 1587              		.loc 1 85 26 is_stmt 0 view .LVU577
+ 1588 0170 A261     		strcc	r2, [r4, #24]
+ 1589 0172 97E7     		b	.L71
+ 1590              	.LVL142:
+ 1591              	.L72:
+  72:src/codec/codec.c **** 			break;
+ 1592              		.loc 1 72 4 is_stmt 1 view .LVU578
+  72:src/codec/codec.c **** 			break;
+ 1593              		.loc 1 72 38 is_stmt 0 view .LVU579
+ 1594 0174 96F800C0 		ldrb	ip, [r6]	@ zero_extendqisi2
+ 1595 0178 4FEADC0C 		lsr	ip, ip, #3
+  72:src/codec/codec.c **** 			break;
+ 1596              		.loc 1 72 26 view .LVU580
+ 1597 017c C4F818C0 		str	ip, [r4, #24]
+  73:src/codec/codec.c **** 		case 2:
+ 1598              		.loc 1 73 4 is_stmt 1 view .LVU581
+ 1599 0180 F2E7     		b	.L75
+ 1600              	.LVL143:
+ 1601              	.L105:
+  73:src/codec/codec.c **** 		case 2:
+ARM GAS  /tmp/ccekfF7I.s 			page 46
+
+
+ 1602              		.loc 1 73 4 is_stmt 0 view .LVU582
+ 1603              	.LBE132:
+ 1604              	.LBE140:
+ 297:src/codec/codec.c **** 
+ 1605              		.loc 1 297 3 is_stmt 1 view .LVU583
+ 1606 0182 0448     		ldr	r0, .L110
+ 1607              	.LVL144:
+ 297:src/codec/codec.c **** 
+ 1608              		.loc 1 297 3 is_stmt 0 view .LVU584
+ 1609 0184 FFF7FEFF 		bl	die
+ 1610              	.LVL145:
+ 1611              	.L104:
+ 287:src/codec/codec.c **** 		byte_num = MIN(CODEC_RX_CHUNK_SIZE,codec->coded_total - codec->coded_pos);
+ 1612              		.loc 1 287 4 is_stmt 1 view .LVU585
+ 1613 0188 0348     		ldr	r0, .L110+4
+ 1614              	.LVL146:
+ 287:src/codec/codec.c **** 		byte_num = MIN(CODEC_RX_CHUNK_SIZE,codec->coded_total - codec->coded_pos);
+ 1615              		.loc 1 287 4 is_stmt 0 view .LVU586
+ 1616 018a FFF7FEFF 		bl	die
+ 1617              	.LVL147:
+ 1618              	.L107:
+ 1619              	.LBB141:
+ 1620              	.LBB133:
+  59:src/codec/codec.c **** 
+ 1621              		.loc 1 59 3 is_stmt 1 view .LVU587
+ 1622 018e 0348     		ldr	r0, .L110+8
+ 1623 0190 FFF7FEFF 		bl	die
+ 1624              	.LVL148:
+ 1625              	.L111:
+  59:src/codec/codec.c **** 
+ 1626              		.loc 1 59 3 is_stmt 0 view .LVU588
+ 1627              		.align	2
+ 1628              	.L110:
+ 1629 0194 4C000000 		.word	.LC3
+ 1630 0198 30000000 		.word	.LC2
+ 1631 019c 10000000 		.word	.LC1
+ 1632 01a0 00000000 		.word	crc_tbl
+ 1633              	.LBE133:
+ 1634              	.LBE141:
+ 1635              		.cfi_endproc
+ 1636              	.LFE26:
+ 1638              		.section	.rodata.str1.4
+ 1639              		.align	2
+ 1640              	.LC4:
+ 1641 006c 4449457C 		.ascii	"DIE|Pkt not decoded? %d:%d\012\012\000"
+ 1641      506B7420 
+ 1641      6E6F7420 
+ 1641      6465636F 
+ 1641      6465643F 
+ 1642              		.section	.text.bbcodec_decode_finalize,"ax",%progbits
+ 1643              		.align	1
+ 1644              		.p2align 2,,3
+ 1645              		.global	bbcodec_decode_finalize
+ 1646              		.syntax unified
+ 1647              		.thumb
+ 1648              		.thumb_func
+ 1649              		.fpu softvfp
+ARM GAS  /tmp/ccekfF7I.s 			page 47
+
+
+ 1651              	bbcodec_decode_finalize:
+ 1652              	.LVL149:
+ 1653              	.LFB27:
+ 337:src/codec/codec.c **** 
+ 338:src/codec/codec.c **** /* Finalize decoding of the packet type,
+ 339:src/codec/codec.c ****  * must be called after all chunks are received
+ 340:src/codec/codec.c ****  */
+ 341:src/codec/codec.c **** uint8_t bbcodec_decode_finalize(bbcodec_t *codec, uint8_t *out, uint16_t *out_size)
+ 342:src/codec/codec.c **** {
+ 1654              		.loc 1 342 1 is_stmt 1 view -0
+ 1655              		.cfi_startproc
+ 1656              		@ args = 0, pretend = 0, frame = 0
+ 1657              		@ frame_needed = 0, uses_anonymous_args = 0
+ 1658              		.loc 1 342 1 is_stmt 0 view .LVU590
+ 1659 0000 38B5     		push	{r3, r4, r5, lr}
+ 1660              		.cfi_def_cfa_offset 16
+ 1661              		.cfi_offset 3, -16
+ 1662              		.cfi_offset 4, -12
+ 1663              		.cfi_offset 5, -8
+ 1664              		.cfi_offset 14, -4
+ 343:src/codec/codec.c **** 	uint16_t crc;
+ 1665              		.loc 1 343 2 is_stmt 1 view .LVU591
+ 344:src/codec/codec.c **** 	uint8_t *outp;
+ 1666              		.loc 1 344 2 view .LVU592
+ 345:src/codec/codec.c **** 	uint8_t rc = 0;
+ 1667              		.loc 1 345 2 view .LVU593
+ 1668              	.LVL150:
+ 346:src/codec/codec.c **** 	const bbcodec_types_t *t = codec->t;
+ 1669              		.loc 1 346 2 view .LVU594
+ 347:src/codec/codec.c **** 
+ 348:src/codec/codec.c **** 	/* Check if there is a payload to decode */
+ 349:src/codec/codec.c **** 	if (codec->coded_pos < codec->coded_total)
+ 1670              		.loc 1 349 2 view .LVU595
+ 1671              		.loc 1 349 11 is_stmt 0 view .LVU596
+ 1672 0002 836A     		ldr	r3, [r0, #40]
+ 1673              		.loc 1 349 30 view .LVU597
+ 1674 0004 046A     		ldr	r4, [r0, #32]
+ 1675              		.loc 1 349 5 view .LVU598
+ 1676 0006 A342     		cmp	r3, r4
+ 1677 0008 16D3     		bcc	.L121
+ 350:src/codec/codec.c **** 	{
+ 351:src/codec/codec.c **** 		DIE("Pkt not decoded? %d:%d\n",
+ 352:src/codec/codec.c **** 			codec->coded_pos, codec->coded_total);
+ 353:src/codec/codec.c **** 	}
+ 354:src/codec/codec.c **** 	if (!codec->rx_raw && t->has_crc)
+ 1678              		.loc 1 354 2 is_stmt 1 view .LVU599
+ 1679              		.loc 1 354 5 is_stmt 0 view .LVU600
+ 1680 000a 8368     		ldr	r3, [r0, #8]
+ 1681 000c 8BB9     		cbnz	r3, .L114
+ 1682              		.loc 1 354 25 discriminator 1 view .LVU601
+ 1683 000e 4369     		ldr	r3, [r0, #20]
+ 1684              		.loc 1 354 21 discriminator 1 view .LVU602
+ 1685 0010 5B79     		ldrb	r3, [r3, #5]	@ zero_extendqisi2
+ 1686 0012 73B1     		cbz	r3, .L114
+ 355:src/codec/codec.c **** 	{
+ 356:src/codec/codec.c **** 		/* Verify crc */
+ 357:src/codec/codec.c **** 		crc = out[codec->coded_total-2]|(out[codec->coded_total-1]<<8);
+ARM GAS  /tmp/ccekfF7I.s 			page 48
+
+
+ 1687              		.loc 1 357 3 is_stmt 1 view .LVU603
+ 1688              	.LVL151:
+ 358:src/codec/codec.c **** 		if (crc!=codec->crc_state)
+ 1689              		.loc 1 358 3 view .LVU604
+ 357:src/codec/codec.c **** 		if (crc!=codec->crc_state)
+ 1690              		.loc 1 357 39 is_stmt 0 view .LVU605
+ 1691 0014 2144     		add	r1, r1, r4
+ 1692              	.LVL152:
+ 357:src/codec/codec.c **** 		if (crc!=codec->crc_state)
+ 1693              		.loc 1 357 39 view .LVU606
+ 1694 0016 11F8015C 		ldrb	r5, [r1, #-1]	@ zero_extendqisi2
+ 357:src/codec/codec.c **** 		if (crc!=codec->crc_state)
+ 1695              		.loc 1 357 12 view .LVU607
+ 1696 001a 11F8023C 		ldrb	r3, [r1, #-2]	@ zero_extendqisi2
+ 1697              		.loc 1 358 6 view .LVU608
+ 1698 001e C089     		ldrh	r0, [r0, #14]
+ 1699              	.LVL153:
+ 359:src/codec/codec.c **** 		{
+ 360:src/codec/codec.c **** 			BB_DEBUG("(bad crc: cal=%x, crc=%x)", codec->crc_state, crc);
+ 361:src/codec/codec.c **** 		}
+ 362:src/codec/codec.c **** 		else{
+ 363:src/codec/codec.c **** 			rc |= 1<<BBPKT_F_GOOD_CRC;
+ 364:src/codec/codec.c **** 		}
+ 365:src/codec/codec.c **** 		*out_size = codec->coded_total-2;
+ 1700              		.loc 1 365 33 view .LVU609
+ 1701 0020 023C     		subs	r4, r4, #2
+ 1702              	.LVL154:
+ 358:src/codec/codec.c **** 		{
+ 1703              		.loc 1 358 6 view .LVU610
+ 1704 0022 43EA0523 		orr	r3, r3, r5, lsl #8
+ 363:src/codec/codec.c **** 		}
+ 1705              		.loc 1 363 7 view .LVU611
+ 1706 0026 9842     		cmp	r0, r3
+ 1707 0028 0CBF     		ite	eq
+ 1708 002a 0820     		moveq	r0, #8
+ 1709 002c 0020     		movne	r0, #0
+ 1710              	.LVL155:
+ 1711              		.loc 1 365 3 is_stmt 1 view .LVU612
+ 1712              		.loc 1 365 13 is_stmt 0 view .LVU613
+ 1713 002e 1480     		strh	r4, [r2]	@ movhi
+ 1714              	.LVL156:
+ 366:src/codec/codec.c **** 	}
+ 367:src/codec/codec.c **** 	else
+ 368:src/codec/codec.c **** 	{
+ 369:src/codec/codec.c **** 		*out_size = codec->coded_total;
+ 370:src/codec/codec.c **** 	}
+ 371:src/codec/codec.c **** 
+ 372:src/codec/codec.c **** 	return rc;
+ 1715              		.loc 1 372 2 is_stmt 1 view .LVU614
+ 373:src/codec/codec.c **** }
+ 1716              		.loc 1 373 1 is_stmt 0 view .LVU615
+ 1717 0030 38BD     		pop	{r3, r4, r5, pc}
+ 1718              	.LVL157:
+ 1719              	.L114:
+ 369:src/codec/codec.c **** 	}
+ 1720              		.loc 1 369 3 is_stmt 1 view .LVU616
+ 345:src/codec/codec.c **** 	const bbcodec_types_t *t = codec->t;
+ARM GAS  /tmp/ccekfF7I.s 			page 49
+
+
+ 1721              		.loc 1 345 10 is_stmt 0 view .LVU617
+ 1722 0032 0020     		movs	r0, #0
+ 1723              	.LVL158:
+ 369:src/codec/codec.c **** 	}
+ 1724              		.loc 1 369 13 view .LVU618
+ 1725 0034 1480     		strh	r4, [r2]	@ movhi
+ 1726              	.LVL159:
+ 372:src/codec/codec.c **** }
+ 1727              		.loc 1 372 2 is_stmt 1 view .LVU619
+ 1728              		.loc 1 373 1 is_stmt 0 view .LVU620
+ 1729 0036 38BD     		pop	{r3, r4, r5, pc}
+ 1730              	.LVL160:
+ 1731              	.L121:
+ 351:src/codec/codec.c **** 			codec->coded_pos, codec->coded_total);
+ 1732              		.loc 1 351 3 is_stmt 1 view .LVU621
+ 1733 0038 2246     		mov	r2, r4
+ 1734              	.LVL161:
+ 351:src/codec/codec.c **** 			codec->coded_pos, codec->coded_total);
+ 1735              		.loc 1 351 3 is_stmt 0 view .LVU622
+ 1736 003a 1946     		mov	r1, r3
+ 1737              	.LVL162:
+ 351:src/codec/codec.c **** 			codec->coded_pos, codec->coded_total);
+ 1738              		.loc 1 351 3 view .LVU623
+ 1739 003c 0148     		ldr	r0, .L122
+ 1740              	.LVL163:
+ 351:src/codec/codec.c **** 			codec->coded_pos, codec->coded_total);
+ 1741              		.loc 1 351 3 view .LVU624
+ 1742 003e FFF7FEFF 		bl	die
+ 1743              	.LVL164:
+ 1744              	.L123:
+ 351:src/codec/codec.c **** 			codec->coded_pos, codec->coded_total);
+ 1745              		.loc 1 351 3 view .LVU625
+ 1746 0042 00BF     		.align	2
+ 1747              	.L122:
+ 1748 0044 6C000000 		.word	.LC4
+ 1749              		.cfi_endproc
+ 1750              	.LFE27:
+ 1752              		.global	bbcodec_acl_types
+ 1753              		.section	.rodata
+ 1754              		.align	2
+ 1755              		.set	.LANCHOR0,. + 0
+ 1758              	bbcodec_acl_types:
+ 1759 0000 01       		.byte	1
+ 1760 0001 00       		.byte	0
+ 1761 0002 0000     		.short	0
+ 1762 0004 00       		.byte	0
+ 1763 0005 00       		.byte	0
+ 1764 0006 01       		.byte	1
+ 1765 0007 00       		.byte	0
+ 1766 0008 0000     		.short	0
+ 1767 000a 00       		.byte	0
+ 1768 000b 00       		.byte	0
+ 1769 000c 01       		.byte	1
+ 1770 000d 00       		.byte	0
+ 1771 000e 1200     		.short	18
+ 1772 0010 01       		.byte	1
+ 1773 0011 01       		.byte	1
+ARM GAS  /tmp/ccekfF7I.s 			page 50
+
+
+ 1774 0012 01       		.byte	1
+ 1775 0013 01       		.byte	1
+ 1776 0014 1100     		.short	17
+ 1777 0016 01       		.byte	1
+ 1778 0017 01       		.byte	1
+ 1779 0018 01       		.byte	1
+ 1780 0019 01       		.byte	1
+ 1781 001a 1B00     		.short	27
+ 1782 001c 00       		.byte	0
+ 1783 001d 01       		.byte	1
+ 1784 001e 00000000 		.space	30
+ 1784      00000000 
+ 1784      00000000 
+ 1784      00000000 
+ 1784      00000000 
+ 1785 003c 03       		.byte	3
+ 1786 003d 02       		.byte	2
+ 1787 003e 7900     		.short	121
+ 1788 0040 01       		.byte	1
+ 1789 0041 01       		.byte	1
+ 1790 0042 03       		.byte	3
+ 1791 0043 02       		.byte	2
+ 1792 0044 B700     		.short	183
+ 1793 0046 00       		.byte	0
+ 1794 0047 01       		.byte	1
+ 1795 0048 00000000 		.space	12
+ 1795      00000000 
+ 1795      00000000 
+ 1796 0054 05       		.byte	5
+ 1797 0055 02       		.byte	2
+ 1798 0056 E000     		.short	224
+ 1799 0058 01       		.byte	1
+ 1800 0059 01       		.byte	1
+ 1801 005a 05       		.byte	5
+ 1802 005b 02       		.byte	2
+ 1803 005c 5301     		.short	339
+ 1804 005e 00       		.byte	0
+ 1805 005f 01       		.byte	1
+ 1806              		.text
+ 1807              	.Letext0:
+ 1808              		.file 3 "/usr/lib/gcc/arm-none-eabi/9.2.1/include/stddef.h"
+ 1809              		.file 4 "/usr/include/newlib/sys/_types.h"
+ 1810              		.file 5 "/usr/include/newlib/sys/reent.h"
+ 1811              		.file 6 "/usr/include/newlib/sys/lock.h"
+ 1812              		.file 7 "/usr/include/newlib/stdlib.h"
+ 1813              		.file 8 "/usr/lib/gcc/arm-none-eabi/9.2.1/include/stdint.h"
+ 1814              		.file 9 "../../host/libubertooth/src/ubertooth_interface.h"
+ 1815              		.file 10 "../common/ubertooth.h"
+ 1816              		.file 11 "include/ubtbr/codec.h"
+ 1817              		.file 12 "include/ubtbr/btphy.h"
+ 1818              		.file 13 "include/ubtbr/debug.h"
+ARM GAS  /tmp/ccekfF7I.s 			page 51
+
+
+DEFINED SYMBOLS
+                            *ABS*:0000000000000000 codec.c
+     /tmp/ccekfF7I.s:16     .rodata.str1.4:0000000000000000 $d
+     /tmp/ccekfF7I.s:20     .text.bbcodec_decode_header:0000000000000000 $t
+     /tmp/ccekfF7I.s:29     .text.bbcodec_decode_header:0000000000000000 bbcodec_decode_header
+     /tmp/ccekfF7I.s:440    .text.bbcodec_decode_header:0000000000000188 $d
+     /tmp/ccekfF7I.s:453    .text.bbcodec_encode_header:0000000000000000 $t
+     /tmp/ccekfF7I.s:461    .text.bbcodec_encode_header:0000000000000000 bbcodec_encode_header
+     /tmp/ccekfF7I.s:871    .text.bbcodec_encode_header:0000000000000124 $d
+     /tmp/ccekfF7I.s:882    .text.bbcodec_encode_chunk:0000000000000000 $t
+     /tmp/ccekfF7I.s:890    .text.bbcodec_encode_chunk:0000000000000000 bbcodec_encode_chunk
+     /tmp/ccekfF7I.s:1139   .text.bbcodec_encode_chunk:00000000000000d8 $d
+     /tmp/ccekfF7I.s:1151   .text.bbcodec_decode_chunk:0000000000000000 $t
+     /tmp/ccekfF7I.s:1159   .text.bbcodec_decode_chunk:0000000000000000 bbcodec_decode_chunk
+     /tmp/ccekfF7I.s:1629   .text.bbcodec_decode_chunk:0000000000000194 $d
+     /tmp/ccekfF7I.s:1643   .text.bbcodec_decode_finalize:0000000000000000 $t
+     /tmp/ccekfF7I.s:1651   .text.bbcodec_decode_finalize:0000000000000000 bbcodec_decode_finalize
+     /tmp/ccekfF7I.s:1748   .text.bbcodec_decode_finalize:0000000000000044 $d
+     /tmp/ccekfF7I.s:1758   .rodata:0000000000000000 bbcodec_acl_types
+     /tmp/ccekfF7I.s:1754   .rodata:0000000000000000 $d
+
+UNDEFINED SYMBOLS
+whiten
+cprintf
+unfec13_tbl
+rev8_map
+hec_tbl
+fec13
+die
+null_encode
+fec23
+crc_tbl
+unfec23
+null_decode

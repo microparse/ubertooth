@@ -1,0 +1,893 @@
+ARM GAS  /tmp/ccLTcJZb.s 			page 1
+
+
+   1              		.cpu cortex-m3
+   2              		.eabi_attribute 20, 1
+   3              		.eabi_attribute 21, 1
+   4              		.eabi_attribute 23, 3
+   5              		.eabi_attribute 24, 1
+   6              		.eabi_attribute 25, 1
+   7              		.eabi_attribute 26, 1
+   8              		.eabi_attribute 30, 2
+   9              		.eabi_attribute 34, 1
+  10              		.eabi_attribute 18, 4
+  11              		.file	"scan_task.c"
+  12              		.text
+  13              	.Ltext0:
+  14              		.cfi_sections	.debug_frame
+  15              		.section	.rodata.str1.4,"aMS",%progbits,1
+  16              		.align	2
+  17              	.LC0:
+  18 0000 4449457C 		.ascii	"DIE|no cb in scan task\012\012\000"
+  18      6E6F2063 
+  18      6220696E 
+  18      20736361 
+  18      6E207461 
+  19              		.section	.text.scan_wait,"ax",%progbits
+  20              		.align	1
+  21              		.p2align 2,,3
+  22              		.arch armv7-m
+  23              		.syntax unified
+  24              		.thumb
+  25              		.thumb_func
+  26              		.fpu softvfp
+  28              	scan_wait:
+  29              	.LFB33:
+  30              		.file 1 "src/btphy/scan_task.c"
+   1:src/btphy/scan_task.c **** /* Scan task
+   2:src/btphy/scan_task.c ****  *
+   3:src/btphy/scan_task.c ****  * Copyright 2020 Etienne Helluy-Lafont, Univ. Lille, CNRS.
+   4:src/btphy/scan_task.c ****  *
+   5:src/btphy/scan_task.c ****  * This file is part of Project Ubertooth.
+   6:src/btphy/scan_task.c ****  *
+   7:src/btphy/scan_task.c ****  * This program is free software; you can redistribute it and/or modify
+   8:src/btphy/scan_task.c ****  * it under the terms of the GNU General Public License as published by
+   9:src/btphy/scan_task.c ****  * the Free Software Foundation; either version 2, or (at your option)
+  10:src/btphy/scan_task.c ****  * any later version.
+  11:src/btphy/scan_task.c ****  *
+  12:src/btphy/scan_task.c ****  * This program is distributed in the hope that it will be useful,
+  13:src/btphy/scan_task.c ****  * but WITHOUT ANY WARRANTY; without even the implied warranty of
+  14:src/btphy/scan_task.c ****  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  15:src/btphy/scan_task.c ****  * GNU General Public License for more details.
+  16:src/btphy/scan_task.c ****  *
+  17:src/btphy/scan_task.c ****  * You should have received a copy of the GNU General Public License
+  18:src/btphy/scan_task.c ****  * along with this program; see the file COPYING.  If not, write to
+  19:src/btphy/scan_task.c ****  * the Free Software Foundation, Inc., 51 Franklin Street,
+  20:src/btphy/scan_task.c ****  * Boston, MA 02110-1301, USA.
+  21:src/btphy/scan_task.c ****  */
+  22:src/btphy/scan_task.c **** #include <string.h>
+  23:src/btphy/scan_task.c **** #include <ubtbr/cfg.h>
+  24:src/btphy/scan_task.c **** #include <ubtbr/debug.h>
+ARM GAS  /tmp/ccLTcJZb.s 			page 2
+
+
+  25:src/btphy/scan_task.c **** #include <ubtbr/rf.h>
+  26:src/btphy/scan_task.c **** #include <ubtbr/btctl_intf.h>
+  27:src/btphy/scan_task.c **** #include <ubtbr/btphy.h>
+  28:src/btphy/scan_task.c **** #include <ubtbr/hop.h>
+  29:src/btphy/scan_task.c **** #include <ubtbr/tdma_sched.h>
+  30:src/btphy/scan_task.c **** #include <ubtbr/scan_task.h>
+  31:src/btphy/scan_task.c **** 
+  32:src/btphy/scan_task.c **** #define SCAN_MAX_SLOTS	8
+  33:src/btphy/scan_task.c **** #define	SCAN_WAIT_SYNCWORD	250	// Wait 250usec max
+  34:src/btphy/scan_task.c **** 
+  35:src/btphy/scan_task.c **** static struct {
+  36:src/btphy/scan_task.c **** 	/* Arguments */
+  37:src/btphy/scan_task.c **** 	scan_task_cb_t cb;
+  38:src/btphy/scan_task.c **** 	void * cb_arg;
+  39:src/btphy/scan_task.c **** 
+  40:src/btphy/scan_task.c **** 	/* Variables */
+  41:src/btphy/scan_task.c **** 	uint16_t pkt_time;
+  42:src/btphy/scan_task.c **** 	uint8_t pkt_received;
+  43:src/btphy/scan_task.c **** 	int num_slots;
+  44:src/btphy/scan_task.c **** } scan_task; 
+  45:src/btphy/scan_task.c **** 
+  46:src/btphy/scan_task.c **** static int scan_wait_more(uint8_t p1, uint8_t p2, uint16_t p3);
+  47:src/btphy/scan_task.c **** 
+  48:src/btphy/scan_task.c **** static void scan_finalize(void)
+  49:src/btphy/scan_task.c **** {
+  50:src/btphy/scan_task.c **** 	btphy_rf_idle();
+  51:src/btphy/scan_task.c **** 
+  52:src/btphy/scan_task.c **** 	if (scan_task.cb == NULL)
+  53:src/btphy/scan_task.c **** 		DIE("no cb in scan task\n");
+  54:src/btphy/scan_task.c **** 
+  55:src/btphy/scan_task.c **** 	/* Call user callback */
+  56:src/btphy/scan_task.c **** 	scan_task.cb(scan_task.pkt_received, scan_task.cb_arg);
+  57:src/btphy/scan_task.c **** }
+  58:src/btphy/scan_task.c **** 
+  59:src/btphy/scan_task.c **** static void scan_wait(void)
+  60:src/btphy/scan_task.c **** {
+  31              		.loc 1 60 1 view -0
+  32              		.cfi_startproc
+  33              		@ args = 0, pretend = 0, frame = 0
+  34              		@ frame_needed = 0, uses_anonymous_args = 0
+  35 0000 10B5     		push	{r4, lr}
+  36              		.cfi_def_cfa_offset 8
+  37              		.cfi_offset 4, -8
+  38              		.cfi_offset 14, -4
+  39 0002 82B0     		sub	sp, sp, #8
+  40              		.cfi_def_cfa_offset 16
+  61:src/btphy/scan_task.c **** 	int clkn_delay;
+  41              		.loc 1 61 2 view .LVU1
+  62:src/btphy/scan_task.c **** 
+  63:src/btphy/scan_task.c **** 	/* Wait for packet.. */
+  64:src/btphy/scan_task.c **** 	while (CLKN_OFFSET < SCAN_WAIT_SYNCWORD)
+  42              		.loc 1 64 2 view .LVU2
+  43              		.loc 1 64 9 is_stmt 0 view .LVU3
+  44 0004 1F4A     		ldr	r2, .L18
+  65:src/btphy/scan_task.c **** 	{
+  66:src/btphy/scan_task.c **** 		/* PKT strobe goes low if a syncword is detected */
+  67:src/btphy/scan_task.c **** 		if (GIO6 == 0)
+ARM GAS  /tmp/ccLTcJZb.s 			page 3
+
+
+  45              		.loc 1 67 7 view .LVU4
+  46 0006 2049     		ldr	r1, .L18+4
+  64:src/btphy/scan_task.c **** 	{
+  47              		.loc 1 64 8 view .LVU5
+  48 0008 02E0     		b	.L2
+  49              	.L4:
+  50              		.loc 1 67 3 is_stmt 1 view .LVU6
+  51              		.loc 1 67 7 is_stmt 0 view .LVU7
+  52 000a 0B68     		ldr	r3, [r1]
+  53              		.loc 1 67 6 view .LVU8
+  54 000c 5B07     		lsls	r3, r3, #29
+  55 000e 15D5     		bpl	.L16
+  56              	.L2:
+  64:src/btphy/scan_task.c **** 	{
+  57              		.loc 1 64 8 is_stmt 1 view .LVU9
+  64:src/btphy/scan_task.c **** 	{
+  58              		.loc 1 64 9 is_stmt 0 view .LVU10
+  59 0010 1368     		ldr	r3, [r2]
+  64:src/btphy/scan_task.c **** 	{
+  60              		.loc 1 64 8 view .LVU11
+  61 0012 F92B     		cmp	r3, #249
+  62 0014 F9D9     		bls	.L4
+  63 0016 1D4C     		ldr	r4, .L18+8
+  68:src/btphy/scan_task.c **** 		{
+  69:src/btphy/scan_task.c **** 			scan_task.pkt_time = CLKN_OFFSET;
+  70:src/btphy/scan_task.c **** 			scan_task.pkt_received = 1;
+  71:src/btphy/scan_task.c **** 			break;
+  72:src/btphy/scan_task.c **** 		}
+  73:src/btphy/scan_task.c **** 	}
+  74:src/btphy/scan_task.c **** 	scan_task.num_slots ++;
+  64              		.loc 1 74 22 view .LVU12
+  65 0018 E268     		ldr	r2, [r4, #12]
+  66 001a A37A     		ldrb	r3, [r4, #10]	@ zero_extendqisi2
+  67              		.loc 1 74 2 is_stmt 1 view .LVU13
+  68              		.loc 1 74 22 is_stmt 0 view .LVU14
+  69 001c 0132     		adds	r2, r2, #1
+  70 001e E260     		str	r2, [r4, #12]
+  75:src/btphy/scan_task.c **** 	if (scan_task.pkt_received)
+  71              		.loc 1 75 2 is_stmt 1 view .LVU15
+  72              		.loc 1 75 5 is_stmt 0 view .LVU16
+  73 0020 A3B9     		cbnz	r3, .L3
+  76:src/btphy/scan_task.c **** 	{
+  77:src/btphy/scan_task.c **** 		/* Adjust timer*/
+  78:src/btphy/scan_task.c **** 		clkn_delay = scan_task.pkt_time - RF_EXPECTED_RX_CLKN_OFFSET;
+  79:src/btphy/scan_task.c **** 		btphy.slave_clkn = 0;
+  80:src/btphy/scan_task.c **** 		btphy_adj_clkn_delay(clkn_delay);
+  81:src/btphy/scan_task.c **** 
+  82:src/btphy/scan_task.c **** 		// TODO: synchronization train decoding? 
+  83:src/btphy/scan_task.c **** 
+  84:src/btphy/scan_task.c **** 		/* finalize */
+  85:src/btphy/scan_task.c **** 		scan_finalize();
+  86:src/btphy/scan_task.c **** 	}
+  87:src/btphy/scan_task.c **** 	else
+  88:src/btphy/scan_task.c **** 	{
+  89:src/btphy/scan_task.c **** 		if (scan_task.num_slots == SCAN_MAX_SLOTS)
+  74              		.loc 1 89 3 is_stmt 1 view .LVU17
+  75              		.loc 1 89 6 is_stmt 0 view .LVU18
+ARM GAS  /tmp/ccLTcJZb.s 			page 4
+
+
+  76 0022 082A     		cmp	r2, #8
+  77 0024 1AD0     		beq	.L14
+  90:src/btphy/scan_task.c **** 		{
+  91:src/btphy/scan_task.c **** 			scan_finalize();
+  92:src/btphy/scan_task.c **** 		}
+  93:src/btphy/scan_task.c **** 		else
+  94:src/btphy/scan_task.c **** 		{
+  95:src/btphy/scan_task.c **** 			/* Wait one more slot */
+  96:src/btphy/scan_task.c **** 			tdma_schedule(1, scan_wait_more, 0, 0, 0, -3);
+  78              		.loc 1 96 4 is_stmt 1 view .LVU19
+  79 0026 6FF00202 		mvn	r2, #2
+  80 002a 1949     		ldr	r1, .L18+12
+  81 002c CDE90032 		strd	r3, r2, [sp]
+  82 0030 0120     		movs	r0, #1
+  83 0032 1A46     		mov	r2, r3
+  84 0034 FFF7FEFF 		bl	tdma_schedule
+  85              	.LVL0:
+  97:src/btphy/scan_task.c **** 		}
+  98:src/btphy/scan_task.c **** 	}
+  99:src/btphy/scan_task.c **** }
+  86              		.loc 1 99 1 is_stmt 0 view .LVU20
+  87 0038 02B0     		add	sp, sp, #8
+  88              		.cfi_remember_state
+  89              		.cfi_def_cfa_offset 8
+  90              		@ sp needed
+  91 003a 10BD     		pop	{r4, pc}
+  92              	.L16:
+  93              		.cfi_restore_state
+  69:src/btphy/scan_task.c **** 			scan_task.pkt_received = 1;
+  94              		.loc 1 69 4 is_stmt 1 view .LVU21
+  70:src/btphy/scan_task.c **** 			break;
+  95              		.loc 1 70 27 is_stmt 0 view .LVU22
+  96 003c 0121     		movs	r1, #1
+  69:src/btphy/scan_task.c **** 			scan_task.pkt_received = 1;
+  97              		.loc 1 69 23 view .LVU23
+  98 003e 134C     		ldr	r4, .L18+8
+  69:src/btphy/scan_task.c **** 			scan_task.pkt_received = 1;
+  99              		.loc 1 69 25 view .LVU24
+ 100 0040 1268     		ldr	r2, [r2]
+  74:src/btphy/scan_task.c **** 	if (scan_task.pkt_received)
+ 101              		.loc 1 74 22 view .LVU25
+ 102 0042 E368     		ldr	r3, [r4, #12]
+  69:src/btphy/scan_task.c **** 			scan_task.pkt_received = 1;
+ 103              		.loc 1 69 23 view .LVU26
+ 104 0044 2281     		strh	r2, [r4, #8]	@ movhi
+  70:src/btphy/scan_task.c **** 			break;
+ 105              		.loc 1 70 4 is_stmt 1 view .LVU27
+  74:src/btphy/scan_task.c **** 	if (scan_task.pkt_received)
+ 106              		.loc 1 74 22 is_stmt 0 view .LVU28
+ 107 0046 0B44     		add	r3, r3, r1
+  70:src/btphy/scan_task.c **** 			break;
+ 108              		.loc 1 70 27 view .LVU29
+ 109 0048 A172     		strb	r1, [r4, #10]
+  71:src/btphy/scan_task.c **** 		}
+ 110              		.loc 1 71 4 is_stmt 1 view .LVU30
+  74:src/btphy/scan_task.c **** 	if (scan_task.pkt_received)
+ 111              		.loc 1 74 2 view .LVU31
+ARM GAS  /tmp/ccLTcJZb.s 			page 5
+
+
+  74:src/btphy/scan_task.c **** 	if (scan_task.pkt_received)
+ 112              		.loc 1 74 22 is_stmt 0 view .LVU32
+ 113 004a E360     		str	r3, [r4, #12]
+  75:src/btphy/scan_task.c **** 	{
+ 114              		.loc 1 75 2 is_stmt 1 view .LVU33
+ 115              	.L3:
+ 116              	.LBB18:
+ 117              	.LBI18:
+  59:src/btphy/scan_task.c **** {
+ 118              		.loc 1 59 13 view .LVU34
+ 119              	.LBB19:
+  78:src/btphy/scan_task.c **** 		btphy.slave_clkn = 0;
+ 120              		.loc 1 78 3 view .LVU35
+  79:src/btphy/scan_task.c **** 		btphy_adj_clkn_delay(clkn_delay);
+ 121              		.loc 1 79 20 is_stmt 0 view .LVU36
+ 122 004c 0022     		movs	r2, #0
+  78:src/btphy/scan_task.c **** 		btphy.slave_clkn = 0;
+ 123              		.loc 1 78 25 view .LVU37
+ 124 004e 2089     		ldrh	r0, [r4, #8]
+ 125              	.LVL1:
+  79:src/btphy/scan_task.c **** 		btphy_adj_clkn_delay(clkn_delay);
+ 126              		.loc 1 79 3 is_stmt 1 view .LVU38
+  79:src/btphy/scan_task.c **** 		btphy_adj_clkn_delay(clkn_delay);
+ 127              		.loc 1 79 20 is_stmt 0 view .LVU39
+ 128 0050 104B     		ldr	r3, .L18+16
+  80:src/btphy/scan_task.c **** 
+ 129              		.loc 1 80 3 view .LVU40
+ 130 0052 A0F26220 		subw	r0, r0, #610
+ 131              	.LVL2:
+  79:src/btphy/scan_task.c **** 		btphy_adj_clkn_delay(clkn_delay);
+ 132              		.loc 1 79 20 view .LVU41
+ 133 0056 9A60     		str	r2, [r3, #8]
+  80:src/btphy/scan_task.c **** 
+ 134              		.loc 1 80 3 is_stmt 1 view .LVU42
+ 135 0058 FFF7FEFF 		bl	btphy_adj_clkn_delay
+ 136              	.LVL3:
+ 137              	.L14:
+  85:src/btphy/scan_task.c **** 	}
+ 138              		.loc 1 85 3 view .LVU43
+ 139              	.LBB20:
+ 140              	.LBI20:
+  48:src/btphy/scan_task.c **** {
+ 141              		.loc 1 48 13 view .LVU44
+ 142              	.LBB21:
+  50:src/btphy/scan_task.c **** 
+ 143              		.loc 1 50 2 view .LVU45
+ 144              	.LBB22:
+ 145              	.LBI22:
+ 146              		.file 2 "include/ubtbr/rf.h"
+   1:include/ubtbr/rf.h **** #ifndef __BTPHY_RF_H
+   2:include/ubtbr/rf.h **** #define __BTPHY_RF_H
+   3:include/ubtbr/rf.h **** #include <stdint.h>
+   4:include/ubtbr/rf.h **** #include "ubertooth.h"
+   5:include/ubtbr/rf.h **** 
+   6:include/ubtbr/rf.h **** /* Num of bytes left in fifo when FIFO_EMPTY int trigger 64usec */
+   7:include/ubtbr/rf.h **** #define PHY_MIN_FIFO_BYTES 16
+   8:include/ubtbr/rf.h **** #define PHY_FIFO_THRESHOLD (32-PHY_MIN_FIFO_BYTES)
+ARM GAS  /tmp/ccLTcJZb.s 			page 6
+
+
+   9:include/ubtbr/rf.h **** 
+  10:include/ubtbr/rf.h **** #define WAIT_CC2400_STATE(state) while((cc2400_get(FSMSTATE) & 0x1f) != (state));
+  11:include/ubtbr/rf.h **** #define FS_TUNED() (cc2400_status() & FS_LOCK)
+  12:include/ubtbr/rf.h **** #define WAIT_FS_TUNED() while(!FS_TUNED())
+  13:include/ubtbr/rf.h **** 
+  14:include/ubtbr/rf.h **** #define RF_EXPECTED_RX_CLKN_OFFSET 610	// (29usec of rf warmup + 32usec of sw)
+  15:include/ubtbr/rf.h **** 
+  16:include/ubtbr/rf.h **** typedef void (*btbr_int_cb_t)(void *arg);
+  17:include/ubtbr/rf.h **** 
+  18:include/ubtbr/rf.h **** #define MAX_AC_ERRORS_DEFAULT	1
+  19:include/ubtbr/rf.h **** typedef struct {
+  20:include/ubtbr/rf.h **** 	uint16_t freq_off_reg;
+  21:include/ubtbr/rf.h **** 	uint16_t max_ac_errors;
+  22:include/ubtbr/rf.h **** 	btbr_int_cb_t int_handler;
+  23:include/ubtbr/rf.h **** 	void *int_arg;
+  24:include/ubtbr/rf.h **** } rf_state_t;
+  25:include/ubtbr/rf.h **** 
+  26:include/ubtbr/rf.h **** extern volatile rf_state_t rf_state;
+  27:include/ubtbr/rf.h **** 
+  28:include/ubtbr/rf.h **** void btphy_rf_init(void);
+  29:include/ubtbr/rf.h **** void btphy_rf_off(void);
+  30:include/ubtbr/rf.h **** void btphy_rf_set_freq_off(uint8_t off);
+  31:include/ubtbr/rf.h **** void btphy_rf_set_max_ac_errors(uint8_t max_ac_errors);
+  32:include/ubtbr/rf.h **** void btphy_rf_cfg_sync(uint32_t sync);
+  33:include/ubtbr/rf.h **** void btphy_rf_tune_chan(uint16_t channel, int tx);
+  34:include/ubtbr/rf.h **** void btphy_rf_fifo_write(uint8_t *data, unsigned len);
+  35:include/ubtbr/rf.h **** 
+  36:include/ubtbr/rf.h **** void btphy_rf_enable_int(btbr_int_cb_t cb, void*cb_arg, int tx);
+  37:include/ubtbr/rf.h **** void btphy_rf_disable_int(void);
+  38:include/ubtbr/rf.h **** 
+  39:include/ubtbr/rf.h **** static inline void btphy_rf_idle(void)
+ 147              		.loc 2 39 20 view .LVU46
+ 148              	.LBB23:
+  40:include/ubtbr/rf.h **** {
+  41:include/ubtbr/rf.h **** 	cc2400_strobe(SRFOFF);
+ 149              		.loc 2 41 2 view .LVU47
+ 150 005c 6420     		movs	r0, #100
+ 151 005e FFF7FEFF 		bl	cc2400_strobe
+ 152              	.LVL4:
+  42:include/ubtbr/rf.h **** 	TXLED_CLR;
+ 153              		.loc 2 42 2 view .LVU48
+ 154 0062 4FF48070 		mov	r0, #256
+  43:include/ubtbr/rf.h **** 	RXLED_CLR;
+ 155              		.loc 2 43 2 is_stmt 0 view .LVU49
+ 156 0066 1021     		movs	r1, #16
+  42:include/ubtbr/rf.h **** 	TXLED_CLR;
+ 157              		.loc 2 42 2 view .LVU50
+ 158 0068 0B4A     		ldr	r2, .L18+20
+ 159              	.LBE23:
+ 160              	.LBE22:
+  52:src/btphy/scan_task.c **** 		DIE("no cb in scan task\n");
+ 161              		.loc 1 52 15 view .LVU51
+ 162 006a 2368     		ldr	r3, [r4]
+ 163              	.LBB25:
+ 164              	.LBB24:
+  42:include/ubtbr/rf.h **** 	TXLED_CLR;
+ 165              		.loc 2 42 2 view .LVU52
+ARM GAS  /tmp/ccLTcJZb.s 			page 7
+
+
+ 166 006c 1060     		str	r0, [r2]
+ 167              		.loc 2 43 2 is_stmt 1 view .LVU53
+ 168 006e 1160     		str	r1, [r2]
+ 169              	.LBE24:
+ 170              	.LBE25:
+  52:src/btphy/scan_task.c **** 		DIE("no cb in scan task\n");
+ 171              		.loc 1 52 2 view .LVU54
+  52:src/btphy/scan_task.c **** 		DIE("no cb in scan task\n");
+ 172              		.loc 1 52 5 is_stmt 0 view .LVU55
+ 173 0070 2BB1     		cbz	r3, .L17
+ 174              	.LBE21:
+ 175              	.LBE20:
+ 176              	.LBE19:
+ 177              	.LBE18:
+ 178              	.LBB29:
+ 179              	.LBB30:
+  56:src/btphy/scan_task.c **** }
+ 180              		.loc 1 56 2 is_stmt 1 view .LVU56
+ 181 0072 6168     		ldr	r1, [r4, #4]
+ 182 0074 A07A     		ldrb	r0, [r4, #10]	@ zero_extendqisi2
+ 183              	.LBE30:
+ 184              	.LBE29:
+ 185              		.loc 1 99 1 is_stmt 0 view .LVU57
+ 186 0076 02B0     		add	sp, sp, #8
+ 187              		.cfi_remember_state
+ 188              		.cfi_def_cfa_offset 8
+ 189              		@ sp needed
+ 190 0078 BDE81040 		pop	{r4, lr}
+ 191              		.cfi_restore 14
+ 192              		.cfi_restore 4
+ 193              		.cfi_def_cfa_offset 0
+ 194              	.LBB32:
+ 195              	.LBB31:
+  56:src/btphy/scan_task.c **** }
+ 196              		.loc 1 56 2 view .LVU58
+ 197 007c 1847     		bx	r3	@ indirect register sibling call
+ 198              	.LVL5:
+ 199              	.L17:
+ 200              		.cfi_restore_state
+ 201              	.LBE31:
+ 202              	.LBE32:
+ 203              	.LBB33:
+ 204              	.LBB28:
+ 205              	.LBB27:
+ 206              	.LBB26:
+  53:src/btphy/scan_task.c **** 
+ 207              		.loc 1 53 3 is_stmt 1 view .LVU59
+ 208 007e 0748     		ldr	r0, .L18+24
+ 209 0080 FFF7FEFF 		bl	die
+ 210              	.LVL6:
+ 211              	.L19:
+ 212              		.align	2
+ 213              	.L18:
+ 214 0084 08400040 		.word	1073758216
+ 215 0088 54C00920 		.word	537509972
+ 216 008c 00000000 		.word	.LANCHOR0
+ 217 0090 00000000 		.word	scan_wait_more
+ARM GAS  /tmp/ccLTcJZb.s 			page 8
+
+
+ 218 0094 00000000 		.word	btphy
+ 219 0098 3CC00920 		.word	537509948
+ 220 009c 00000000 		.word	.LC0
+ 221              	.LBE26:
+ 222              	.LBE27:
+ 223              	.LBE28:
+ 224              	.LBE33:
+ 225              		.cfi_endproc
+ 226              	.LFE33:
+ 228              		.section	.text.scan_start,"ax",%progbits
+ 229              		.align	1
+ 230              		.p2align 2,,3
+ 231              		.syntax unified
+ 232              		.thumb
+ 233              		.thumb_func
+ 234              		.fpu softvfp
+ 236              	scan_start:
+ 237              	.LVL7:
+ 238              	.LFB35:
+ 100:src/btphy/scan_task.c **** 
+ 101:src/btphy/scan_task.c **** static int scan_wait_more(uint8_t p1, uint8_t p2, uint16_t p3)
+ 102:src/btphy/scan_task.c **** {
+ 103:src/btphy/scan_task.c **** 	scan_wait();
+ 104:src/btphy/scan_task.c **** 	return 0;
+ 105:src/btphy/scan_task.c **** }
+ 106:src/btphy/scan_task.c **** 
+ 107:src/btphy/scan_task.c **** static int scan_start(uint8_t p1, uint8_t p2, uint16_t p3)
+ 108:src/btphy/scan_task.c **** {
+ 239              		.loc 1 108 1 view -0
+ 240              		.cfi_startproc
+ 241              		@ args = 0, pretend = 0, frame = 0
+ 242              		@ frame_needed = 0, uses_anonymous_args = 0
+ 243              		.loc 1 108 1 is_stmt 0 view .LVU61
+ 244 0000 08B5     		push	{r3, lr}
+ 245              		.cfi_def_cfa_offset 8
+ 246              		.cfi_offset 3, -8
+ 247              		.cfi_offset 14, -4
+ 109:src/btphy/scan_task.c **** 	uint8_t chan;
+ 248              		.loc 1 109 2 is_stmt 1 view .LVU62
+ 110:src/btphy/scan_task.c **** 
+ 111:src/btphy/scan_task.c **** 	chan = hop_channel(0);	// Assume clk1 = 0 = master tx
+ 249              		.loc 1 111 2 view .LVU63
+ 250              		.loc 1 111 9 is_stmt 0 view .LVU64
+ 251 0002 0020     		movs	r0, #0
+ 252              	.LVL8:
+ 253              		.loc 1 111 9 view .LVU65
+ 254 0004 FFF7FEFF 		bl	hop_channel
+ 255              	.LVL9:
+ 112:src/btphy/scan_task.c **** 
+ 113:src/btphy/scan_task.c **** 	/* Tune to chan & start RX */
+ 114:src/btphy/scan_task.c **** 	btphy_rf_tune_chan(2402+chan, 0);
+ 256              		.loc 1 114 2 is_stmt 1 view .LVU66
+ 257 0008 00F66210 		addw	r0, r0, #2402
+ 258              	.LVL10:
+ 259              		.loc 1 114 2 is_stmt 0 view .LVU67
+ 260 000c 0021     		movs	r1, #0
+ 261 000e 80B2     		uxth	r0, r0
+ARM GAS  /tmp/ccLTcJZb.s 			page 9
+
+
+ 262 0010 FFF7FEFF 		bl	btphy_rf_tune_chan
+ 263              	.LVL11:
+ 115:src/btphy/scan_task.c **** 
+ 116:src/btphy/scan_task.c **** 	scan_task.pkt_received = 0;
+ 264              		.loc 1 116 2 is_stmt 1 view .LVU68
+ 265              		.loc 1 116 25 is_stmt 0 view .LVU69
+ 266 0014 0022     		movs	r2, #0
+ 267 0016 144B     		ldr	r3, .L23
+ 117:src/btphy/scan_task.c **** 	scan_task.pkt_time = 0;
+ 118:src/btphy/scan_task.c **** 	scan_task.num_slots = 0;
+ 119:src/btphy/scan_task.c **** 
+ 120:src/btphy/scan_task.c **** 	/* Here i must strobe SRX before & after GRMDM cfg. why ? */
+ 121:src/btphy/scan_task.c **** 	cc2400_strobe(SFSON);
+ 268              		.loc 1 121 2 view .LVU70
+ 269 0018 6120     		movs	r0, #97
+ 116:src/btphy/scan_task.c **** 	scan_task.pkt_time = 0;
+ 270              		.loc 1 116 25 view .LVU71
+ 271 001a 9A72     		strb	r2, [r3, #10]
+ 117:src/btphy/scan_task.c **** 	scan_task.pkt_time = 0;
+ 272              		.loc 1 117 2 is_stmt 1 view .LVU72
+ 117:src/btphy/scan_task.c **** 	scan_task.pkt_time = 0;
+ 273              		.loc 1 117 21 is_stmt 0 view .LVU73
+ 274 001c 1A81     		strh	r2, [r3, #8]	@ movhi
+ 118:src/btphy/scan_task.c **** 
+ 275              		.loc 1 118 2 is_stmt 1 view .LVU74
+ 118:src/btphy/scan_task.c **** 
+ 276              		.loc 1 118 22 is_stmt 0 view .LVU75
+ 277 001e DA60     		str	r2, [r3, #12]
+ 278              		.loc 1 121 2 is_stmt 1 view .LVU76
+ 279 0020 FFF7FEFF 		bl	cc2400_strobe
+ 280              	.LVL12:
+ 122:src/btphy/scan_task.c **** 	btphy_rf_cfg_rx();
+ 281              		.loc 1 122 2 view .LVU77
+ 282              	.LBB38:
+ 283              	.LBI38:
+  44:include/ubtbr/rf.h **** }
+  45:include/ubtbr/rf.h **** 
+  46:include/ubtbr/rf.h **** static inline void btphy_rf_tx(void)
+  47:include/ubtbr/rf.h **** {
+  48:include/ubtbr/rf.h **** 	cc2400_strobe(STX);
+  49:include/ubtbr/rf.h **** 	TXLED_SET;
+  50:include/ubtbr/rf.h **** }
+  51:include/ubtbr/rf.h **** static inline void btphy_rf_rx(void)
+  52:include/ubtbr/rf.h **** {
+  53:include/ubtbr/rf.h **** 	cc2400_strobe(SRX);
+  54:include/ubtbr/rf.h **** 	RXLED_SET;
+  55:include/ubtbr/rf.h **** }
+  56:include/ubtbr/rf.h **** 
+  57:include/ubtbr/rf.h **** /* cc2400 configure for un-buffered rx */
+  58:include/ubtbr/rf.h **** static inline void btphy_rf_cfg_rx(void)
+ 284              		.loc 2 58 20 view .LVU78
+ 285              	.LBB39:
+  59:include/ubtbr/rf.h **** {
+  60:include/ubtbr/rf.h **** 	/* un-buffered mode, packet w/ sync word detection */
+  61:include/ubtbr/rf.h **** 	cc2400_set(GRMDM,   0x4E1|(rf_state.max_ac_errors<<13));
+ 286              		.loc 2 61 2 view .LVU79
+ 287              		.loc 2 61 27 is_stmt 0 view .LVU80
+ARM GAS  /tmp/ccLTcJZb.s 			page 10
+
+
+ 288 0024 40F2E141 		movw	r1, #1249
+ 289              		.loc 2 61 37 view .LVU81
+ 290 0028 104B     		ldr	r3, .L23+4
+ 291              		.loc 2 61 2 view .LVU82
+ 292 002a 2020     		movs	r0, #32
+ 293              		.loc 2 61 37 view .LVU83
+ 294 002c 5B88     		ldrh	r3, [r3, #2]
+ 295 002e 9BB2     		uxth	r3, r3
+ 296              		.loc 2 61 27 view .LVU84
+ 297 0030 41EA4331 		orr	r1, r1, r3, lsl #13
+ 298              		.loc 2 61 2 view .LVU85
+ 299 0034 89B2     		uxth	r1, r1
+ 300 0036 FFF7FEFF 		bl	cc2400_set
+ 301              	.LVL13:
+  62:include/ubtbr/rf.h **** 	// 0 XX 00 1 001 11 0 00 0 1
+  63:include/ubtbr/rf.h **** 	//   |  |  | |   |  +--------> CRC off
+  64:include/ubtbr/rf.h **** 	//   |  |  | |   +-----------> sync word: 32 MSB bits of SYNC_WORD
+  65:include/ubtbr/rf.h **** 	//   |  |  | +---------------> 1 preamble bytes of (0)1010101
+  66:include/ubtbr/rf.h **** 	//   |  |  +-----------------> packet mode
+  67:include/ubtbr/rf.h **** 	//   |  +--------------------> un-buffered mode // use sync word to trigger 
+  68:include/ubtbr/rf.h **** 	//   +-----------------------> sync error bits allowed: N
+  69:include/ubtbr/rf.h **** 	cc2400_set(IOCFG, 0x170|(GIO_PKT<<9));
+ 302              		.loc 2 69 2 is_stmt 1 view .LVU86
+ 303 003a 4FF45761 		mov	r1, #3440
+ 304 003e 0820     		movs	r0, #8
+ 305 0040 FFF7FEFF 		bl	cc2400_set
+ 306              	.LVL14:
+ 307              	.LBE39:
+ 308              	.LBE38:
+ 123:src/btphy/scan_task.c **** 	btphy_rf_rx();
+ 309              		.loc 1 123 2 view .LVU87
+ 310              	.LBB40:
+ 311              	.LBI40:
+  51:include/ubtbr/rf.h **** {
+ 312              		.loc 2 51 20 view .LVU88
+ 313              	.LBB41:
+  53:include/ubtbr/rf.h **** 	RXLED_SET;
+ 314              		.loc 2 53 2 view .LVU89
+ 315 0044 6220     		movs	r0, #98
+ 316 0046 FFF7FEFF 		bl	cc2400_strobe
+ 317              	.LVL15:
+  54:include/ubtbr/rf.h **** }
+ 318              		.loc 2 54 2 view .LVU90
+ 319 004a 1022     		movs	r2, #16
+ 320 004c 084B     		ldr	r3, .L23+8
+ 321 004e 1A60     		str	r2, [r3]
+ 322              	.L21:
+ 323              	.LBE41:
+ 324              	.LBE40:
+ 124:src/btphy/scan_task.c **** 	while ((cc2400_get(FSMSTATE) & 0x1f) != STATE_STROBE_RX);
+ 325              		.loc 1 124 58 discriminator 1 view .LVU91
+ 326              		.loc 1 124 8 discriminator 1 view .LVU92
+ 327              		.loc 1 124 10 is_stmt 0 discriminator 1 view .LVU93
+ 328 0050 0E20     		movs	r0, #14
+ 329 0052 FFF7FEFF 		bl	cc2400_get
+ 330              	.LVL16:
+ 331              		.loc 1 124 8 discriminator 1 view .LVU94
+ARM GAS  /tmp/ccLTcJZb.s 			page 11
+
+
+ 332 0056 00F01F00 		and	r0, r0, #31
+ 333 005a 1028     		cmp	r0, #16
+ 334 005c F8D1     		bne	.L21
+ 125:src/btphy/scan_task.c **** 
+ 126:src/btphy/scan_task.c **** 	scan_wait();
+ 335              		.loc 1 126 2 is_stmt 1 view .LVU95
+ 336 005e FFF7FEFF 		bl	scan_wait
+ 337              	.LVL17:
+ 127:src/btphy/scan_task.c **** 
+ 128:src/btphy/scan_task.c **** 	return 0; 
+ 338              		.loc 1 128 2 view .LVU96
+ 129:src/btphy/scan_task.c **** }
+ 339              		.loc 1 129 1 is_stmt 0 view .LVU97
+ 340 0062 0020     		movs	r0, #0
+ 341 0064 08BD     		pop	{r3, pc}
+ 342              	.L24:
+ 343 0066 00BF     		.align	2
+ 344              	.L23:
+ 345 0068 00000000 		.word	.LANCHOR0
+ 346 006c 00000000 		.word	rf_state
+ 347 0070 38C00920 		.word	537509944
+ 348              		.cfi_endproc
+ 349              	.LFE35:
+ 351              		.section	.text.scan_wait_more,"ax",%progbits
+ 352              		.align	1
+ 353              		.p2align 2,,3
+ 354              		.syntax unified
+ 355              		.thumb
+ 356              		.thumb_func
+ 357              		.fpu softvfp
+ 359              	scan_wait_more:
+ 360              	.LVL18:
+ 361              	.LFB34:
+ 102:src/btphy/scan_task.c **** 	scan_wait();
+ 362              		.loc 1 102 1 is_stmt 1 view -0
+ 363              		.cfi_startproc
+ 364              		@ args = 0, pretend = 0, frame = 0
+ 365              		@ frame_needed = 0, uses_anonymous_args = 0
+ 102:src/btphy/scan_task.c **** 	scan_wait();
+ 366              		.loc 1 102 1 is_stmt 0 view .LVU99
+ 367 0000 08B5     		push	{r3, lr}
+ 368              		.cfi_def_cfa_offset 8
+ 369              		.cfi_offset 3, -8
+ 370              		.cfi_offset 14, -4
+ 103:src/btphy/scan_task.c **** 	return 0;
+ 371              		.loc 1 103 2 is_stmt 1 view .LVU100
+ 372 0002 FFF7FEFF 		bl	scan_wait
+ 373              	.LVL19:
+ 104:src/btphy/scan_task.c **** }
+ 374              		.loc 1 104 2 view .LVU101
+ 105:src/btphy/scan_task.c **** 
+ 375              		.loc 1 105 1 is_stmt 0 view .LVU102
+ 376 0006 0020     		movs	r0, #0
+ 377 0008 08BD     		pop	{r3, pc}
+ 378              		.cfi_endproc
+ 379              	.LFE34:
+ 381 000a 00BF     		.section	.text.scan_task_schedule,"ax",%progbits
+ARM GAS  /tmp/ccLTcJZb.s 			page 12
+
+
+ 382              		.align	1
+ 383              		.p2align 2,,3
+ 384              		.global	scan_task_schedule
+ 385              		.syntax unified
+ 386              		.thumb
+ 387              		.thumb_func
+ 388              		.fpu softvfp
+ 390              	scan_task_schedule:
+ 391              	.LVL20:
+ 392              	.LFB36:
+ 130:src/btphy/scan_task.c **** 
+ 131:src/btphy/scan_task.c **** void scan_task_schedule(unsigned delay, scan_task_cb_t cb, void*cbarg)
+ 132:src/btphy/scan_task.c **** {
+ 393              		.loc 1 132 1 is_stmt 1 view -0
+ 394              		.cfi_startproc
+ 395              		@ args = 0, pretend = 0, frame = 0
+ 396              		@ frame_needed = 0, uses_anonymous_args = 0
+ 397              		.loc 1 132 1 is_stmt 0 view .LVU104
+ 398 0000 70B5     		push	{r4, r5, r6, lr}
+ 399              		.cfi_def_cfa_offset 16
+ 400              		.cfi_offset 4, -16
+ 401              		.cfi_offset 5, -12
+ 402              		.cfi_offset 6, -8
+ 403              		.cfi_offset 14, -4
+ 404 0002 82B0     		sub	sp, sp, #8
+ 405              		.cfi_def_cfa_offset 24
+ 133:src/btphy/scan_task.c **** 	scan_task.cb = cb;
+ 406              		.loc 1 133 2 is_stmt 1 view .LVU105
+ 134:src/btphy/scan_task.c **** 	scan_task.cb_arg = cbarg;
+ 135:src/btphy/scan_task.c **** 
+ 136:src/btphy/scan_task.c **** 	/* FIXME: We RX only ~250usec in a 312.5usec timeslot.
+ 137:src/btphy/scan_task.c **** 	 * Therefore we might get unlucky and never receive the master ID. */
+ 138:src/btphy/scan_task.c **** 
+ 139:src/btphy/scan_task.c **** 	/* In inquiry/paging scan , hop.x must be incremented before
+ 140:src/btphy/scan_task.c **** 	 * master TX */
+ 141:src/btphy/scan_task.c **** 	hop_increment();
+ 142:src/btphy/scan_task.c **** 
+ 143:src/btphy/scan_task.c **** 	tdma_schedule(1, scan_start, 0, 0, 0, -3);
+ 407              		.loc 1 143 2 is_stmt 0 view .LVU106
+ 408 0004 6FF00204 		mvn	r4, #2
+ 409 0008 0023     		movs	r3, #0
+ 132:src/btphy/scan_task.c **** 	scan_task.cb = cb;
+ 410              		.loc 1 132 1 view .LVU107
+ 411 000a 1646     		mov	r6, r2
+ 412              	.LBB42:
+ 413              	.LBB43:
+ 414              		.file 3 "include/ubtbr/hop.h"
+   1:include/ubtbr/hop.h **** #ifndef __HOP_H
+   2:include/ubtbr/hop.h **** #define __HOP_H
+   3:include/ubtbr/hop.h **** #include <stdint.h>
+   4:include/ubtbr/hop.h **** #include <ubertooth_interface.h>
+   5:include/ubtbr/hop.h **** 
+   6:include/ubtbr/hop.h **** typedef struct hop_state_s {
+   7:include/ubtbr/hop.h **** 	uint8_t a27_23, a22_19, C, E;
+   8:include/ubtbr/hop.h **** 	uint16_t a18_10;
+   9:include/ubtbr/hop.h **** 	uint8_t x;
+  10:include/ubtbr/hop.h **** 	/* frequency register bank */
+ARM GAS  /tmp/ccLTcJZb.s 			page 13
+
+
+  11:include/ubtbr/hop.h **** 	uint8_t basic_bank[NUM_BREDR_CHANNELS];
+  12:include/ubtbr/hop.h **** 	uint8_t afh_bank[NUM_BREDR_CHANNELS];
+  13:include/ubtbr/hop.h **** 	uint8_t afh_chan_count;
+  14:include/ubtbr/hop.h **** 	uint8_t afh_enabled;
+  15:include/ubtbr/hop.h **** 	uint8_t *bank;
+  16:include/ubtbr/hop.h **** 	uint8_t chan_count;
+  17:include/ubtbr/hop.h **** } hop_state_t;
+  18:include/ubtbr/hop.h **** 
+  19:include/ubtbr/hop.h **** void hop_init(uint32_t address);
+  20:include/ubtbr/hop.h **** uint8_t hop_basic(uint32_t clk);
+  21:include/ubtbr/hop.h **** uint8_t hop_inquiry(uint32_t clk);
+  22:include/ubtbr/hop.h **** uint8_t hop_channel(uint32_t clk);
+  23:include/ubtbr/hop.h **** void hop_cfg_afh(uint8_t* buf);
+  24:include/ubtbr/hop.h **** 
+  25:include/ubtbr/hop.h **** /* FIXME ?*/
+  26:include/ubtbr/hop.h **** extern hop_state_t hop_state;
+  27:include/ubtbr/hop.h **** 
+  28:include/ubtbr/hop.h **** static inline uint8_t perm5(uint8_t z, uint8_t p_high, uint16_t p_low)
+  29:include/ubtbr/hop.h **** {
+  30:include/ubtbr/hop.h **** 	extern uint8_t perm5_lut[2][4096];
+  31:include/ubtbr/hop.h **** 	uint16_t p = (p_low&0x1ff)|((p_high&0x1f)<<9);
+  32:include/ubtbr/hop.h **** 
+  33:include/ubtbr/hop.h **** 	z &= 0x1f;
+  34:include/ubtbr/hop.h **** 	z = perm5_lut[0][(((p>>7))<<5)|z];
+  35:include/ubtbr/hop.h **** 	z = perm5_lut[1][((0x7f&(p>>0))<<5)|z];
+  36:include/ubtbr/hop.h **** 
+  37:include/ubtbr/hop.h **** 	return z;
+  38:include/ubtbr/hop.h **** }
+  39:include/ubtbr/hop.h **** 
+  40:include/ubtbr/hop.h **** /* This function increment the x variable of for paging/inquiry hopping.
+  41:include/ubtbr/hop.h ****  * It must be called before each master's transmission. */
+  42:include/ubtbr/hop.h **** static inline void hop_increment(void)
+  43:include/ubtbr/hop.h **** {
+  44:include/ubtbr/hop.h **** 	hop_state.x++;
+ 415              		.loc 3 44 13 view .LVU108
+ 416 000c 074D     		ldr	r5, .L27
+ 417              	.LBE43:
+ 418              	.LBE42:
+ 419              		.loc 1 143 2 view .LVU109
+ 420 000e 0194     		str	r4, [sp, #4]
+ 133:src/btphy/scan_task.c **** 	scan_task.cb_arg = cbarg;
+ 421              		.loc 1 133 15 view .LVU110
+ 422 0010 0748     		ldr	r0, .L27+4
+ 423              	.LVL21:
+ 424              	.LBB48:
+ 425              	.LBB44:
+ 426              		.loc 3 44 13 view .LVU111
+ 427 0012 AC79     		ldrb	r4, [r5, #6]	@ zero_extendqisi2
+ 428              	.LBE44:
+ 429              	.LBE48:
+ 430              		.loc 1 143 2 view .LVU112
+ 431 0014 0093     		str	r3, [sp]
+ 432 0016 1A46     		mov	r2, r3
+ 433              	.LVL22:
+ 133:src/btphy/scan_task.c **** 	scan_task.cb_arg = cbarg;
+ 434              		.loc 1 133 15 view .LVU113
+ 435 0018 0160     		str	r1, [r0]
+ARM GAS  /tmp/ccLTcJZb.s 			page 14
+
+
+ 134:src/btphy/scan_task.c **** 
+ 436              		.loc 1 134 2 is_stmt 1 view .LVU114
+ 134:src/btphy/scan_task.c **** 
+ 437              		.loc 1 134 19 is_stmt 0 view .LVU115
+ 438 001a 4660     		str	r6, [r0, #4]
+ 141:src/btphy/scan_task.c **** 
+ 439              		.loc 1 141 2 is_stmt 1 view .LVU116
+ 440              	.LBB49:
+ 441              	.LBI42:
+  42:include/ubtbr/hop.h **** {
+ 442              		.loc 3 42 20 view .LVU117
+ 443              	.LBB45:
+ 444              		.loc 3 44 2 view .LVU118
+ 445              	.LBE45:
+ 446              	.LBE49:
+ 447              		.loc 1 143 2 is_stmt 0 view .LVU119
+ 448 001c 0549     		ldr	r1, .L27+8
+ 449              	.LVL23:
+ 450              	.LBB50:
+ 451              	.LBB46:
+ 452              		.loc 3 44 13 view .LVU120
+ 453 001e 0134     		adds	r4, r4, #1
+ 454              	.LBE46:
+ 455              	.LBE50:
+ 456              		.loc 1 143 2 view .LVU121
+ 457 0020 0120     		movs	r0, #1
+ 458              	.LBB51:
+ 459              	.LBB47:
+ 460              		.loc 3 44 13 view .LVU122
+ 461 0022 AC71     		strb	r4, [r5, #6]
+ 462              	.LBE47:
+ 463              	.LBE51:
+ 464              		.loc 1 143 2 is_stmt 1 view .LVU123
+ 465 0024 FFF7FEFF 		bl	tdma_schedule
+ 466              	.LVL24:
+ 144:src/btphy/scan_task.c **** }
+ 467              		.loc 1 144 1 is_stmt 0 view .LVU124
+ 468 0028 02B0     		add	sp, sp, #8
+ 469              		.cfi_def_cfa_offset 16
+ 470              		@ sp needed
+ 471 002a 70BD     		pop	{r4, r5, r6, pc}
+ 472              	.LVL25:
+ 473              	.L28:
+ 474              		.loc 1 144 1 view .LVU125
+ 475              		.align	2
+ 476              	.L27:
+ 477 002c 00000000 		.word	hop_state
+ 478 0030 00000000 		.word	.LANCHOR0
+ 479 0034 00000000 		.word	scan_start
+ 480              		.cfi_endproc
+ 481              	.LFE36:
+ 483              		.bss
+ 484              		.align	2
+ 485              		.set	.LANCHOR0,. + 0
+ 488              	scan_task:
+ 489 0000 00000000 		.space	16
+ 489      00000000 
+ARM GAS  /tmp/ccLTcJZb.s 			page 15
+
+
+ 489      00000000 
+ 489      00000000 
+ 490              		.text
+ 491              	.Letext0:
+ 492              		.file 4 "/usr/lib/gcc/arm-none-eabi/9.2.1/include/stddef.h"
+ 493              		.file 5 "/usr/include/newlib/sys/_types.h"
+ 494              		.file 6 "/usr/include/newlib/sys/reent.h"
+ 495              		.file 7 "/usr/include/newlib/sys/lock.h"
+ 496              		.file 8 "/usr/lib/gcc/arm-none-eabi/9.2.1/include/stdint.h"
+ 497              		.file 9 "../../host/libubertooth/src/ubertooth_interface.h"
+ 498              		.file 10 "../common/ubertooth.h"
+ 499              		.file 11 "include/ubtbr/msg.h"
+ 500              		.file 12 "include/ubtbr/queue.h"
+ 501              		.file 13 "include/ubtbr/btctl_intf.h"
+ 502              		.file 14 "include/ubtbr/btphy.h"
+ 503              		.file 15 "include/ubtbr/scan_task.h"
+ 504              		.file 16 "include/ubtbr/tdma_sched.h"
+ 505              		.file 17 "include/ubtbr/debug.h"
+ARM GAS  /tmp/ccLTcJZb.s 			page 16
+
+
+DEFINED SYMBOLS
+                            *ABS*:0000000000000000 scan_task.c
+     /tmp/ccLTcJZb.s:16     .rodata.str1.4:0000000000000000 $d
+     /tmp/ccLTcJZb.s:20     .text.scan_wait:0000000000000000 $t
+     /tmp/ccLTcJZb.s:28     .text.scan_wait:0000000000000000 scan_wait
+     /tmp/ccLTcJZb.s:214    .text.scan_wait:0000000000000084 $d
+     /tmp/ccLTcJZb.s:359    .text.scan_wait_more:0000000000000000 scan_wait_more
+     /tmp/ccLTcJZb.s:229    .text.scan_start:0000000000000000 $t
+     /tmp/ccLTcJZb.s:236    .text.scan_start:0000000000000000 scan_start
+     /tmp/ccLTcJZb.s:345    .text.scan_start:0000000000000068 $d
+     /tmp/ccLTcJZb.s:352    .text.scan_wait_more:0000000000000000 $t
+     /tmp/ccLTcJZb.s:382    .text.scan_task_schedule:0000000000000000 $t
+     /tmp/ccLTcJZb.s:390    .text.scan_task_schedule:0000000000000000 scan_task_schedule
+     /tmp/ccLTcJZb.s:477    .text.scan_task_schedule:000000000000002c $d
+     /tmp/ccLTcJZb.s:484    .bss:0000000000000000 $d
+     /tmp/ccLTcJZb.s:488    .bss:0000000000000000 scan_task
+
+UNDEFINED SYMBOLS
+tdma_schedule
+btphy_adj_clkn_delay
+cc2400_strobe
+die
+btphy
+hop_channel
+btphy_rf_tune_chan
+cc2400_set
+cc2400_get
+rf_state
+hop_state

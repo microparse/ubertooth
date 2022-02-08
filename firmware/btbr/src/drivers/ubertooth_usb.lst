@@ -1,0 +1,2324 @@
+ARM GAS  /tmp/ccDjdIod.s 			page 1
+
+
+   1              		.cpu cortex-m3
+   2              		.eabi_attribute 20, 1
+   3              		.eabi_attribute 21, 1
+   4              		.eabi_attribute 23, 3
+   5              		.eabi_attribute 24, 1
+   6              		.eabi_attribute 25, 1
+   7              		.eabi_attribute 26, 1
+   8              		.eabi_attribute 30, 2
+   9              		.eabi_attribute 34, 1
+  10              		.eabi_attribute 18, 4
+  11              		.file	"ubertooth_usb.c"
+  12              		.text
+  13              	.Ltext0:
+  14              		.cfi_sections	.debug_frame
+  15              		.section	.text.usb_vendor_request_handler,"ax",%progbits
+  16              		.align	1
+  17              		.p2align 2,,3
+  18              		.global	usb_vendor_request_handler
+  19              		.arch armv7-m
+  20              		.syntax unified
+  21              		.thumb
+  22              		.thumb_func
+  23              		.fpu softvfp
+  25              	usb_vendor_request_handler:
+  26              	.LVL0:
+  27              	.LFB26:
+  28              		.file 1 "src/drivers/ubertooth_usb.c"
+   1:src/drivers/ubertooth_usb.c **** /*
+   2:src/drivers/ubertooth_usb.c ****  * Copyright 2010 Michael Ossmann
+   3:src/drivers/ubertooth_usb.c ****  * Copyright 2013 Dominic Spill
+   4:src/drivers/ubertooth_usb.c ****  * Copyright 2020 Etienne Helluy-Lafont, Univ. Lille, CNRS.
+   5:src/drivers/ubertooth_usb.c ****  *
+   6:src/drivers/ubertooth_usb.c ****  * This file is part of Project Ubertooth.
+   7:src/drivers/ubertooth_usb.c ****  *
+   8:src/drivers/ubertooth_usb.c ****  * This program is free software; you can redistribute it and/or modify
+   9:src/drivers/ubertooth_usb.c ****  * it under the terms of the GNU General Public License as published by
+  10:src/drivers/ubertooth_usb.c ****  * the Free Software Foundation; either version 2, or (at your option)
+  11:src/drivers/ubertooth_usb.c ****  * any later version.
+  12:src/drivers/ubertooth_usb.c ****  *
+  13:src/drivers/ubertooth_usb.c ****  * This program is distributed in the hope that it will be useful,
+  14:src/drivers/ubertooth_usb.c ****  * but WITHOUT ANY WARRANTY; without even the implied warranty of
+  15:src/drivers/ubertooth_usb.c ****  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  16:src/drivers/ubertooth_usb.c ****  * GNU General Public License for more details.
+  17:src/drivers/ubertooth_usb.c ****  *
+  18:src/drivers/ubertooth_usb.c ****  * You should have received a copy of the GNU General Public License
+  19:src/drivers/ubertooth_usb.c ****  * along with this program; see the file COPYING.  If not, write to
+  20:src/drivers/ubertooth_usb.c ****  * the Free Software Foundation, Inc., 51 Franklin Street,
+  21:src/drivers/ubertooth_usb.c ****  * Boston, MA 02110-1301, USA.
+  22:src/drivers/ubertooth_usb.c ****  */
+  23:src/drivers/ubertooth_usb.c **** 
+  24:src/drivers/ubertooth_usb.c **** /*
+  25:src/drivers/ubertooth_usb.c **** 	LPCUSB, an USB device driver for LPC microcontrollers
+  26:src/drivers/ubertooth_usb.c **** 	Copyright (C) 2006 Bertrik Sikken (bertrik@sikken.nl)
+  27:src/drivers/ubertooth_usb.c **** 
+  28:src/drivers/ubertooth_usb.c **** 	Redistribution and use in source and binary forms, with or without
+  29:src/drivers/ubertooth_usb.c **** 	modification, are permitted provided that the following conditions are met:
+  30:src/drivers/ubertooth_usb.c **** 
+ARM GAS  /tmp/ccDjdIod.s 			page 2
+
+
+  31:src/drivers/ubertooth_usb.c **** 	1. Redistributions of source code must retain the above copyright
+  32:src/drivers/ubertooth_usb.c **** 	   notice, this list of conditions and the following disclaimer.
+  33:src/drivers/ubertooth_usb.c **** 	2. Redistributions in binary form must reproduce the above copyright
+  34:src/drivers/ubertooth_usb.c **** 	   notice, this list of conditions and the following disclaimer in the
+  35:src/drivers/ubertooth_usb.c **** 	   documentation and/or other materials provided with the distribution.
+  36:src/drivers/ubertooth_usb.c **** 	3. The name of the author may not be used to endorse or promote products
+  37:src/drivers/ubertooth_usb.c **** 	   derived from this software without specific prior written permission.
+  38:src/drivers/ubertooth_usb.c **** 
+  39:src/drivers/ubertooth_usb.c **** 	THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+  40:src/drivers/ubertooth_usb.c **** 	IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+  41:src/drivers/ubertooth_usb.c **** 	OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+  42:src/drivers/ubertooth_usb.c **** 	IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+  43:src/drivers/ubertooth_usb.c **** 	INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+  44:src/drivers/ubertooth_usb.c **** 	NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+  45:src/drivers/ubertooth_usb.c **** 	DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+  46:src/drivers/ubertooth_usb.c **** 	THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  47:src/drivers/ubertooth_usb.c **** 	(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+  48:src/drivers/ubertooth_usb.c **** 	THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+  49:src/drivers/ubertooth_usb.c **** */
+  50:src/drivers/ubertooth_usb.c **** 
+  51:src/drivers/ubertooth_usb.c **** #include <string.h>
+  52:src/drivers/ubertooth_usb.c **** #include <stddef.h>
+  53:src/drivers/ubertooth_usb.c **** #include <usbapi.h>
+  54:src/drivers/ubertooth_usb.c **** #include <usbhw_lpc.h>
+  55:src/drivers/ubertooth_usb.c **** #include <ubertooth.h>
+  56:src/drivers/ubertooth_usb.c **** #include <ubtbr/ubertooth_usb.h>
+  57:src/drivers/ubertooth_usb.c **** #include <ubtbr/btphy.h>
+  58:src/drivers/ubertooth_usb.c **** #include <ubtbr/btctl_intf.h>
+  59:src/drivers/ubertooth_usb.c **** 
+  60:src/drivers/ubertooth_usb.c **** #ifdef UBERTOOTH_ZERO
+  61:src/drivers/ubertooth_usb.c **** #define ID_VENDOR 0x1D50
+  62:src/drivers/ubertooth_usb.c **** #define ID_PRODUCT 0x6000
+  63:src/drivers/ubertooth_usb.c **** #elif defined UBERTOOTH_ONE
+  64:src/drivers/ubertooth_usb.c **** #define ID_VENDOR 0x1D50
+  65:src/drivers/ubertooth_usb.c **** #define ID_PRODUCT 0x6002
+  66:src/drivers/ubertooth_usb.c **** #else
+  67:src/drivers/ubertooth_usb.c **** #define ID_VENDOR 0xFFFF
+  68:src/drivers/ubertooth_usb.c **** #define ID_PRODUCT 0x0004
+  69:src/drivers/ubertooth_usb.c **** #endif
+  70:src/drivers/ubertooth_usb.c **** 
+  71:src/drivers/ubertooth_usb.c **** #define USB_SERIAL_OFFSET 124
+  72:src/drivers/ubertooth_usb.c **** #define BULK_IN_EP		0x82
+  73:src/drivers/ubertooth_usb.c **** #define BULK_OUT_EP		0x05
+  74:src/drivers/ubertooth_usb.c **** 
+  75:src/drivers/ubertooth_usb.c **** #define MAX_PACKET_SIZE	64
+  76:src/drivers/ubertooth_usb.c **** 
+  77:src/drivers/ubertooth_usb.c **** #define LE_WORD(x)		((x)&0xFF),((x)>>8)
+  78:src/drivers/ubertooth_usb.c **** 
+  79:src/drivers/ubertooth_usb.c **** static uint8_t abVendorReqData[258];
+  80:src/drivers/ubertooth_usb.c **** 
+  81:src/drivers/ubertooth_usb.c **** // Current msg we're sending to host
+  82:src/drivers/ubertooth_usb.c **** static msg_t *tx_msg = NULL;
+  83:src/drivers/ubertooth_usb.c **** // Current msg we're receiving from host
+  84:src/drivers/ubertooth_usb.c **** static msg_t *rx_msg = NULL;
+  85:src/drivers/ubertooth_usb.c **** 
+  86:src/drivers/ubertooth_usb.c **** /*
+  87:src/drivers/ubertooth_usb.c ****  * This is supposed to be a lock-free ring buffer, but I haven't verified
+ARM GAS  /tmp/ccDjdIod.s 			page 3
+
+
+  88:src/drivers/ubertooth_usb.c ****  * atomicity of the operations on head and tail.
+  89:src/drivers/ubertooth_usb.c ****  */
+  90:src/drivers/ubertooth_usb.c **** 
+  91:src/drivers/ubertooth_usb.c **** static uint8_t abDescriptors[] = {
+  92:src/drivers/ubertooth_usb.c **** 
+  93:src/drivers/ubertooth_usb.c **** /* Device descriptor */
+  94:src/drivers/ubertooth_usb.c **** 	0x12,
+  95:src/drivers/ubertooth_usb.c **** 	DESC_DEVICE,
+  96:src/drivers/ubertooth_usb.c **** 	LE_WORD(0x0200),		// bcdUSB
+  97:src/drivers/ubertooth_usb.c **** 	0xFF,              		// bDeviceClass
+  98:src/drivers/ubertooth_usb.c **** 	0x00,              		// bDeviceSubClass
+  99:src/drivers/ubertooth_usb.c **** 	0x00,              		// bDeviceProtocol
+ 100:src/drivers/ubertooth_usb.c **** 	MAX_PACKET_SIZE,  		// bMaxPacketSize
+ 101:src/drivers/ubertooth_usb.c **** 	LE_WORD(ID_VENDOR),		// idVendor
+ 102:src/drivers/ubertooth_usb.c **** 	LE_WORD(ID_PRODUCT),		// idProduct
+ 103:src/drivers/ubertooth_usb.c **** 	LE_WORD(0x0106),		// bcdDevice
+ 104:src/drivers/ubertooth_usb.c **** 	0x01,              		// iManufacturer
+ 105:src/drivers/ubertooth_usb.c **** 	0x02,              		// iProduct
+ 106:src/drivers/ubertooth_usb.c **** 	0x03,              		// iSerialNumber
+ 107:src/drivers/ubertooth_usb.c **** 	0x01,              		// bNumConfigurations
+ 108:src/drivers/ubertooth_usb.c **** 
+ 109:src/drivers/ubertooth_usb.c **** // configuration
+ 110:src/drivers/ubertooth_usb.c **** 	0x09,
+ 111:src/drivers/ubertooth_usb.c **** 	DESC_CONFIGURATION,
+ 112:src/drivers/ubertooth_usb.c **** 	LE_WORD(0x20),  		// wTotalLength
+ 113:src/drivers/ubertooth_usb.c **** 	0x01,  					// bNumInterfaces
+ 114:src/drivers/ubertooth_usb.c **** 	0x01,  					// bConfigurationValue
+ 115:src/drivers/ubertooth_usb.c **** 	0x00,  					// iConfiguration
+ 116:src/drivers/ubertooth_usb.c **** 	0x80,  					// bmAttributes
+ 117:src/drivers/ubertooth_usb.c **** 	0x6e,  					// bMaxPower (220mA)
+ 118:src/drivers/ubertooth_usb.c **** 
+ 119:src/drivers/ubertooth_usb.c **** // interface
+ 120:src/drivers/ubertooth_usb.c **** 	0x09,
+ 121:src/drivers/ubertooth_usb.c **** 	DESC_INTERFACE,
+ 122:src/drivers/ubertooth_usb.c **** 	0x00,  		 			// bInterfaceNumber
+ 123:src/drivers/ubertooth_usb.c **** 	0x00,   				// bAlternateSetting
+ 124:src/drivers/ubertooth_usb.c **** 	0x02,   				// bNumEndPoints
+ 125:src/drivers/ubertooth_usb.c **** 	0xFF,   				// bInterfaceClass
+ 126:src/drivers/ubertooth_usb.c **** 	0x00,   				// bInterfaceSubClass
+ 127:src/drivers/ubertooth_usb.c **** 	0x00,   				// bInterfaceProtocol
+ 128:src/drivers/ubertooth_usb.c **** 	0x00,   				// iInterface
+ 129:src/drivers/ubertooth_usb.c **** 
+ 130:src/drivers/ubertooth_usb.c **** // bulk in
+ 131:src/drivers/ubertooth_usb.c **** 	0x07,
+ 132:src/drivers/ubertooth_usb.c **** 	DESC_ENDPOINT,
+ 133:src/drivers/ubertooth_usb.c **** 	BULK_IN_EP,				// bEndpointAddress
+ 134:src/drivers/ubertooth_usb.c **** 	0x02,   				// bmAttributes = BULK
+ 135:src/drivers/ubertooth_usb.c **** 	LE_WORD(MAX_PACKET_SIZE),// wMaxPacketSize
+ 136:src/drivers/ubertooth_usb.c **** 	0,						// bInterval
+ 137:src/drivers/ubertooth_usb.c **** 
+ 138:src/drivers/ubertooth_usb.c **** // bulk out
+ 139:src/drivers/ubertooth_usb.c **** 	0x07,
+ 140:src/drivers/ubertooth_usb.c **** 	DESC_ENDPOINT,
+ 141:src/drivers/ubertooth_usb.c **** 	BULK_OUT_EP,			// bEndpointAddress
+ 142:src/drivers/ubertooth_usb.c **** 	0x02,   				// bmAttributes = BULK
+ 143:src/drivers/ubertooth_usb.c **** 	LE_WORD(MAX_PACKET_SIZE),// wMaxPacketSize
+ 144:src/drivers/ubertooth_usb.c **** 	0,						// bInterval
+ARM GAS  /tmp/ccDjdIod.s 			page 4
+
+
+ 145:src/drivers/ubertooth_usb.c **** 
+ 146:src/drivers/ubertooth_usb.c **** // string descriptors
+ 147:src/drivers/ubertooth_usb.c **** 	0x04,
+ 148:src/drivers/ubertooth_usb.c **** 	DESC_STRING,
+ 149:src/drivers/ubertooth_usb.c **** 	LE_WORD(0x0409),
+ 150:src/drivers/ubertooth_usb.c **** 
+ 151:src/drivers/ubertooth_usb.c **** 	// manufacturer string
+ 152:src/drivers/ubertooth_usb.c **** 	40,
+ 153:src/drivers/ubertooth_usb.c **** 	DESC_STRING,
+ 154:src/drivers/ubertooth_usb.c **** 	'G', 0x00,
+ 155:src/drivers/ubertooth_usb.c **** 	'r', 0x00,
+ 156:src/drivers/ubertooth_usb.c **** 	'e', 0x00,
+ 157:src/drivers/ubertooth_usb.c **** 	'a', 0x00,
+ 158:src/drivers/ubertooth_usb.c **** 	't', 0x00,
+ 159:src/drivers/ubertooth_usb.c **** 	' ', 0x00,
+ 160:src/drivers/ubertooth_usb.c **** 	'S', 0x00,
+ 161:src/drivers/ubertooth_usb.c **** 	'c', 0x00,
+ 162:src/drivers/ubertooth_usb.c **** 	'o', 0x00,
+ 163:src/drivers/ubertooth_usb.c **** 	't', 0x00,
+ 164:src/drivers/ubertooth_usb.c **** 	't', 0x00,
+ 165:src/drivers/ubertooth_usb.c **** 	' ', 0x00,
+ 166:src/drivers/ubertooth_usb.c **** 	'G', 0x00,
+ 167:src/drivers/ubertooth_usb.c **** 	'a', 0x00,
+ 168:src/drivers/ubertooth_usb.c **** 	'd', 0x00,
+ 169:src/drivers/ubertooth_usb.c **** 	'g', 0x00,
+ 170:src/drivers/ubertooth_usb.c **** 	'e', 0x00,
+ 171:src/drivers/ubertooth_usb.c **** 	't', 0x00,
+ 172:src/drivers/ubertooth_usb.c **** 	's', 0x00,
+ 173:src/drivers/ubertooth_usb.c **** 
+ 174:src/drivers/ubertooth_usb.c **** 	// product string
+ 175:src/drivers/ubertooth_usb.c **** 	28,
+ 176:src/drivers/ubertooth_usb.c **** 	DESC_STRING,
+ 177:src/drivers/ubertooth_usb.c **** 	'U', 0x00,
+ 178:src/drivers/ubertooth_usb.c **** 	'b', 0x00,
+ 179:src/drivers/ubertooth_usb.c **** 	'e', 0x00,
+ 180:src/drivers/ubertooth_usb.c **** 	'r', 0x00,
+ 181:src/drivers/ubertooth_usb.c **** 	't', 0x00,
+ 182:src/drivers/ubertooth_usb.c **** 	'o', 0x00,
+ 183:src/drivers/ubertooth_usb.c **** 	'o', 0x00,
+ 184:src/drivers/ubertooth_usb.c **** 	't', 0x00,
+ 185:src/drivers/ubertooth_usb.c **** 	'h', 0x00,
+ 186:src/drivers/ubertooth_usb.c **** 	' ', 0x00,
+ 187:src/drivers/ubertooth_usb.c **** 	'O', 0x00,
+ 188:src/drivers/ubertooth_usb.c **** 	'n', 0x00,
+ 189:src/drivers/ubertooth_usb.c **** 	'e', 0x00,
+ 190:src/drivers/ubertooth_usb.c **** 
+ 191:src/drivers/ubertooth_usb.c **** 	// serial number string
+ 192:src/drivers/ubertooth_usb.c **** 	0x42,
+ 193:src/drivers/ubertooth_usb.c **** 	DESC_STRING,
+ 194:src/drivers/ubertooth_usb.c **** 	'0', 0, '0', 0, '0', 0, '0', 0, '0', 0, '0', 0, '0', 0, '0', 0,
+ 195:src/drivers/ubertooth_usb.c **** 	'0', 0, '0', 0, '0', 0, '0', 0, '0', 0, '0', 0, '0', 0, '0', 0,
+ 196:src/drivers/ubertooth_usb.c **** 	'0', 0, '0', 0, '0', 0, '0', 0, '0', 0, '0', 0, '0', 0, '0', 0,
+ 197:src/drivers/ubertooth_usb.c **** 	'0', 0, '0', 0, '0', 0, '0', 0, '0', 0, '0', 0, '0', 0, '1', 0,
+ 198:src/drivers/ubertooth_usb.c **** 
+ 199:src/drivers/ubertooth_usb.c **** 	// terminator
+ 200:src/drivers/ubertooth_usb.c **** 	0
+ 201:src/drivers/ubertooth_usb.c **** };
+ARM GAS  /tmp/ccDjdIod.s 			page 5
+
+
+ 202:src/drivers/ubertooth_usb.c **** 
+ 203:src/drivers/ubertooth_usb.c **** /* Not used
+ 204:src/drivers/ubertooth_usb.c **** void usb_bulk_in_handler(u8 bEP, u8 bEPStatus)
+ 205:src/drivers/ubertooth_usb.c **** {
+ 206:src/drivers/ubertooth_usb.c **** }
+ 207:src/drivers/ubertooth_usb.c **** */
+ 208:src/drivers/ubertooth_usb.c **** 
+ 209:src/drivers/ubertooth_usb.c **** /* Bulk is received from host */
+ 210:src/drivers/ubertooth_usb.c **** void usb_bulk_out_handler(u8 bEP, u8 bEPStatus)
+ 211:src/drivers/ubertooth_usb.c **** {
+ 212:src/drivers/ubertooth_usb.c **** 	uint8_t data[MAX_PACKET_SIZE], *p, type;
+ 213:src/drivers/ubertooth_usb.c **** 	uint16_t packet_size;
+ 214:src/drivers/ubertooth_usb.c **** 	int bulk_size, wsize;
+ 215:src/drivers/ubertooth_usb.c **** 
+ 216:src/drivers/ubertooth_usb.c **** 	// Read the received packet 
+ 217:src/drivers/ubertooth_usb.c **** 	bulk_size = USBHwEPRead(BULK_OUT_EP, (u8*)data, MAX_PACKET_SIZE);
+ 218:src/drivers/ubertooth_usb.c **** 
+ 219:src/drivers/ubertooth_usb.c **** 	/* copy/pasted from host code */
+ 220:src/drivers/ubertooth_usb.c **** 	type = data[0];
+ 221:src/drivers/ubertooth_usb.c **** 
+ 222:src/drivers/ubertooth_usb.c **** 	/* Receive normal messages */
+ 223:src/drivers/ubertooth_usb.c **** 	if (rx_msg == NULL)
+ 224:src/drivers/ubertooth_usb.c **** 	{
+ 225:src/drivers/ubertooth_usb.c **** 		/* Receive first chunk */
+ 226:src/drivers/ubertooth_usb.c **** 		if (type != BTUSB_MSG_START)
+ 227:src/drivers/ubertooth_usb.c **** 		{
+ 228:src/drivers/ubertooth_usb.c **** 			DIE("Unexpected type %c while waiting rx_msg\n", type);
+ 229:src/drivers/ubertooth_usb.c **** 		}
+ 230:src/drivers/ubertooth_usb.c **** 		packet_size = data[2]|(data[3]<<8);
+ 231:src/drivers/ubertooth_usb.c **** 		rx_msg = msg_alloc(packet_size);
+ 232:src/drivers/ubertooth_usb.c **** 
+ 233:src/drivers/ubertooth_usb.c **** 		// skip packet type / packet size 
+ 234:src/drivers/ubertooth_usb.c **** 		wsize = MIN(bulk_size-4, msg_write_avail(rx_msg));
+ 235:src/drivers/ubertooth_usb.c **** 		p = msg_put(rx_msg, wsize);
+ 236:src/drivers/ubertooth_usb.c **** 		memcpy(p, data+4, wsize);
+ 237:src/drivers/ubertooth_usb.c **** 	}
+ 238:src/drivers/ubertooth_usb.c **** 	else
+ 239:src/drivers/ubertooth_usb.c **** 	{
+ 240:src/drivers/ubertooth_usb.c **** 		/* Receive next chunks */
+ 241:src/drivers/ubertooth_usb.c **** 		if (type != BTUSB_MSG_CONT)
+ 242:src/drivers/ubertooth_usb.c **** 		{
+ 243:src/drivers/ubertooth_usb.c **** 			DIE("Invalid type %d while waiting rx_msg cont\n", type);
+ 244:src/drivers/ubertooth_usb.c **** 		}
+ 245:src/drivers/ubertooth_usb.c **** 		// skip 1 byte of header
+ 246:src/drivers/ubertooth_usb.c **** 		wsize = MIN(bulk_size-1, msg_write_avail(rx_msg));
+ 247:src/drivers/ubertooth_usb.c **** 		p = msg_put(rx_msg, wsize);
+ 248:src/drivers/ubertooth_usb.c **** 		memcpy(p, data+1, wsize);
+ 249:src/drivers/ubertooth_usb.c **** 	}
+ 250:src/drivers/ubertooth_usb.c **** 	if (msg_write_avail(rx_msg) == 0)
+ 251:src/drivers/ubertooth_usb.c **** 	{
+ 252:src/drivers/ubertooth_usb.c **** 		btctl_rx_enqueue(rx_msg);
+ 253:src/drivers/ubertooth_usb.c **** 		rx_msg = NULL;
+ 254:src/drivers/ubertooth_usb.c **** 	}
+ 255:src/drivers/ubertooth_usb.c **** }
+ 256:src/drivers/ubertooth_usb.c **** 
+ 257:src/drivers/ubertooth_usb.c **** VendorRequestHandler *v_req_handler;
+ 258:src/drivers/ubertooth_usb.c **** 
+ARM GAS  /tmp/ccDjdIod.s 			page 6
+
+
+ 259:src/drivers/ubertooth_usb.c **** BOOL usb_vendor_request_handler(TSetupPacket *pSetup, int *piLen, u8 **ppbData)
+ 260:src/drivers/ubertooth_usb.c **** {
+  29              		.loc 1 260 1 view -0
+  30              		.cfi_startproc
+  31              		@ args = 0, pretend = 0, frame = 8
+  32              		@ frame_needed = 0, uses_anonymous_args = 0
+  33              		.loc 1 260 1 is_stmt 0 view .LVU1
+  34 0000 70B5     		push	{r4, r5, r6, lr}
+  35              		.cfi_def_cfa_offset 16
+  36              		.cfi_offset 4, -16
+  37              		.cfi_offset 5, -12
+  38              		.cfi_offset 6, -8
+  39              		.cfi_offset 14, -4
+  40 0002 82B0     		sub	sp, sp, #8
+  41              		.cfi_def_cfa_offset 24
+ 261:src/drivers/ubertooth_usb.c **** 	int rv;
+  42              		.loc 1 261 2 is_stmt 1 view .LVU2
+ 262:src/drivers/ubertooth_usb.c **** 	u16 params[3] = {pSetup->wValue, pSetup->wIndex, pSetup->wLength};
+  43              		.loc 1 262 2 view .LVU3
+ 263:src/drivers/ubertooth_usb.c **** 	rv = v_req_handler(pSetup->bRequest, params, *ppbData, piLen);
+  44              		.loc 1 263 7 is_stmt 0 view .LVU4
+  45 0004 094C     		ldr	r4, .L3
+ 262:src/drivers/ubertooth_usb.c **** 	u16 params[3] = {pSetup->wValue, pSetup->wIndex, pSetup->wLength};
+  46              		.loc 1 262 25 view .LVU5
+  47 0006 D0F80260 		ldr	r6, [r0, #2]	@ unaligned
+ 262:src/drivers/ubertooth_usb.c **** 	u16 params[3] = {pSetup->wValue, pSetup->wIndex, pSetup->wLength};
+  48              		.loc 1 262 6 view .LVU6
+  49 000a C588     		ldrh	r5, [r0, #6]
+ 260:src/drivers/ubertooth_usb.c **** 	int rv;
+  50              		.loc 1 260 1 view .LVU7
+  51 000c 0B46     		mov	r3, r1
+  52              		.loc 1 263 7 view .LVU8
+  53 000e 1268     		ldr	r2, [r2]
+  54              	.LVL1:
+  55              		.loc 1 263 7 view .LVU9
+  56 0010 6946     		mov	r1, sp
+  57              	.LVL2:
+  58              		.loc 1 263 7 view .LVU10
+  59 0012 2468     		ldr	r4, [r4]
+ 262:src/drivers/ubertooth_usb.c **** 	u16 params[3] = {pSetup->wValue, pSetup->wIndex, pSetup->wLength};
+  60              		.loc 1 262 6 view .LVU11
+  61 0014 0096     		str	r6, [sp]
+  62 0016 ADF80450 		strh	r5, [sp, #4]	@ movhi
+  63              		.loc 1 263 2 is_stmt 1 view .LVU12
+  64              		.loc 1 263 7 is_stmt 0 view .LVU13
+  65 001a 4078     		ldrb	r0, [r0, #1]	@ zero_extendqisi2
+  66              	.LVL3:
+  67              		.loc 1 263 7 view .LVU14
+  68 001c A047     		blx	r4
+  69              	.LVL4:
+ 264:src/drivers/ubertooth_usb.c **** 	return (BOOL) (rv==1);
+  70              		.loc 1 264 2 is_stmt 1 view .LVU15
+ 265:src/drivers/ubertooth_usb.c **** }
+  71              		.loc 1 265 1 is_stmt 0 view .LVU16
+  72 001e A0F10100 		sub	r0, #1
+  73              	.LVL5:
+  74              		.loc 1 265 1 view .LVU17
+ARM GAS  /tmp/ccDjdIod.s 			page 7
+
+
+  75 0022 B0FA80F0 		clz	r0, r0
+  76              	.LVL6:
+  77              		.loc 1 265 1 view .LVU18
+  78 0026 4009     		lsrs	r0, r0, #5
+  79 0028 02B0     		add	sp, sp, #8
+  80              		.cfi_def_cfa_offset 16
+  81              		@ sp needed
+  82 002a 70BD     		pop	{r4, r5, r6, pc}
+  83              	.L4:
+  84              		.align	2
+  85              	.L3:
+  86 002c 00000000 		.word	v_req_handler
+  87              		.cfi_endproc
+  88              	.LFE26:
+  90              		.section	.rodata.str1.4,"aMS",%progbits,1
+  91              		.align	2
+  92              	.LC0:
+  93 0000 4449457C 		.ascii	"DIE|Unexpected type %c while waiting rx_msg\012\012"
+  93      556E6578 
+  93      70656374 
+  93      65642074 
+  93      79706520 
+  94 002d 00       		.ascii	"\000"
+  95 002e 0000     		.align	2
+  96              	.LC1:
+  97 0030 4449457C 		.ascii	"DIE|msg_put: short buf\012\012\000"
+  97      6D73675F 
+  97      7075743A 
+  97      2073686F 
+  97      72742062 
+  98 0049 000000   		.align	2
+  99              	.LC2:
+ 100 004c 4449457C 		.ascii	"DIE|Invalid type %d while waiting rx_msg cont\012\012"
+ 100      496E7661 
+ 100      6C696420 
+ 100      74797065 
+ 100      20256420 
+ 101 007b 00       		.ascii	"\000"
+ 102              		.section	.text.usb_bulk_out_handler,"ax",%progbits
+ 103              		.align	1
+ 104              		.p2align 2,,3
+ 105              		.global	usb_bulk_out_handler
+ 106              		.syntax unified
+ 107              		.thumb
+ 108              		.thumb_func
+ 109              		.fpu softvfp
+ 111              	usb_bulk_out_handler:
+ 112              	.LVL7:
+ 113              	.LFB25:
+ 211:src/drivers/ubertooth_usb.c **** 	uint8_t data[MAX_PACKET_SIZE], *p, type;
+ 114              		.loc 1 211 1 is_stmt 1 view -0
+ 115              		.cfi_startproc
+ 116              		@ args = 0, pretend = 0, frame = 64
+ 117              		@ frame_needed = 0, uses_anonymous_args = 0
+ 211:src/drivers/ubertooth_usb.c **** 	uint8_t data[MAX_PACKET_SIZE], *p, type;
+ 118              		.loc 1 211 1 is_stmt 0 view .LVU20
+ 119 0000 70B5     		push	{r4, r5, r6, lr}
+ARM GAS  /tmp/ccDjdIod.s 			page 8
+
+
+ 120              		.cfi_def_cfa_offset 16
+ 121              		.cfi_offset 4, -16
+ 122              		.cfi_offset 5, -12
+ 123              		.cfi_offset 6, -8
+ 124              		.cfi_offset 14, -4
+ 125 0002 90B0     		sub	sp, sp, #64
+ 126              		.cfi_def_cfa_offset 80
+ 212:src/drivers/ubertooth_usb.c **** 	uint16_t packet_size;
+ 127              		.loc 1 212 2 is_stmt 1 view .LVU21
+ 213:src/drivers/ubertooth_usb.c **** 	int bulk_size, wsize;
+ 128              		.loc 1 213 2 view .LVU22
+ 214:src/drivers/ubertooth_usb.c **** 
+ 129              		.loc 1 214 2 view .LVU23
+ 217:src/drivers/ubertooth_usb.c **** 
+ 130              		.loc 1 217 2 view .LVU24
+ 217:src/drivers/ubertooth_usb.c **** 
+ 131              		.loc 1 217 14 is_stmt 0 view .LVU25
+ 132 0004 4022     		movs	r2, #64
+ 133 0006 6946     		mov	r1, sp
+ 134              	.LVL8:
+ 217:src/drivers/ubertooth_usb.c **** 
+ 135              		.loc 1 217 14 view .LVU26
+ 136 0008 0520     		movs	r0, #5
+ 137              	.LVL9:
+ 217:src/drivers/ubertooth_usb.c **** 
+ 138              		.loc 1 217 14 view .LVU27
+ 139 000a FFF7FEFF 		bl	USBHwEPRead
+ 140              	.LVL10:
+ 223:src/drivers/ubertooth_usb.c **** 	{
+ 141              		.loc 1 223 13 view .LVU28
+ 142 000e 2C4D     		ldr	r5, .L20
+ 217:src/drivers/ubertooth_usb.c **** 
+ 143              		.loc 1 217 14 view .LVU29
+ 144 0010 0446     		mov	r4, r0
+ 145              	.LVL11:
+ 220:src/drivers/ubertooth_usb.c **** 
+ 146              		.loc 1 220 2 is_stmt 1 view .LVU30
+ 223:src/drivers/ubertooth_usb.c **** 	{
+ 147              		.loc 1 223 13 is_stmt 0 view .LVU31
+ 148 0012 2B68     		ldr	r3, [r5]
+ 220:src/drivers/ubertooth_usb.c **** 
+ 149              		.loc 1 220 7 view .LVU32
+ 150 0014 9DF80010 		ldrb	r1, [sp]	@ zero_extendqisi2
+ 151              	.LVL12:
+ 223:src/drivers/ubertooth_usb.c **** 	{
+ 152              		.loc 1 223 2 is_stmt 1 view .LVU33
+ 223:src/drivers/ubertooth_usb.c **** 	{
+ 153              		.loc 1 223 5 is_stmt 0 view .LVU34
+ 154 0018 03B3     		cbz	r3, .L15
+ 241:src/drivers/ubertooth_usb.c **** 		{
+ 155              		.loc 1 241 3 is_stmt 1 view .LVU35
+ 241:src/drivers/ubertooth_usb.c **** 		{
+ 156              		.loc 1 241 6 is_stmt 0 view .LVU36
+ 157 001a 4329     		cmp	r1, #67
+ 158 001c 4AD1     		bne	.L16
+ 246:src/drivers/ubertooth_usb.c **** 		p = msg_put(rx_msg, wsize);
+ 159              		.loc 1 246 3 is_stmt 1 view .LVU37
+ARM GAS  /tmp/ccDjdIod.s 			page 9
+
+
+ 160              	.LVL13:
+ 161              	.LBB102:
+ 162              	.LBI102:
+ 163              		.file 2 "include/ubtbr/msg.h"
+   1:include/ubtbr/msg.h **** #ifndef __DEF_MSG_H
+   2:include/ubtbr/msg.h **** #define __DEF_MSG_H
+   3:include/ubtbr/msg.h **** #include <stdint.h>
+   4:include/ubtbr/msg.h **** 
+   5:include/ubtbr/msg.h **** typedef struct msg_s {
+   6:include/ubtbr/msg.h **** 	uint16_t len;
+   7:include/ubtbr/msg.h **** 	uint16_t data_len;
+   8:include/ubtbr/msg.h **** 	uint8_t *read;
+   9:include/ubtbr/msg.h **** 	uint8_t *write;
+  10:include/ubtbr/msg.h **** 	/* never move head */
+  11:include/ubtbr/msg.h **** 	uint8_t data[0];
+  12:include/ubtbr/msg.h **** } msg_t;
+  13:include/ubtbr/msg.h **** 
+  14:include/ubtbr/msg.h **** /* Allocate a msg_t wigh given room*/
+  15:include/ubtbr/msg.h **** static inline msg_t *msg_alloc(unsigned size)
+  16:include/ubtbr/msg.h **** {
+  17:include/ubtbr/msg.h **** 	msg_t *msg = (msg_t*)btctl_mem_alloc(sizeof(msg_t)+size);
+  18:include/ubtbr/msg.h **** 
+  19:include/ubtbr/msg.h **** 	msg->write = msg->data;
+  20:include/ubtbr/msg.h **** 	msg->read = msg->data;
+  21:include/ubtbr/msg.h **** 	msg->data_len = size;
+  22:include/ubtbr/msg.h **** 
+  23:include/ubtbr/msg.h **** 	return msg;
+  24:include/ubtbr/msg.h **** }
+  25:include/ubtbr/msg.h **** 
+  26:include/ubtbr/msg.h **** static inline void msg_free(msg_t *msg)
+  27:include/ubtbr/msg.h **** {
+  28:include/ubtbr/msg.h **** 	btctl_mem_free(msg);
+  29:include/ubtbr/msg.h **** }
+  30:include/ubtbr/msg.h **** 
+  31:include/ubtbr/msg.h **** /* Return number of bytes written in the data buffer. */
+  32:include/ubtbr/msg.h **** static inline int msg_write_len(const msg_t *msg)
+  33:include/ubtbr/msg.h **** {
+  34:include/ubtbr/msg.h **** 	return (int)(msg->write - msg->data);
+  35:include/ubtbr/msg.h **** }
+  36:include/ubtbr/msg.h **** 
+  37:include/ubtbr/msg.h **** /* Return number of bytes we can pull between
+  38:include/ubtbr/msg.h ****  * the data pointer and the end of the buffer. */
+  39:include/ubtbr/msg.h **** static inline int msg_read_avail(const msg_t *msg)
+  40:include/ubtbr/msg.h **** {
+  41:include/ubtbr/msg.h **** 	return (int)(msg->write - msg->read);
+  42:include/ubtbr/msg.h **** }
+  43:include/ubtbr/msg.h **** 
+  44:include/ubtbr/msg.h **** /* Return number of bytes we can put between
+  45:include/ubtbr/msg.h ****  * the tail pointer and the end of the buffer. */
+  46:include/ubtbr/msg.h **** static inline int msg_write_avail(const msg_t *msg)
+ 164              		.loc 2 46 19 view .LVU38
+ 165              	.LBB103:
+  47:include/ubtbr/msg.h **** {
+  48:include/ubtbr/msg.h ****         return msg->data_len - msg_write_len(msg);
+ 166              		.loc 2 48 9 view .LVU39
+ 167              	.LBB104:
+ 168              	.LBI104:
+ARM GAS  /tmp/ccDjdIod.s 			page 10
+
+
+  32:include/ubtbr/msg.h **** {
+ 169              		.loc 2 32 19 view .LVU40
+ 170              	.LBB105:
+  34:include/ubtbr/msg.h **** }
+ 171              		.loc 2 34 2 view .LVU41
+  34:include/ubtbr/msg.h **** }
+ 172              		.loc 2 34 18 is_stmt 0 view .LVU42
+ 173 001e 9868     		ldr	r0, [r3, #8]
+ 174              	.LVL14:
+  34:include/ubtbr/msg.h **** }
+ 175              		.loc 2 34 18 view .LVU43
+ 176              	.LBE105:
+ 177              	.LBE104:
+ 178              		.loc 2 48 19 view .LVU44
+ 179 0020 5988     		ldrh	r1, [r3, #2]
+ 180              	.LVL15:
+ 181              	.LBB107:
+ 182              	.LBB106:
+  34:include/ubtbr/msg.h **** }
+ 183              		.loc 2 34 26 view .LVU45
+ 184 0022 03F10C02 		add	r2, r3, #12
+  34:include/ubtbr/msg.h **** }
+ 185              		.loc 2 34 9 view .LVU46
+ 186 0026 821A     		subs	r2, r0, r2
+ 187              	.LBE106:
+ 188              	.LBE107:
+ 189              		.loc 2 48 30 view .LVU47
+ 190 0028 891A     		subs	r1, r1, r2
+ 191              	.LVL16:
+ 192              		.loc 2 48 30 view .LVU48
+ 193              	.LBE103:
+ 194              	.LBE102:
+ 246:src/drivers/ubertooth_usb.c **** 		p = msg_put(rx_msg, wsize);
+ 195              		.loc 1 246 11 view .LVU49
+ 196 002a 8C42     		cmp	r4, r1
+ 197 002c 10DD     		ble	.L17
+ 198              	.LVL17:
+ 247:src/drivers/ubertooth_usb.c **** 		memcpy(p, data+1, wsize);
+ 199              		.loc 1 247 3 is_stmt 1 view .LVU50
+ 247:src/drivers/ubertooth_usb.c **** 		memcpy(p, data+1, wsize);
+ 200              		.loc 1 247 7 is_stmt 0 view .LVU51
+ 201 002e 0A46     		mov	r2, r1
+ 202              	.LVL18:
+ 203              	.LBB108:
+ 204              	.LBI108:
+  49:include/ubtbr/msg.h **** }
+  50:include/ubtbr/msg.h **** 
+  51:include/ubtbr/msg.h **** /* Set write pointer.
+  52:include/ubtbr/msg.h ****  * Meant to trim the msg to the end of data written. */
+  53:include/ubtbr/msg.h **** static inline int msg_set_write(msg_t *msg, uint8_t *write)
+  54:include/ubtbr/msg.h **** {
+  55:include/ubtbr/msg.h **** 	if (write < msg->data || write > (msg->data + msg->data_len))
+  56:include/ubtbr/msg.h ****                 return -1;
+  57:include/ubtbr/msg.h ****         msg->write = write;
+  58:include/ubtbr/msg.h **** 
+  59:include/ubtbr/msg.h ****         return 0;
+  60:include/ubtbr/msg.h **** }
+ARM GAS  /tmp/ccDjdIod.s 			page 11
+
+
+  61:include/ubtbr/msg.h **** 
+  62:include/ubtbr/msg.h **** static inline uint8_t *msg_put(msg_t *msg, unsigned int len)
+ 205              		.loc 2 62 24 is_stmt 1 view .LVU52
+ 206              	.LBB109:
+  63:include/ubtbr/msg.h **** {
+  64:include/ubtbr/msg.h ****         uint8_t *tmp = msg->write;
+ 207              		.loc 2 64 9 view .LVU53
+  65:include/ubtbr/msg.h **** 
+  66:include/ubtbr/msg.h ****         if (msg_write_avail(msg) < (int) len)
+ 208              		.loc 2 66 9 view .LVU54
+ 209              		.loc 2 66 9 is_stmt 0 view .LVU55
+ 210              	.LBE109:
+ 211              	.LBE108:
+  48:include/ubtbr/msg.h **** }
+ 212              		.loc 2 48 9 is_stmt 1 view .LVU56
+  34:include/ubtbr/msg.h **** }
+ 213              		.loc 2 34 2 view .LVU57
+ 214              	.L14:
+ 215              	.LBB113:
+ 216              	.LBB110:
+  67:include/ubtbr/msg.h **** 		DIE("msg_put: short buf\n");
+  68:include/ubtbr/msg.h ****         msg->write += len;
+ 217              		.loc 2 68 9 view .LVU58
+ 218              		.loc 2 68 20 is_stmt 0 view .LVU59
+ 219 0030 8118     		adds	r1, r0, r2
+ 220 0032 9960     		str	r1, [r3, #8]
+ 221              	.LVL19:
+  69:include/ubtbr/msg.h **** 
+  70:include/ubtbr/msg.h ****         return tmp;
+ 222              		.loc 2 70 9 is_stmt 1 view .LVU60
+ 223              		.loc 2 70 9 is_stmt 0 view .LVU61
+ 224              	.LBE110:
+ 225              	.LBE113:
+ 248:src/drivers/ubertooth_usb.c **** 	}
+ 226              		.loc 1 248 3 is_stmt 1 view .LVU62
+ 227 0034 0DF10101 		add	r1, sp, #1
+ 228 0038 FFF7FEFF 		bl	memcpy
+ 229              	.LVL20:
+ 230              	.L9:
+ 250:src/drivers/ubertooth_usb.c **** 	{
+ 231              		.loc 1 250 2 view .LVU63
+ 250:src/drivers/ubertooth_usb.c **** 	{
+ 232              		.loc 1 250 6 is_stmt 0 view .LVU64
+ 233 003c 2968     		ldr	r1, [r5]
+ 234              	.LVL21:
+ 235              	.LBB114:
+ 236              	.LBI114:
+  46:include/ubtbr/msg.h **** {
+ 237              		.loc 2 46 19 is_stmt 1 view .LVU65
+ 238              	.LBB115:
+  48:include/ubtbr/msg.h **** }
+ 239              		.loc 2 48 9 view .LVU66
+ 240              	.LBB116:
+ 241              	.LBI116:
+  32:include/ubtbr/msg.h **** {
+ 242              		.loc 2 32 19 view .LVU67
+ 243              	.LBB117:
+ARM GAS  /tmp/ccDjdIod.s 			page 12
+
+
+  34:include/ubtbr/msg.h **** }
+ 244              		.loc 2 34 2 view .LVU68
+  34:include/ubtbr/msg.h **** }
+ 245              		.loc 2 34 9 is_stmt 0 view .LVU69
+ 246 003e 8B68     		ldr	r3, [r1, #8]
+ 247              	.LBE117:
+ 248              	.LBE116:
+  48:include/ubtbr/msg.h **** }
+ 249              		.loc 2 48 19 view .LVU70
+ 250 0040 4A88     		ldrh	r2, [r1, #2]
+ 251              	.LBB119:
+ 252              	.LBB118:
+  34:include/ubtbr/msg.h **** }
+ 253              		.loc 2 34 26 view .LVU71
+ 254 0042 01F10C00 		add	r0, r1, #12
+  34:include/ubtbr/msg.h **** }
+ 255              		.loc 2 34 9 view .LVU72
+ 256 0046 1B1A     		subs	r3, r3, r0
+ 257              	.LBE118:
+ 258              	.LBE119:
+ 259              	.LBE115:
+ 260              	.LBE114:
+ 250:src/drivers/ubertooth_usb.c **** 	{
+ 261              		.loc 1 250 5 view .LVU73
+ 262 0048 9A42     		cmp	r2, r3
+ 263 004a 27D0     		beq	.L18
+ 255:src/drivers/ubertooth_usb.c **** 
+ 264              		.loc 1 255 1 view .LVU74
+ 265 004c 10B0     		add	sp, sp, #64
+ 266              		.cfi_remember_state
+ 267              		.cfi_def_cfa_offset 16
+ 268              		@ sp needed
+ 269 004e 70BD     		pop	{r4, r5, r6, pc}
+ 270              	.LVL22:
+ 271              	.L17:
+ 272              		.cfi_restore_state
+ 246:src/drivers/ubertooth_usb.c **** 		p = msg_put(rx_msg, wsize);
+ 273              		.loc 1 246 11 discriminator 1 view .LVU75
+ 274 0050 621E     		subs	r2, r4, #1
+ 247:src/drivers/ubertooth_usb.c **** 		memcpy(p, data+1, wsize);
+ 275              		.loc 1 247 3 is_stmt 1 discriminator 1 view .LVU76
+ 276              	.LVL23:
+ 277              	.LBB120:
+  62:include/ubtbr/msg.h **** {
+ 278              		.loc 2 62 24 discriminator 1 view .LVU77
+ 279              	.LBB111:
+  64:include/ubtbr/msg.h **** 
+ 280              		.loc 2 64 9 discriminator 1 view .LVU78
+  66:include/ubtbr/msg.h **** 		DIE("msg_put: short buf\n");
+ 281              		.loc 2 66 9 discriminator 1 view .LVU79
+  66:include/ubtbr/msg.h **** 		DIE("msg_put: short buf\n");
+ 282              		.loc 2 66 9 is_stmt 0 discriminator 1 view .LVU80
+ 283              	.LBE111:
+ 284              	.LBE120:
+  48:include/ubtbr/msg.h **** }
+ 285              		.loc 2 48 9 is_stmt 1 discriminator 1 view .LVU81
+  34:include/ubtbr/msg.h **** }
+ARM GAS  /tmp/ccDjdIod.s 			page 13
+
+
+ 286              		.loc 2 34 2 discriminator 1 view .LVU82
+ 287              	.LBB121:
+ 288              	.LBB112:
+  66:include/ubtbr/msg.h **** 		DIE("msg_put: short buf\n");
+ 289              		.loc 2 66 12 is_stmt 0 discriminator 1 view .LVU83
+ 290 0052 8A42     		cmp	r2, r1
+ 291 0054 ECDD     		ble	.L14
+ 292              	.LVL24:
+ 293              	.L12:
+  66:include/ubtbr/msg.h **** 		DIE("msg_put: short buf\n");
+ 294              		.loc 2 66 12 discriminator 1 view .LVU84
+ 295              	.LBE112:
+ 296              	.LBE121:
+ 297              	.LBB122:
+ 298              	.LBB123:
+  67:include/ubtbr/msg.h ****         msg->write += len;
+ 299              		.loc 2 67 3 is_stmt 1 view .LVU85
+ 300 0056 1B48     		ldr	r0, .L20+4
+ 301 0058 FFF7FEFF 		bl	die
+ 302              	.LVL25:
+ 303              	.L15:
+  67:include/ubtbr/msg.h ****         msg->write += len;
+ 304              		.loc 2 67 3 is_stmt 0 view .LVU86
+ 305              	.LBE123:
+ 306              	.LBE122:
+ 226:src/drivers/ubertooth_usb.c **** 		{
+ 307              		.loc 1 226 3 is_stmt 1 view .LVU87
+ 226:src/drivers/ubertooth_usb.c **** 		{
+ 308              		.loc 1 226 6 is_stmt 0 view .LVU88
+ 309 005c 5329     		cmp	r1, #83
+ 310 005e 2CD1     		bne	.L19
+ 230:src/drivers/ubertooth_usb.c **** 		rx_msg = msg_alloc(packet_size);
+ 311              		.loc 1 230 3 is_stmt 1 view .LVU89
+ 230:src/drivers/ubertooth_usb.c **** 		rx_msg = msg_alloc(packet_size);
+ 312              		.loc 1 230 30 is_stmt 0 view .LVU90
+ 313 0060 9DF80320 		ldrb	r2, [sp, #3]	@ zero_extendqisi2
+ 230:src/drivers/ubertooth_usb.c **** 		rx_msg = msg_alloc(packet_size);
+ 314              		.loc 1 230 21 view .LVU91
+ 315 0064 9DF80260 		ldrb	r6, [sp, #2]	@ zero_extendqisi2
+ 230:src/drivers/ubertooth_usb.c **** 		rx_msg = msg_alloc(packet_size);
+ 316              		.loc 1 230 15 view .LVU92
+ 317 0068 46EA0226 		orr	r6, r6, r2, lsl #8
+ 231:src/drivers/ubertooth_usb.c **** 
+ 318              		.loc 1 231 3 is_stmt 1 view .LVU93
+ 319              	.LBB126:
+ 320              	.LBB127:
+  17:include/ubtbr/msg.h **** 
+ 321              		.loc 2 17 23 is_stmt 0 view .LVU94
+ 322 006c 06F10C00 		add	r0, r6, #12
+ 323              	.LVL26:
+  17:include/ubtbr/msg.h **** 
+ 324              		.loc 2 17 23 view .LVU95
+ 325 0070 FFF7FEFF 		bl	mem_pool_alloc
+ 326              	.LVL27:
+  17:include/ubtbr/msg.h **** 
+ 327              		.loc 2 17 23 view .LVU96
+ 328 0074 0346     		mov	r3, r0
+ARM GAS  /tmp/ccDjdIod.s 			page 14
+
+
+ 329              	.LBE127:
+ 330              	.LBE126:
+ 234:src/drivers/ubertooth_usb.c **** 		p = msg_put(rx_msg, wsize);
+ 331              		.loc 1 234 11 view .LVU97
+ 332 0076 E21E     		subs	r2, r4, #3
+ 333              	.LBB131:
+ 334              	.LBB128:
+  19:include/ubtbr/msg.h **** 	msg->read = msg->data;
+ 335              		.loc 2 19 15 view .LVU98
+ 336 0078 0C30     		adds	r0, r0, #12
+ 337              	.LBE128:
+ 338              	.LBE131:
+ 234:src/drivers/ubertooth_usb.c **** 		p = msg_put(rx_msg, wsize);
+ 339              		.loc 1 234 11 view .LVU99
+ 340 007a B242     		cmp	r2, r6
+ 231:src/drivers/ubertooth_usb.c **** 
+ 341              		.loc 1 231 12 view .LVU100
+ 342 007c 3146     		mov	r1, r6
+ 343              	.LVL28:
+ 344              	.LBB132:
+ 345              	.LBI126:
+  15:include/ubtbr/msg.h **** {
+ 346              		.loc 2 15 22 is_stmt 1 view .LVU101
+ 347              	.LBB129:
+  17:include/ubtbr/msg.h **** 
+ 348              		.loc 2 17 2 view .LVU102
+  19:include/ubtbr/msg.h **** 	msg->read = msg->data;
+ 349              		.loc 2 19 2 view .LVU103
+  20:include/ubtbr/msg.h **** 	msg->data_len = size;
+ 350              		.loc 2 20 2 view .LVU104
+  21:include/ubtbr/msg.h **** 
+ 351              		.loc 2 21 2 view .LVU105
+  23:include/ubtbr/msg.h **** }
+ 352              		.loc 2 23 2 view .LVU106
+  23:include/ubtbr/msg.h **** }
+ 353              		.loc 2 23 2 is_stmt 0 view .LVU107
+ 354              	.LBE129:
+ 355              	.LBE132:
+ 234:src/drivers/ubertooth_usb.c **** 		p = msg_put(rx_msg, wsize);
+ 356              		.loc 1 234 3 is_stmt 1 view .LVU108
+ 357              	.LBB133:
+ 358              	.LBI133:
+  46:include/ubtbr/msg.h **** {
+ 359              		.loc 2 46 19 view .LVU109
+ 360              	.LBB134:
+  48:include/ubtbr/msg.h **** }
+ 361              		.loc 2 48 9 view .LVU110
+  48:include/ubtbr/msg.h **** }
+ 362              		.loc 2 48 9 is_stmt 0 view .LVU111
+ 363              	.LBE134:
+ 364              	.LBE133:
+  34:include/ubtbr/msg.h **** }
+ 365              		.loc 2 34 2 is_stmt 1 view .LVU112
+ 366              	.LBB135:
+ 367              	.LBB130:
+  20:include/ubtbr/msg.h **** 	msg->data_len = size;
+ 368              		.loc 2 20 12 is_stmt 0 view .LVU113
+ARM GAS  /tmp/ccDjdIod.s 			page 15
+
+
+ 369 007e C3E90100 		strd	r0, r0, [r3, #4]
+  21:include/ubtbr/msg.h **** 
+ 370              		.loc 2 21 16 view .LVU114
+ 371 0082 5E80     		strh	r6, [r3, #2]	@ movhi
+ 372              	.LBE130:
+ 373              	.LBE135:
+ 231:src/drivers/ubertooth_usb.c **** 
+ 374              		.loc 1 231 10 view .LVU115
+ 375 0084 2B60     		str	r3, [r5]
+ 234:src/drivers/ubertooth_usb.c **** 		p = msg_put(rx_msg, wsize);
+ 376              		.loc 1 234 11 view .LVU116
+ 377 0086 02DC     		bgt	.L8
+ 234:src/drivers/ubertooth_usb.c **** 		p = msg_put(rx_msg, wsize);
+ 378              		.loc 1 234 11 discriminator 1 view .LVU117
+ 379 0088 261F     		subs	r6, r4, #4
+ 235:src/drivers/ubertooth_usb.c **** 		memcpy(p, data+4, wsize);
+ 380              		.loc 1 235 3 is_stmt 1 discriminator 1 view .LVU118
+ 381              	.LVL29:
+ 382              	.LBB136:
+ 383              	.LBI122:
+  62:include/ubtbr/msg.h **** {
+ 384              		.loc 2 62 24 discriminator 1 view .LVU119
+ 385              	.LBB124:
+  64:include/ubtbr/msg.h **** 
+ 386              		.loc 2 64 9 discriminator 1 view .LVU120
+  66:include/ubtbr/msg.h **** 		DIE("msg_put: short buf\n");
+ 387              		.loc 2 66 9 discriminator 1 view .LVU121
+  66:include/ubtbr/msg.h **** 		DIE("msg_put: short buf\n");
+ 388              		.loc 2 66 9 is_stmt 0 discriminator 1 view .LVU122
+ 389              	.LBE124:
+ 390              	.LBE136:
+  48:include/ubtbr/msg.h **** }
+ 391              		.loc 2 48 9 is_stmt 1 discriminator 1 view .LVU123
+  34:include/ubtbr/msg.h **** }
+ 392              		.loc 2 34 2 discriminator 1 view .LVU124
+ 393              	.LBB137:
+ 394              	.LBB125:
+  66:include/ubtbr/msg.h **** 		DIE("msg_put: short buf\n");
+ 395              		.loc 2 66 12 is_stmt 0 discriminator 1 view .LVU125
+ 396 008a B142     		cmp	r1, r6
+ 397 008c E3DB     		blt	.L12
+ 398              	.LVL30:
+ 399              	.L8:
+  68:include/ubtbr/msg.h **** 
+ 400              		.loc 2 68 9 is_stmt 1 view .LVU126
+  68:include/ubtbr/msg.h **** 
+ 401              		.loc 2 68 20 is_stmt 0 view .LVU127
+ 402 008e 8219     		adds	r2, r0, r6
+ 403 0090 9A60     		str	r2, [r3, #8]
+ 404              		.loc 2 70 9 is_stmt 1 view .LVU128
+ 405              	.LVL31:
+ 406              		.loc 2 70 9 is_stmt 0 view .LVU129
+ 407              	.LBE125:
+ 408              	.LBE137:
+ 236:src/drivers/ubertooth_usb.c **** 	}
+ 409              		.loc 1 236 3 is_stmt 1 view .LVU130
+ 410 0092 01A9     		add	r1, sp, #4
+ARM GAS  /tmp/ccDjdIod.s 			page 16
+
+
+ 411 0094 3246     		mov	r2, r6
+ 412 0096 FFF7FEFF 		bl	memcpy
+ 413              	.LVL32:
+ 236:src/drivers/ubertooth_usb.c **** 	}
+ 414              		.loc 1 236 3 is_stmt 0 view .LVU131
+ 415 009a CFE7     		b	.L9
+ 416              	.L18:
+ 252:src/drivers/ubertooth_usb.c **** 		rx_msg = NULL;
+ 417              		.loc 1 252 3 is_stmt 1 view .LVU132
+ 418              	.LVL33:
+ 419              	.LBB138:
+ 420              	.LBI138:
+ 421              		.file 3 "include/ubtbr/btctl_intf.h"
+   1:include/ubtbr/btctl_intf.h **** #ifndef __BTCTL_INTF_H
+   2:include/ubtbr/btctl_intf.h **** #define __BTCTL_INTF_H
+   3:include/ubtbr/btctl_intf.h **** #include <ubtbr/bb_msg.h>
+   4:include/ubtbr/btctl_intf.h **** #include <ubtbr/queue.h>
+   5:include/ubtbr/btctl_intf.h **** #include <ubtbr/system.h>
+   6:include/ubtbr/btctl_intf.h **** #include <ubertooth_interface.h>
+   7:include/ubtbr/btctl_intf.h **** 
+   8:include/ubtbr/btctl_intf.h **** typedef struct btctl_s {
+   9:include/ubtbr/btctl_intf.h **** 	btctl_state_t state;
+  10:include/ubtbr/btctl_intf.h **** 	msg_queue_t rx_q;
+  11:include/ubtbr/btctl_intf.h **** 	msg_queue_t tx_q;
+  12:include/ubtbr/btctl_intf.h **** 	msg_queue_t acl_tx_q;
+  13:include/ubtbr/btctl_intf.h **** 	msg_t *eir_msg;
+  14:include/ubtbr/btctl_intf.h **** 	btctl_tx_pkt_t *eir_pkt;
+  15:include/ubtbr/btctl_intf.h **** } btctl_t;
+  16:include/ubtbr/btctl_intf.h **** 
+  17:include/ubtbr/btctl_intf.h **** extern btctl_t btctl;
+  18:include/ubtbr/btctl_intf.h **** 
+  19:include/ubtbr/btctl_intf.h **** void btctl_init(void);
+  20:include/ubtbr/btctl_intf.h **** int btctl_work(void);
+  21:include/ubtbr/btctl_intf.h **** 
+  22:include/ubtbr/btctl_intf.h **** void btctl_set_state(btctl_state_t state, btctl_reason_t reason);
+  23:include/ubtbr/btctl_intf.h **** 
+  24:include/ubtbr/btctl_intf.h **** static inline btctl_state_t btctl_get_state(void)
+  25:include/ubtbr/btctl_intf.h **** {
+  26:include/ubtbr/btctl_intf.h **** 	return btctl.state;
+  27:include/ubtbr/btctl_intf.h **** }
+  28:include/ubtbr/btctl_intf.h **** 
+  29:include/ubtbr/btctl_intf.h **** static inline btctl_tx_pkt_t *btctl_get_eir(void)
+  30:include/ubtbr/btctl_intf.h **** {
+  31:include/ubtbr/btctl_intf.h **** 	return btctl.eir_pkt;
+  32:include/ubtbr/btctl_intf.h **** }
+  33:include/ubtbr/btctl_intf.h **** 
+  34:include/ubtbr/btctl_intf.h **** static inline msg_t *btctl_msg_alloc(unsigned type)
+  35:include/ubtbr/btctl_intf.h **** {
+  36:include/ubtbr/btctl_intf.h **** 	msg_t *msg;
+  37:include/ubtbr/btctl_intf.h **** 	btctl_hdr_t *hdr;
+  38:include/ubtbr/btctl_intf.h **** 
+  39:include/ubtbr/btctl_intf.h **** 	/* maximum size ?*/
+  40:include/ubtbr/btctl_intf.h **** 	msg = msg_alloc(sizeof(btctl_hdr_t)+sizeof(btctl_rx_pkt_t)+MAX_ACL_PACKET_SIZE);
+  41:include/ubtbr/btctl_intf.h **** 	hdr = (btctl_hdr_t*) msg_put(msg, sizeof(*hdr));
+  42:include/ubtbr/btctl_intf.h **** 	hdr->type = type;
+  43:include/ubtbr/btctl_intf.h **** 
+  44:include/ubtbr/btctl_intf.h **** 	return msg;
+ARM GAS  /tmp/ccDjdIod.s 			page 17
+
+
+  45:include/ubtbr/btctl_intf.h **** }
+  46:include/ubtbr/btctl_intf.h **** 
+  47:include/ubtbr/btctl_intf.h **** static inline msg_t *safe_dequeue(msg_queue_t* q)
+  48:include/ubtbr/btctl_intf.h **** {
+  49:include/ubtbr/btctl_intf.h **** 	uint32_t flags = irq_save_disable();
+  50:include/ubtbr/btctl_intf.h **** 	msg_t *msg;
+  51:include/ubtbr/btctl_intf.h **** 
+  52:include/ubtbr/btctl_intf.h **** 	msg = msg_dequeue(q);
+  53:include/ubtbr/btctl_intf.h **** 	irq_restore(flags);
+  54:include/ubtbr/btctl_intf.h **** 
+  55:include/ubtbr/btctl_intf.h **** 	return msg;
+  56:include/ubtbr/btctl_intf.h **** }
+  57:include/ubtbr/btctl_intf.h **** 
+  58:include/ubtbr/btctl_intf.h **** static inline int safe_enqueue(msg_queue_t *q, msg_t *msg)
+  59:include/ubtbr/btctl_intf.h **** {
+  60:include/ubtbr/btctl_intf.h **** 	uint32_t flags = irq_save_disable();
+  61:include/ubtbr/btctl_intf.h **** 	int rc;
+  62:include/ubtbr/btctl_intf.h **** 
+  63:include/ubtbr/btctl_intf.h **** 	rc = msg_enqueue(q, msg);
+  64:include/ubtbr/btctl_intf.h **** 	irq_restore(flags);
+  65:include/ubtbr/btctl_intf.h **** 
+  66:include/ubtbr/btctl_intf.h **** 	return rc;
+  67:include/ubtbr/btctl_intf.h **** }
+  68:include/ubtbr/btctl_intf.h **** 
+  69:include/ubtbr/btctl_intf.h **** /* Called by usb driver to retreive next message to send to host */
+  70:include/ubtbr/btctl_intf.h **** static inline msg_t *btctl_tx_dequeue(void)
+  71:include/ubtbr/btctl_intf.h **** {
+  72:include/ubtbr/btctl_intf.h **** 	return safe_dequeue(&btctl.tx_q);
+  73:include/ubtbr/btctl_intf.h **** }
+  74:include/ubtbr/btctl_intf.h **** 
+  75:include/ubtbr/btctl_intf.h **** /* Enqueue a message for host */
+  76:include/ubtbr/btctl_intf.h **** static inline int btctl_tx_enqueue(msg_t *msg)
+  77:include/ubtbr/btctl_intf.h **** {
+  78:include/ubtbr/btctl_intf.h **** 	return safe_enqueue(&btctl.tx_q, msg);
+  79:include/ubtbr/btctl_intf.h **** }
+  80:include/ubtbr/btctl_intf.h **** 
+  81:include/ubtbr/btctl_intf.h **** /* Dequeue a message from host */
+  82:include/ubtbr/btctl_intf.h **** static inline msg_t *btctl_rx_dequeue(void)
+  83:include/ubtbr/btctl_intf.h **** {
+  84:include/ubtbr/btctl_intf.h **** 	return safe_dequeue(&btctl.rx_q);
+  85:include/ubtbr/btctl_intf.h **** }
+  86:include/ubtbr/btctl_intf.h **** 
+  87:include/ubtbr/btctl_intf.h **** /* Called by usb driver with last message received from host */
+  88:include/ubtbr/btctl_intf.h **** static inline int btctl_rx_enqueue(msg_t *msg)
+ 422              		.loc 3 88 19 view .LVU133
+ 423              	.LBB139:
+  89:include/ubtbr/btctl_intf.h **** {
+  90:include/ubtbr/btctl_intf.h **** 	return safe_enqueue(&btctl.rx_q, msg);
+ 424              		.loc 3 90 2 view .LVU134
+ 425              	.LBB140:
+ 426              	.LBI140:
+  58:include/ubtbr/btctl_intf.h **** {
+ 427              		.loc 3 58 19 view .LVU135
+ 428              	.LBB141:
+  60:include/ubtbr/btctl_intf.h **** 	int rc;
+ 429              		.loc 3 60 2 view .LVU136
+ 430              	.LBB142:
+ARM GAS  /tmp/ccDjdIod.s 			page 18
+
+
+ 431              	.LBI142:
+ 432              		.file 4 "include/ubtbr/system.h"
+   1:include/ubtbr/system.h **** #ifndef __SYSTEM_H
+   2:include/ubtbr/system.h **** #define __SYSTEM_H
+   3:include/ubtbr/system.h **** #include <stdint.h>
+   4:include/ubtbr/system.h **** 
+   5:include/ubtbr/system.h **** static inline uint32_t irq_save_disable(void)
+ 433              		.loc 4 5 24 view .LVU137
+ 434              	.LBB143:
+   6:include/ubtbr/system.h **** {
+   7:include/ubtbr/system.h **** 	uint32_t primask;
+ 435              		.loc 4 7 2 view .LVU138
+   8:include/ubtbr/system.h **** 
+   9:include/ubtbr/system.h **** 	__asm__ __volatile__ (
+ 436              		.loc 4 9 2 view .LVU139
+ 437              		.syntax unified
+ 438              	@ 9 "include/ubtbr/system.h" 1
+ 439 009c EFF31084 			mrs    r4, primask
+ 440 00a0 72B6     		cpsid  i
+ 441              	
+ 442              	@ 0 "" 2
+ 443              	.LVL34:
+  10:include/ubtbr/system.h **** 	"\tmrs    %0, primask\n"
+  11:include/ubtbr/system.h **** 	"\tcpsid  i\n"
+  12:include/ubtbr/system.h **** 	: "=r" (primask)
+  13:include/ubtbr/system.h **** 	:
+  14:include/ubtbr/system.h **** 	: "memory");
+  15:include/ubtbr/system.h **** 
+  16:include/ubtbr/system.h **** 	return primask;
+ 444              		.loc 4 16 2 view .LVU140
+ 445              		.loc 4 16 2 is_stmt 0 view .LVU141
+ 446              		.thumb
+ 447              		.syntax unified
+ 448              	.LBE143:
+ 449              	.LBE142:
+  61:include/ubtbr/btctl_intf.h **** 
+ 450              		.loc 3 61 2 is_stmt 1 view .LVU142
+  63:include/ubtbr/btctl_intf.h **** 	irq_restore(flags);
+ 451              		.loc 3 63 2 view .LVU143
+  63:include/ubtbr/btctl_intf.h **** 	irq_restore(flags);
+ 452              		.loc 3 63 7 is_stmt 0 view .LVU144
+ 453 00a2 0948     		ldr	r0, .L20+8
+ 454              	.LVL35:
+  63:include/ubtbr/btctl_intf.h **** 	irq_restore(flags);
+ 455              		.loc 3 63 7 view .LVU145
+ 456 00a4 FFF7FEFF 		bl	msg_enqueue
+ 457              	.LVL36:
+  64:include/ubtbr/btctl_intf.h **** 
+ 458              		.loc 3 64 2 is_stmt 1 view .LVU146
+ 459              	.LBB144:
+ 460              	.LBI144:
+  17:include/ubtbr/system.h **** }
+  18:include/ubtbr/system.h **** 
+  19:include/ubtbr/system.h **** static inline void irq_restore(uint32_t primask)
+ 461              		.loc 4 19 20 view .LVU147
+ 462              	.LBB145:
+  20:include/ubtbr/system.h **** {
+ARM GAS  /tmp/ccDjdIod.s 			page 19
+
+
+  21:include/ubtbr/system.h **** 	__asm__ __volatile__ (
+ 463              		.loc 4 21 2 view .LVU148
+ 464              		.syntax unified
+ 465              	@ 21 "include/ubtbr/system.h" 1
+ 466 00a8 84F31088 		msr primask, r4
+ 467              	@ 0 "" 2
+ 468              	.LVL37:
+ 469              		.loc 4 21 2 is_stmt 0 view .LVU149
+ 470              		.thumb
+ 471              		.syntax unified
+ 472              	.LBE145:
+ 473              	.LBE144:
+  66:include/ubtbr/btctl_intf.h **** }
+ 474              		.loc 3 66 2 is_stmt 1 view .LVU150
+  66:include/ubtbr/btctl_intf.h **** }
+ 475              		.loc 3 66 2 is_stmt 0 view .LVU151
+ 476              	.LBE141:
+ 477              	.LBE140:
+ 478              	.LBE139:
+ 479              	.LBE138:
+ 253:src/drivers/ubertooth_usb.c **** 	}
+ 480              		.loc 1 253 3 is_stmt 1 view .LVU152
+ 253:src/drivers/ubertooth_usb.c **** 	}
+ 481              		.loc 1 253 10 is_stmt 0 view .LVU153
+ 482 00ac 0023     		movs	r3, #0
+ 483 00ae 2B60     		str	r3, [r5]
+ 255:src/drivers/ubertooth_usb.c **** 
+ 484              		.loc 1 255 1 view .LVU154
+ 485 00b0 10B0     		add	sp, sp, #64
+ 486              		.cfi_remember_state
+ 487              		.cfi_def_cfa_offset 16
+ 488              		@ sp needed
+ 489 00b2 70BD     		pop	{r4, r5, r6, pc}
+ 490              	.LVL38:
+ 491              	.L16:
+ 492              		.cfi_restore_state
+ 243:src/drivers/ubertooth_usb.c **** 		}
+ 493              		.loc 1 243 4 is_stmt 1 view .LVU155
+ 494 00b4 0548     		ldr	r0, .L20+12
+ 495              	.LVL39:
+ 243:src/drivers/ubertooth_usb.c **** 		}
+ 496              		.loc 1 243 4 is_stmt 0 view .LVU156
+ 497 00b6 FFF7FEFF 		bl	die
+ 498              	.LVL40:
+ 499              	.L19:
+ 228:src/drivers/ubertooth_usb.c **** 		}
+ 500              		.loc 1 228 4 is_stmt 1 view .LVU157
+ 501 00ba 0548     		ldr	r0, .L20+16
+ 502              	.LVL41:
+ 228:src/drivers/ubertooth_usb.c **** 		}
+ 503              		.loc 1 228 4 is_stmt 0 view .LVU158
+ 504 00bc FFF7FEFF 		bl	die
+ 505              	.LVL42:
+ 506              	.L21:
+ 228:src/drivers/ubertooth_usb.c **** 		}
+ 507              		.loc 1 228 4 view .LVU159
+ 508              		.align	2
+ARM GAS  /tmp/ccDjdIod.s 			page 20
+
+
+ 509              	.L20:
+ 510 00c0 00000000 		.word	.LANCHOR0
+ 511 00c4 30000000 		.word	.LC1
+ 512 00c8 04000000 		.word	btctl+4
+ 513 00cc 4C000000 		.word	.LC2
+ 514 00d0 00000000 		.word	.LC0
+ 515              		.cfi_endproc
+ 516              	.LFE25:
+ 518              		.section	.text.set_serial_descriptor,"ax",%progbits
+ 519              		.align	1
+ 520              		.p2align 2,,3
+ 521              		.global	set_serial_descriptor
+ 522              		.syntax unified
+ 523              		.thumb
+ 524              		.thumb_func
+ 525              		.fpu softvfp
+ 527              	set_serial_descriptor:
+ 528              	.LVL43:
+ 529              	.LFB27:
+ 266:src/drivers/ubertooth_usb.c **** 
+ 267:src/drivers/ubertooth_usb.c **** 
+ 268:src/drivers/ubertooth_usb.c **** void set_serial_descriptor(u8 *descriptors) {
+ 530              		.loc 1 268 45 is_stmt 1 view -0
+ 531              		.cfi_startproc
+ 532              		@ args = 0, pretend = 0, frame = 24
+ 533              		@ frame_needed = 0, uses_anonymous_args = 0
+ 534              		.loc 1 268 45 is_stmt 0 view .LVU161
+ 535 0000 30B5     		push	{r4, r5, lr}
+ 536              		.cfi_def_cfa_offset 12
+ 537              		.cfi_offset 4, -12
+ 538              		.cfi_offset 5, -8
+ 539              		.cfi_offset 14, -4
+ 540 0002 87B0     		sub	sp, sp, #28
+ 541              		.cfi_def_cfa_offset 40
+ 269:src/drivers/ubertooth_usb.c **** 	u8 buf[17], *desc, nibble;
+ 542              		.loc 1 269 2 is_stmt 1 view .LVU162
+ 270:src/drivers/ubertooth_usb.c **** 	int len, i;
+ 543              		.loc 1 270 2 view .LVU163
+ 271:src/drivers/ubertooth_usb.c **** 	get_device_serial(buf, &len);
+ 544              		.loc 1 271 2 view .LVU164
+ 268:src/drivers/ubertooth_usb.c **** 	u8 buf[17], *desc, nibble;
+ 545              		.loc 1 268 45 is_stmt 0 view .LVU165
+ 546 0004 0446     		mov	r4, r0
+ 547              		.loc 1 271 2 view .LVU166
+ 548 0006 6946     		mov	r1, sp
+ 549 0008 01A8     		add	r0, sp, #4
+ 550              	.LVL44:
+ 551              		.loc 1 271 2 view .LVU167
+ 552 000a FFF7FEFF 		bl	get_device_serial
+ 553              	.LVL45:
+ 272:src/drivers/ubertooth_usb.c **** 	if(buf[0] == 0) { /* IAP success */
+ 554              		.loc 1 272 2 is_stmt 1 view .LVU168
+ 555              		.loc 1 272 4 is_stmt 0 view .LVU169
+ 556 000e 9DF80430 		ldrb	r3, [sp, #4]	@ zero_extendqisi2
+ 557 0012 F3B9     		cbnz	r3, .L22
+ 273:src/drivers/ubertooth_usb.c **** 		desc = descriptors + USB_SERIAL_OFFSET;
+ 558              		.loc 1 273 3 is_stmt 1 view .LVU170
+ARM GAS  /tmp/ccDjdIod.s 			page 21
+
+
+ 559              	.LVL46:
+ 274:src/drivers/ubertooth_usb.c **** 		for(i=0; i<16; i++) {
+ 560              		.loc 1 274 3 view .LVU171
+ 561              		.loc 1 274 12 view .LVU172
+ 562 0014 2046     		mov	r0, r4
+ 275:src/drivers/ubertooth_usb.c **** 			nibble  = (buf[i+1]>>4) & 0xF;
+ 276:src/drivers/ubertooth_usb.c **** 			desc[i * 4] = (nibble > 9) ? ('a' + nibble - 10) : ('0' + nibble);
+ 277:src/drivers/ubertooth_usb.c **** 			desc[1+ i * 4] = 0;
+ 563              		.loc 1 277 19 is_stmt 0 view .LVU173
+ 564 0016 1C46     		mov	r4, r3
+ 565              	.LVL47:
+ 566              		.loc 1 277 19 view .LVU174
+ 567 0018 0DF10501 		add	r1, sp, #5
+ 568 001c 0DF11505 		add	r5, sp, #21
+ 569              	.LVL48:
+ 570              	.L28:
+ 275:src/drivers/ubertooth_usb.c **** 			nibble  = (buf[i+1]>>4) & 0xF;
+ 571              		.loc 1 275 4 is_stmt 1 view .LVU175
+ 275:src/drivers/ubertooth_usb.c **** 			nibble  = (buf[i+1]>>4) & 0xF;
+ 572              		.loc 1 275 18 is_stmt 0 view .LVU176
+ 573 0020 11F8013B 		ldrb	r3, [r1], #1	@ zero_extendqisi2
+ 574              	.LVL49:
+ 575              		.loc 1 277 19 view .LVU177
+ 576 0024 80F87D40 		strb	r4, [r0, #125]
+ 275:src/drivers/ubertooth_usb.c **** 			nibble  = (buf[i+1]>>4) & 0xF;
+ 577              		.loc 1 275 12 view .LVU178
+ 578 0028 1A09     		lsrs	r2, r3, #4
+ 579              	.LVL50:
+ 276:src/drivers/ubertooth_usb.c **** 			desc[1+ i * 4] = 0;
+ 580              		.loc 1 276 4 is_stmt 1 view .LVU179
+ 276:src/drivers/ubertooth_usb.c **** 			desc[1+ i * 4] = 0;
+ 581              		.loc 1 276 16 is_stmt 0 view .LVU180
+ 582 002a 9F2B     		cmp	r3, #159
+ 278:src/drivers/ubertooth_usb.c **** 			nibble = buf[i+1]&0xF;
+ 583              		.loc 1 278 11 view .LVU181
+ 584 002c 03F00F03 		and	r3, r3, #15
+ 276:src/drivers/ubertooth_usb.c **** 			desc[1+ i * 4] = 0;
+ 585              		.loc 1 276 16 view .LVU182
+ 586 0030 8CBF     		ite	hi
+ 587 0032 5732     		addhi	r2, r2, #87
+ 588              	.LVL51:
+ 276:src/drivers/ubertooth_usb.c **** 			desc[1+ i * 4] = 0;
+ 589              		.loc 1 276 16 view .LVU183
+ 590 0034 3032     		addls	r2, r2, #48
+ 279:src/drivers/ubertooth_usb.c **** 			desc[2 + i * 4] = (nibble > 9) ? ('a' + nibble - 10) : ('0' + nibble);
+ 591              		.loc 1 279 20 view .LVU184
+ 592 0036 092B     		cmp	r3, #9
+ 593 0038 8CBF     		ite	hi
+ 594 003a 5733     		addhi	r3, r3, #87
+ 595 003c 3033     		addls	r3, r3, #48
+ 274:src/drivers/ubertooth_usb.c **** 			nibble  = (buf[i+1]>>4) & 0xF;
+ 596              		.loc 1 274 3 view .LVU185
+ 597 003e A942     		cmp	r1, r5
+ 276:src/drivers/ubertooth_usb.c **** 			desc[1+ i * 4] = 0;
+ 598              		.loc 1 276 16 view .LVU186
+ 599 0040 80F87C20 		strb	r2, [r0, #124]
+ 277:src/drivers/ubertooth_usb.c **** 			nibble = buf[i+1]&0xF;
+ARM GAS  /tmp/ccDjdIod.s 			page 22
+
+
+ 600              		.loc 1 277 4 is_stmt 1 view .LVU187
+ 278:src/drivers/ubertooth_usb.c **** 			desc[2 + i * 4] = (nibble > 9) ? ('a' + nibble - 10) : ('0' + nibble);
+ 601              		.loc 1 278 4 view .LVU188
+ 602              	.LVL52:
+ 603              		.loc 1 279 4 view .LVU189
+ 604              		.loc 1 279 20 is_stmt 0 view .LVU190
+ 605 0044 80F87E30 		strb	r3, [r0, #126]
+ 280:src/drivers/ubertooth_usb.c **** 			desc[3 + i * 4] = 0;
+ 606              		.loc 1 280 4 is_stmt 1 view .LVU191
+ 607              		.loc 1 280 20 is_stmt 0 view .LVU192
+ 608 0048 80F87F40 		strb	r4, [r0, #127]
+ 274:src/drivers/ubertooth_usb.c **** 			nibble  = (buf[i+1]>>4) & 0xF;
+ 609              		.loc 1 274 18 is_stmt 1 view .LVU193
+ 610              	.LVL53:
+ 274:src/drivers/ubertooth_usb.c **** 			nibble  = (buf[i+1]>>4) & 0xF;
+ 611              		.loc 1 274 12 view .LVU194
+ 612 004c 00F10400 		add	r0, r0, #4
+ 274:src/drivers/ubertooth_usb.c **** 			nibble  = (buf[i+1]>>4) & 0xF;
+ 613              		.loc 1 274 3 is_stmt 0 view .LVU195
+ 614 0050 E6D1     		bne	.L28
+ 615              	.LVL54:
+ 616              	.L22:
+ 281:src/drivers/ubertooth_usb.c **** 		}
+ 282:src/drivers/ubertooth_usb.c **** 	}
+ 283:src/drivers/ubertooth_usb.c **** }
+ 617              		.loc 1 283 1 view .LVU196
+ 618 0052 07B0     		add	sp, sp, #28
+ 619              		.cfi_def_cfa_offset 12
+ 620              		@ sp needed
+ 621 0054 30BD     		pop	{r4, r5, pc}
+ 622              		.cfi_endproc
+ 623              	.LFE27:
+ 625 0056 00BF     		.section	.rodata.str1.4
+ 626              		.align	2
+ 627              	.LC3:
+ 628 007c 7B386163 		.ascii	"{8ac47a88-cc26-4aa9-887b-42ca8cf07a63}\000"
+ 628      34376138 
+ 628      382D6363 
+ 628      32362D34 
+ 628      6161392D 
+ 629              		.section	.text.ubertooth_usb_init,"ax",%progbits
+ 630              		.align	1
+ 631              		.p2align 2,,3
+ 632              		.global	ubertooth_usb_init
+ 633              		.syntax unified
+ 634              		.thumb
+ 635              		.thumb_func
+ 636              		.fpu softvfp
+ 638              	ubertooth_usb_init:
+ 639              	.LVL55:
+ 640              	.LFB28:
+ 284:src/drivers/ubertooth_usb.c **** 
+ 285:src/drivers/ubertooth_usb.c **** int ubertooth_usb_init(VendorRequestHandler *vendor_req_handler)
+ 286:src/drivers/ubertooth_usb.c **** {
+ 641              		.loc 1 286 1 is_stmt 1 view -0
+ 642              		.cfi_startproc
+ 643              		@ args = 0, pretend = 0, frame = 0
+ARM GAS  /tmp/ccDjdIod.s 			page 23
+
+
+ 644              		@ frame_needed = 0, uses_anonymous_args = 0
+ 645              		.loc 1 286 1 is_stmt 0 view .LVU198
+ 646 0000 38B5     		push	{r3, r4, r5, lr}
+ 647              		.cfi_def_cfa_offset 16
+ 648              		.cfi_offset 3, -16
+ 649              		.cfi_offset 4, -12
+ 650              		.cfi_offset 5, -8
+ 651              		.cfi_offset 14, -4
+ 287:src/drivers/ubertooth_usb.c **** 	// initialise stack
+ 288:src/drivers/ubertooth_usb.c **** 	USBInit();
+ 652              		.loc 1 288 2 is_stmt 1 view .LVU199
+ 286:src/drivers/ubertooth_usb.c **** 	// initialise stack
+ 653              		.loc 1 286 1 is_stmt 0 view .LVU200
+ 654 0002 0446     		mov	r4, r0
+ 289:src/drivers/ubertooth_usb.c **** 
+ 290:src/drivers/ubertooth_usb.c **** 	set_serial_descriptor(abDescriptors);
+ 655              		.loc 1 290 2 view .LVU201
+ 656 0004 104D     		ldr	r5, .L31
+ 288:src/drivers/ubertooth_usb.c **** 
+ 657              		.loc 1 288 2 view .LVU202
+ 658 0006 FFF7FEFF 		bl	USBInit
+ 659              	.LVL56:
+ 660              		.loc 1 290 2 is_stmt 1 view .LVU203
+ 661 000a 2846     		mov	r0, r5
+ 662 000c FFF7FEFF 		bl	set_serial_descriptor
+ 663              	.LVL57:
+ 291:src/drivers/ubertooth_usb.c **** 	
+ 292:src/drivers/ubertooth_usb.c **** 	// register device descriptors
+ 293:src/drivers/ubertooth_usb.c **** 	USBRegisterDescriptors(abDescriptors);
+ 664              		.loc 1 293 2 view .LVU204
+ 665 0010 2846     		mov	r0, r5
+ 666 0012 FFF7FEFF 		bl	USBRegisterDescriptors
+ 667              	.LVL58:
+ 294:src/drivers/ubertooth_usb.c **** 
+ 295:src/drivers/ubertooth_usb.c **** 	// Request handler
+ 296:src/drivers/ubertooth_usb.c **** 	v_req_handler = vendor_req_handler;
+ 668              		.loc 1 296 2 view .LVU205
+ 669              		.loc 1 296 16 is_stmt 0 view .LVU206
+ 670 0016 0D4B     		ldr	r3, .L31+4
+ 297:src/drivers/ubertooth_usb.c **** 
+ 298:src/drivers/ubertooth_usb.c **** 	// override standard request handler
+ 299:src/drivers/ubertooth_usb.c **** 	USBRegisterRequestHandler(REQTYPE_TYPE_VENDOR, usb_vendor_request_handler, abVendorReqData);
+ 671              		.loc 1 299 2 view .LVU207
+ 672 0018 0D4A     		ldr	r2, .L31+8
+ 673 001a 0220     		movs	r0, #2
+ 674 001c 0D49     		ldr	r1, .L31+12
+ 296:src/drivers/ubertooth_usb.c **** 
+ 675              		.loc 1 296 16 view .LVU208
+ 676 001e 1C60     		str	r4, [r3]
+ 677              		.loc 1 299 2 is_stmt 1 view .LVU209
+ 678 0020 FFF7FEFF 		bl	USBRegisterRequestHandler
+ 679              	.LVL59:
+ 300:src/drivers/ubertooth_usb.c **** 
+ 301:src/drivers/ubertooth_usb.c **** 	// register endpoints
+ 302:src/drivers/ubertooth_usb.c **** 	//USBHwRegisterEPIntHandler(BULK_IN_EP, usb_bulk_in_handler);
+ 303:src/drivers/ubertooth_usb.c **** 	USBHwRegisterEPIntHandler(BULK_OUT_EP, usb_bulk_out_handler);
+ 680              		.loc 1 303 2 view .LVU210
+ARM GAS  /tmp/ccDjdIod.s 			page 24
+
+
+ 681 0024 0520     		movs	r0, #5
+ 682 0026 0C49     		ldr	r1, .L31+16
+ 683 0028 FFF7FEFF 		bl	USBHwRegisterEPIntHandler
+ 684              	.LVL60:
+ 304:src/drivers/ubertooth_usb.c **** 
+ 305:src/drivers/ubertooth_usb.c **** 	// enable USB interrupts
+ 306:src/drivers/ubertooth_usb.c **** 	ISER0 = ISER0_ISE_USB;
+ 685              		.loc 1 306 2 view .LVU211
+ 686              		.loc 1 306 8 is_stmt 0 view .LVU212
+ 687 002c 4FF08072 		mov	r2, #16777216
+ 688 0030 0A4B     		ldr	r3, .L31+20
+ 307:src/drivers/ubertooth_usb.c **** 
+ 308:src/drivers/ubertooth_usb.c **** 	// Enable WCID / driverless setup on Windows - Consumes Vendor Request 0xFF
+ 309:src/drivers/ubertooth_usb.c **** 	USBRegisterWinusbInterface(0xFF, "{8ac47a88-cc26-4aa9-887b-42ca8cf07a63}");
+ 689              		.loc 1 309 2 view .LVU213
+ 690 0032 0B49     		ldr	r1, .L31+24
+ 306:src/drivers/ubertooth_usb.c **** 
+ 691              		.loc 1 306 8 view .LVU214
+ 692 0034 1A60     		str	r2, [r3]
+ 693              		.loc 1 309 2 is_stmt 1 view .LVU215
+ 694 0036 FF20     		movs	r0, #255
+ 695 0038 FFF7FEFF 		bl	USBRegisterWinusbInterface
+ 696              	.LVL61:
+ 310:src/drivers/ubertooth_usb.c **** 
+ 311:src/drivers/ubertooth_usb.c **** 	// connect to bus
+ 312:src/drivers/ubertooth_usb.c **** 	USBHwConnect(TRUE);
+ 697              		.loc 1 312 2 view .LVU216
+ 698 003c 0120     		movs	r0, #1
+ 699 003e FFF7FEFF 		bl	USBHwConnect
+ 700              	.LVL62:
+ 313:src/drivers/ubertooth_usb.c **** 
+ 314:src/drivers/ubertooth_usb.c **** 	return 0;
+ 701              		.loc 1 314 2 view .LVU217
+ 315:src/drivers/ubertooth_usb.c **** }
+ 702              		.loc 1 315 1 is_stmt 0 view .LVU218
+ 703 0042 0020     		movs	r0, #0
+ 704 0044 38BD     		pop	{r3, r4, r5, pc}
+ 705              	.LVL63:
+ 706              	.L32:
+ 707              		.loc 1 315 1 view .LVU219
+ 708 0046 00BF     		.align	2
+ 709              	.L31:
+ 710 0048 00000000 		.word	.LANCHOR1
+ 711 004c 00000000 		.word	v_req_handler
+ 712 0050 04000000 		.word	.LANCHOR0+4
+ 713 0054 00000000 		.word	usb_vendor_request_handler
+ 714 0058 00000000 		.word	usb_bulk_out_handler
+ 715 005c 00E100E0 		.word	-536813312
+ 716 0060 7C000000 		.word	.LC3
+ 717              		.cfi_endproc
+ 718              	.LFE28:
+ 720              		.section	.text.usb_send_sync,"ax",%progbits
+ 721              		.align	1
+ 722              		.p2align 2,,3
+ 723              		.global	usb_send_sync
+ 724              		.syntax unified
+ 725              		.thumb
+ARM GAS  /tmp/ccDjdIod.s 			page 25
+
+
+ 726              		.thumb_func
+ 727              		.fpu softvfp
+ 729              	usb_send_sync:
+ 730              	.LVL64:
+ 731              	.LFB29:
+ 316:src/drivers/ubertooth_usb.c **** 
+ 317:src/drivers/ubertooth_usb.c **** void usb_send_sync(void *buf, int size)
+ 318:src/drivers/ubertooth_usb.c **** {
+ 732              		.loc 1 318 1 is_stmt 1 view -0
+ 733              		.cfi_startproc
+ 734              		@ args = 0, pretend = 0, frame = 0
+ 735              		@ frame_needed = 0, uses_anonymous_args = 0
+ 736              		.loc 1 318 1 is_stmt 0 view .LVU221
+ 737 0000 38B5     		push	{r3, r4, r5, lr}
+ 738              		.cfi_def_cfa_offset 16
+ 739              		.cfi_offset 3, -16
+ 740              		.cfi_offset 4, -12
+ 741              		.cfi_offset 5, -8
+ 742              		.cfi_offset 14, -4
+ 319:src/drivers/ubertooth_usb.c **** 	u8 epstat;
+ 743              		.loc 1 319 2 is_stmt 1 view .LVU222
+ 320:src/drivers/ubertooth_usb.c **** 	/* mask usb interrupt */
+ 321:src/drivers/ubertooth_usb.c **** 	ICER0 = ICER0_ICE_USB;
+ 744              		.loc 1 321 2 view .LVU223
+ 745              		.loc 1 321 8 is_stmt 0 view .LVU224
+ 746 0002 4FF08072 		mov	r2, #16777216
+ 318:src/drivers/ubertooth_usb.c **** 	u8 epstat;
+ 747              		.loc 1 318 1 view .LVU225
+ 748 0006 0446     		mov	r4, r0
+ 749 0008 0D46     		mov	r5, r1
+ 750              		.loc 1 321 8 view .LVU226
+ 751 000a 0B4B     		ldr	r3, .L36
+ 752 000c 1A60     		str	r2, [r3]
+ 753              	.LVL65:
+ 754              	.L34:
+ 322:src/drivers/ubertooth_usb.c **** 	
+ 323:src/drivers/ubertooth_usb.c **** 	/* flush usb buffers */
+ 324:src/drivers/ubertooth_usb.c **** 	do {
+ 755              		.loc 1 324 2 is_stmt 1 discriminator 1 view .LVU227
+ 325:src/drivers/ubertooth_usb.c **** 		epstat = USBHwEPGetStatus(BULK_IN_EP);
+ 756              		.loc 1 325 3 discriminator 1 view .LVU228
+ 757              		.loc 1 325 12 is_stmt 0 discriminator 1 view .LVU229
+ 758 000e 8220     		movs	r0, #130
+ 759 0010 FFF7FEFF 		bl	USBHwEPGetStatus
+ 760              	.LVL66:
+ 326:src/drivers/ubertooth_usb.c **** 	} while(epstat & (EPSTAT_B1FULL|EPSTAT_B2FULL));
+ 761              		.loc 1 326 9 is_stmt 1 discriminator 1 view .LVU230
+ 762              		.loc 1 326 2 is_stmt 0 discriminator 1 view .LVU231
+ 763 0014 10F0600F 		tst	r0, #96
+ 764 0018 F9D1     		bne	.L34
+ 327:src/drivers/ubertooth_usb.c **** 
+ 328:src/drivers/ubertooth_usb.c **** 	size = MIN(size, MAX_PACKET_SIZE);
+ 765              		.loc 1 328 2 is_stmt 1 view .LVU232
+ 766              	.LVL67:
+ 329:src/drivers/ubertooth_usb.c **** 
+ 330:src/drivers/ubertooth_usb.c **** 	USBHwEPWrite(BULK_IN_EP, buf, size);
+ 767              		.loc 1 330 2 view .LVU233
+ARM GAS  /tmp/ccDjdIod.s 			page 26
+
+
+ 768 001a 402D     		cmp	r5, #64
+ 769 001c 2A46     		mov	r2, r5
+ 770 001e 2146     		mov	r1, r4
+ 771 0020 A8BF     		it	ge
+ 772 0022 4022     		movge	r2, #64
+ 773 0024 8220     		movs	r0, #130
+ 774              	.LVL68:
+ 775              		.loc 1 330 2 is_stmt 0 view .LVU234
+ 776 0026 FFF7FEFF 		bl	USBHwEPWrite
+ 777              	.LVL69:
+ 331:src/drivers/ubertooth_usb.c **** 	
+ 332:src/drivers/ubertooth_usb.c **** 	/* polled "interrupt" */
+ 333:src/drivers/ubertooth_usb.c **** 	USBHwISR();
+ 778              		.loc 1 333 2 is_stmt 1 view .LVU235
+ 779 002a FFF7FEFF 		bl	USBHwISR
+ 780              	.LVL70:
+ 334:src/drivers/ubertooth_usb.c **** 
+ 335:src/drivers/ubertooth_usb.c **** 	/* restore usb interrupt */
+ 336:src/drivers/ubertooth_usb.c **** 	ISER0 = ICER0_ICE_USB;
+ 781              		.loc 1 336 2 view .LVU236
+ 782              		.loc 1 336 8 is_stmt 0 view .LVU237
+ 783 002e 4FF08072 		mov	r2, #16777216
+ 784 0032 024B     		ldr	r3, .L36+4
+ 785 0034 1A60     		str	r2, [r3]
+ 337:src/drivers/ubertooth_usb.c **** }
+ 786              		.loc 1 337 1 view .LVU238
+ 787 0036 38BD     		pop	{r3, r4, r5, pc}
+ 788              	.LVL71:
+ 789              	.L37:
+ 790              		.loc 1 337 1 view .LVU239
+ 791              		.align	2
+ 792              	.L36:
+ 793 0038 80E100E0 		.word	-536813184
+ 794 003c 00E100E0 		.word	-536813312
+ 795              		.cfi_endproc
+ 796              	.LFE29:
+ 798              		.section	.rodata.str1.4
+ 799 00a3 00       		.align	2
+ 800              	.LC4:
+ 801 00a4 4449457C 		.ascii	"DIE|msg_pull: short buf\012\012\000"
+ 801      6D73675F 
+ 801      70756C6C 
+ 801      3A207368 
+ 801      6F727420 
+ 802              		.section	.text.usb_work,"ax",%progbits
+ 803              		.align	1
+ 804              		.p2align 2,,3
+ 805              		.global	usb_work
+ 806              		.syntax unified
+ 807              		.thumb
+ 808              		.thumb_func
+ 809              		.fpu softvfp
+ 811              	usb_work:
+ 812              	.LFB30:
+ 338:src/drivers/ubertooth_usb.c **** 
+ 339:src/drivers/ubertooth_usb.c **** int usb_work(void)
+ 340:src/drivers/ubertooth_usb.c **** {
+ARM GAS  /tmp/ccDjdIod.s 			page 27
+
+
+ 813              		.loc 1 340 1 is_stmt 1 view -0
+ 814              		.cfi_startproc
+ 815              		@ args = 0, pretend = 0, frame = 64
+ 816              		@ frame_needed = 0, uses_anonymous_args = 0
+ 817 0000 2DE9F043 		push	{r4, r5, r6, r7, r8, r9, lr}
+ 818              		.cfi_def_cfa_offset 28
+ 819              		.cfi_offset 4, -28
+ 820              		.cfi_offset 5, -24
+ 821              		.cfi_offset 6, -20
+ 822              		.cfi_offset 7, -16
+ 823              		.cfi_offset 8, -12
+ 824              		.cfi_offset 9, -8
+ 825              		.cfi_offset 14, -4
+ 826 0004 91B0     		sub	sp, sp, #68
+ 827              		.cfi_def_cfa_offset 96
+ 341:src/drivers/ubertooth_usb.c **** 	uint32_t flags;
+ 828              		.loc 1 341 2 view .LVU241
+ 342:src/drivers/ubertooth_usb.c **** 	uint8_t epstat, b1full, b2full;
+ 829              		.loc 1 342 2 view .LVU242
+ 343:src/drivers/ubertooth_usb.c **** 	int len;
+ 830              		.loc 1 343 2 view .LVU243
+ 344:src/drivers/ubertooth_usb.c **** 	uint8_t buf[MAX_PACKET_SIZE], *p;
+ 831              		.loc 1 344 2 view .LVU244
+ 345:src/drivers/ubertooth_usb.c **** 	uint16_t full_len, buf_idx = 0;
+ 832              		.loc 1 345 2 view .LVU245
+ 833              	.LVL72:
+ 346:src/drivers/ubertooth_usb.c **** 	unsigned buf_avail = MAX_PACKET_SIZE;
+ 834              		.loc 1 346 2 view .LVU246
+ 347:src/drivers/ubertooth_usb.c **** 	int work = 0;
+ 835              		.loc 1 347 2 view .LVU247
+ 348:src/drivers/ubertooth_usb.c **** 
+ 349:src/drivers/ubertooth_usb.c **** 	/* mask usb interrupt */
+ 350:src/drivers/ubertooth_usb.c **** 	ICER0 = ICER0_ICE_USB;
+ 836              		.loc 1 350 2 view .LVU248
+ 837              		.loc 1 350 8 is_stmt 0 view .LVU249
+ 838 0006 4FF08072 		mov	r2, #16777216
+ 839 000a 494B     		ldr	r3, .L61
+ 351:src/drivers/ubertooth_usb.c **** 
+ 352:src/drivers/ubertooth_usb.c **** 	epstat = USBHwEPGetStatus(BULK_IN_EP);
+ 840              		.loc 1 352 11 view .LVU250
+ 841 000c 8220     		movs	r0, #130
+ 350:src/drivers/ubertooth_usb.c **** 
+ 842              		.loc 1 350 8 view .LVU251
+ 843 000e 1A60     		str	r2, [r3]
+ 844              		.loc 1 352 2 is_stmt 1 view .LVU252
+ 845              		.loc 1 352 11 is_stmt 0 view .LVU253
+ 846 0010 FFF7FEFF 		bl	USBHwEPGetStatus
+ 847              	.LVL73:
+ 353:src/drivers/ubertooth_usb.c **** 	b1full = epstat & EPSTAT_B1FULL;
+ 354:src/drivers/ubertooth_usb.c **** 	b2full = epstat & EPSTAT_B2FULL;
+ 355:src/drivers/ubertooth_usb.c **** 
+ 356:src/drivers/ubertooth_usb.c **** 	/* If both buffers are full, do nothing */
+ 357:src/drivers/ubertooth_usb.c **** 	if (b1full && b2full)
+ 848              		.loc 1 357 13 view .LVU254
+ 849 0014 00F06003 		and	r3, r0, #96
+ 850 0018 602B     		cmp	r3, #96
+ 352:src/drivers/ubertooth_usb.c **** 	b1full = epstat & EPSTAT_B1FULL;
+ARM GAS  /tmp/ccDjdIod.s 			page 28
+
+
+ 851              		.loc 1 352 11 view .LVU255
+ 852 001a 0446     		mov	r4, r0
+ 853              	.LVL74:
+ 353:src/drivers/ubertooth_usb.c **** 	b1full = epstat & EPSTAT_B1FULL;
+ 854              		.loc 1 353 2 is_stmt 1 view .LVU256
+ 354:src/drivers/ubertooth_usb.c **** 
+ 855              		.loc 1 354 2 view .LVU257
+ 856              		.loc 1 357 2 view .LVU258
+ 857              		.loc 1 357 13 is_stmt 0 view .LVU259
+ 858 001c 6AD0     		beq	.L42
+ 358:src/drivers/ubertooth_usb.c **** 	{
+ 359:src/drivers/ubertooth_usb.c **** 		goto end;
+ 360:src/drivers/ubertooth_usb.c **** 	}
+ 361:src/drivers/ubertooth_usb.c **** 	if (!tx_msg)
+ 859              		.loc 1 361 2 is_stmt 1 view .LVU260
+ 860              		.loc 1 361 6 is_stmt 0 view .LVU261
+ 861 001e 454F     		ldr	r7, .L61+4
+ 862 0020 D7F80831 		ldr	r3, [r7, #264]
+ 863              		.loc 1 361 5 view .LVU262
+ 864 0024 002B     		cmp	r3, #0
+ 865 0026 67D0     		beq	.L59
+ 362:src/drivers/ubertooth_usb.c **** 	{
+ 363:src/drivers/ubertooth_usb.c **** 		if(!(tx_msg = btctl_tx_dequeue()))
+ 364:src/drivers/ubertooth_usb.c **** 			goto end;
+ 365:src/drivers/ubertooth_usb.c **** 		/* Write message size in buffer first */
+ 366:src/drivers/ubertooth_usb.c **** 		full_len = msg_read_avail(tx_msg);
+ 367:src/drivers/ubertooth_usb.c **** 		/* write 4 bytes header */
+ 368:src/drivers/ubertooth_usb.c **** 		buf[0] = BTUSB_MSG_START;
+ 369:src/drivers/ubertooth_usb.c **** 		buf[1] = 0;
+ 370:src/drivers/ubertooth_usb.c **** 		buf[2] = full_len & 0xff;
+ 371:src/drivers/ubertooth_usb.c **** 		buf[3] = full_len >> 8;
+ 372:src/drivers/ubertooth_usb.c **** 		buf_idx = 4;
+ 373:src/drivers/ubertooth_usb.c **** 	}
+ 374:src/drivers/ubertooth_usb.c **** 	else{
+ 375:src/drivers/ubertooth_usb.c **** 		buf[0] = BTUSB_MSG_CONT;
+ 866              		.loc 1 375 3 is_stmt 1 view .LVU263
+ 867              		.loc 1 375 10 is_stmt 0 view .LVU264
+ 868 0028 0120     		movs	r0, #1
+ 869              	.LVL75:
+ 870              		.loc 1 375 10 view .LVU265
+ 871 002a 4322     		movs	r2, #67
+ 872 002c 8046     		mov	r8, r0
+ 873 002e 3F26     		movs	r6, #63
+ 874 0030 8DF80020 		strb	r2, [sp]
+ 376:src/drivers/ubertooth_usb.c **** 		buf_idx = 1;
+ 875              		.loc 1 376 3 is_stmt 1 view .LVU266
+ 876              	.LVL76:
+ 877              		.loc 1 376 3 is_stmt 0 view .LVU267
+ 878 0034 D3E90115 		ldrd	r1, r5, [r3, #4]
+ 879 0038 6D1A     		subs	r5, r5, r1
+ 880              	.LVL77:
+ 881              	.L43:
+ 377:src/drivers/ubertooth_usb.c **** 	}
+ 378:src/drivers/ubertooth_usb.c **** 	// now we should have a msg to send
+ 379:src/drivers/ubertooth_usb.c **** 	len = MIN(msg_read_avail(tx_msg), MAX_PACKET_SIZE-buf_idx);
+ 882              		.loc 1 379 2 is_stmt 1 view .LVU268
+  41:include/ubtbr/msg.h **** }
+ARM GAS  /tmp/ccDjdIod.s 			page 29
+
+
+ 883              		.loc 2 41 2 view .LVU269
+ 884 003a AE42     		cmp	r6, r5
+ 885 003c A8BF     		it	ge
+ 886 003e 2E46     		movge	r6, r5
+ 887              	.LVL78:
+ 380:src/drivers/ubertooth_usb.c **** 	if (len && !b1full)
+ 888              		.loc 1 380 2 view .LVU270
+ 889              		.loc 1 380 5 is_stmt 0 view .LVU271
+ 890 0040 EEB1     		cbz	r6, .L45
+ 891              		.loc 1 380 10 discriminator 1 view .LVU272
+ 892 0042 A206     		lsls	r2, r4, #26
+ 893 0044 2FD4     		bmi	.L46
+ 381:src/drivers/ubertooth_usb.c **** 	{
+ 382:src/drivers/ubertooth_usb.c **** 		memcpy(buf+buf_idx, msg_pull(tx_msg, len), len);
+ 894              		.loc 1 382 3 is_stmt 1 view .LVU273
+ 895 0046 E946     		mov	r9, sp
+ 896              	.LBB146:
+ 897              	.LBB147:
+  71:include/ubtbr/msg.h **** }
+  72:include/ubtbr/msg.h **** 
+  73:include/ubtbr/msg.h **** static inline uint8_t *msg_pull(msg_t *msg, unsigned int len)
+  74:include/ubtbr/msg.h **** {
+  75:include/ubtbr/msg.h **** 	uint8_t *read = msg->read;
+  76:include/ubtbr/msg.h **** 	if (msg_read_avail(msg) < (int) len)
+ 898              		.loc 2 76 5 is_stmt 0 view .LVU274
+ 899 0048 AE42     		cmp	r6, r5
+ 900              	.LBE147:
+ 901              	.LBE146:
+ 902              		.loc 1 382 3 view .LVU275
+ 903 004a 4844     		add	r0, r0, r9
+ 904              	.LVL79:
+ 905              	.LBB151:
+ 906              	.LBI146:
+  73:include/ubtbr/msg.h **** {
+ 907              		.loc 2 73 24 is_stmt 1 view .LVU276
+ 908              	.LBB148:
+  75:include/ubtbr/msg.h **** 	if (msg_read_avail(msg) < (int) len)
+ 909              		.loc 2 75 2 view .LVU277
+ 910              		.loc 2 76 2 view .LVU278
+ 911              		.loc 2 76 2 is_stmt 0 view .LVU279
+ 912              	.LBE148:
+ 913              	.LBE151:
+  41:include/ubtbr/msg.h **** }
+ 914              		.loc 2 41 2 is_stmt 1 view .LVU280
+ 915              	.LBB152:
+ 916              	.LBB149:
+ 917              		.loc 2 76 5 is_stmt 0 view .LVU281
+ 918 004c 6DDC     		bgt	.L50
+  77:include/ubtbr/msg.h **** 		DIE("msg_pull: short buf\n");
+  78:include/ubtbr/msg.h **** 	msg->read += len;
+ 919              		.loc 2 78 2 is_stmt 1 view .LVU282
+ 920              		.loc 2 78 12 is_stmt 0 view .LVU283
+ 921 004e 8A19     		adds	r2, r1, r6
+ 922 0050 5A60     		str	r2, [r3, #4]
+ 923              	.LVL80:
+  79:include/ubtbr/msg.h **** 	return read;
+ 924              		.loc 2 79 2 is_stmt 1 view .LVU284
+ARM GAS  /tmp/ccDjdIod.s 			page 30
+
+
+ 925              		.loc 2 79 2 is_stmt 0 view .LVU285
+ 926              	.LBE149:
+ 927              	.LBE152:
+ 928              		.loc 1 382 3 view .LVU286
+ 929 0052 3246     		mov	r2, r6
+ 930 0054 FFF7FEFF 		bl	memcpy
+ 931              	.LVL81:
+ 383:src/drivers/ubertooth_usb.c **** 		USBHwEPWrite(BULK_IN_EP, buf, buf_idx+len);
+ 932              		.loc 1 383 3 is_stmt 1 view .LVU287
+ 933 0058 4946     		mov	r1, r9
+ 934 005a 06EB0802 		add	r2, r6, r8
+ 935 005e 8220     		movs	r0, #130
+ 936 0060 FFF7FEFF 		bl	USBHwEPWrite
+ 937              	.LVL82:
+ 384:src/drivers/ubertooth_usb.c **** 		buf[0] = BTUSB_MSG_CONT;
+ 938              		.loc 1 384 3 view .LVU288
+ 939              		.loc 1 384 10 is_stmt 0 view .LVU289
+ 940 0064 4322     		movs	r2, #67
+ 385:src/drivers/ubertooth_usb.c **** 		buf_idx = 1;
+ 386:src/drivers/ubertooth_usb.c **** 		/* length for second buffer */
+ 387:src/drivers/ubertooth_usb.c **** 		len = MIN(msg_read_avail(tx_msg),MAX_PACKET_SIZE-buf_idx);
+ 941              		.loc 1 387 9 view .LVU290
+ 942 0066 D7F80831 		ldr	r3, [r7, #264]
+ 384:src/drivers/ubertooth_usb.c **** 		buf[0] = BTUSB_MSG_CONT;
+ 943              		.loc 1 384 10 view .LVU291
+ 944 006a 8DF80020 		strb	r2, [sp]
+ 385:src/drivers/ubertooth_usb.c **** 		buf_idx = 1;
+ 945              		.loc 1 385 3 is_stmt 1 view .LVU292
+ 946              	.LVL83:
+ 947              		.loc 1 387 3 view .LVU293
+ 948              	.LBB153:
+ 949              	.LBB154:
+  41:include/ubtbr/msg.h **** }
+ 950              		.loc 2 41 9 is_stmt 0 view .LVU294
+ 951 006e D3E90115 		ldrd	r1, r5, [r3, #4]
+ 952 0072 6D1A     		subs	r5, r5, r1
+ 953              	.LBE154:
+ 954              	.LBE153:
+ 955              		.loc 1 387 9 view .LVU295
+ 956 0074 3E2D     		cmp	r5, #62
+ 957 0076 12DC     		bgt	.L53
+ 958              	.LVL84:
+ 388:src/drivers/ubertooth_usb.c **** 	}
+ 389:src/drivers/ubertooth_usb.c **** 	if (len && !b2full)
+ 959              		.loc 1 389 2 is_stmt 1 view .LVU296
+ 960              		.loc 1 389 5 is_stmt 0 view .LVU297
+ 961 0078 0DB1     		cbz	r5, .L45
+ 962              	.LVL85:
+ 963              		.loc 1 389 10 view .LVU298
+ 964 007a 6206     		lsls	r2, r4, #25
+ 965 007c 33D5     		bpl	.L52
+ 966              	.L45:
+ 390:src/drivers/ubertooth_usb.c **** 	{
+ 391:src/drivers/ubertooth_usb.c **** 		memcpy(buf+buf_idx, msg_pull(tx_msg, len), len);
+ 392:src/drivers/ubertooth_usb.c **** 		USBHwEPWrite(BULK_IN_EP, buf, buf_idx+len);
+ 393:src/drivers/ubertooth_usb.c **** 	}
+ 394:src/drivers/ubertooth_usb.c **** 	/* polled "interrupt" */
+ARM GAS  /tmp/ccDjdIod.s 			page 31
+
+
+ 395:src/drivers/ubertooth_usb.c **** 	USBHwISR();
+ 967              		.loc 1 395 2 is_stmt 1 view .LVU299
+ 968 007e FFF7FEFF 		bl	USBHwISR
+ 969              	.LVL86:
+ 396:src/drivers/ubertooth_usb.c **** 
+ 397:src/drivers/ubertooth_usb.c **** 	/* Free message if completed */
+ 398:src/drivers/ubertooth_usb.c **** 	if (!msg_read_avail(tx_msg))
+ 970              		.loc 1 398 2 view .LVU300
+ 971              		.loc 1 398 7 is_stmt 0 view .LVU301
+ 972 0082 D7F80801 		ldr	r0, [r7, #264]
+ 973              	.LVL87:
+  41:include/ubtbr/msg.h **** }
+ 974              		.loc 2 41 2 is_stmt 1 view .LVU302
+ 975              		.loc 1 398 5 is_stmt 0 view .LVU303
+ 976 0086 D0E90123 		ldrd	r2, r3, [r0, #4]
+ 977 008a 9A42     		cmp	r2, r3
+ 978 008c 24D0     		beq	.L60
+ 979              	.L54:
+ 399:src/drivers/ubertooth_usb.c **** 	{
+ 400:src/drivers/ubertooth_usb.c **** 		/* Done with this message */
+ 401:src/drivers/ubertooth_usb.c **** 		msg_free(tx_msg);
+ 402:src/drivers/ubertooth_usb.c **** 		tx_msg = NULL;
+ 403:src/drivers/ubertooth_usb.c **** 	}
+ 404:src/drivers/ubertooth_usb.c **** 	work = 1;
+ 980              		.loc 1 404 7 view .LVU304
+ 981 008e 0120     		movs	r0, #1
+ 982              	.LVL88:
+ 983              	.L40:
+ 405:src/drivers/ubertooth_usb.c **** end:
+ 406:src/drivers/ubertooth_usb.c **** 	ISER0 = ISER0_ISE_USB;
+ 984              		.loc 1 406 2 is_stmt 1 view .LVU305
+ 985              		.loc 1 406 8 is_stmt 0 view .LVU306
+ 986 0090 4FF08072 		mov	r2, #16777216
+ 987 0094 284B     		ldr	r3, .L61+8
+ 988 0096 1A60     		str	r2, [r3]
+ 407:src/drivers/ubertooth_usb.c **** 	return work;
+ 989              		.loc 1 407 2 is_stmt 1 view .LVU307
+ 408:src/drivers/ubertooth_usb.c **** }
+ 990              		.loc 1 408 1 is_stmt 0 view .LVU308
+ 991 0098 11B0     		add	sp, sp, #68
+ 992              		.cfi_remember_state
+ 993              		.cfi_def_cfa_offset 28
+ 994              		@ sp needed
+ 995 009a BDE8F083 		pop	{r4, r5, r6, r7, r8, r9, pc}
+ 996              	.LVL89:
+ 997              	.L53:
+ 998              		.cfi_restore_state
+ 999              		.loc 1 408 1 view .LVU309
+ 1000 009e 4FF00108 		mov	r8, #1
+ 387:src/drivers/ubertooth_usb.c **** 	}
+ 1001              		.loc 1 387 9 view .LVU310
+ 1002 00a2 3F26     		movs	r6, #63
+ 1003              	.LVL90:
+ 387:src/drivers/ubertooth_usb.c **** 	}
+ 1004              		.loc 1 387 9 view .LVU311
+ 1005 00a4 4046     		mov	r0, r8
+ 1006              	.LVL91:
+ARM GAS  /tmp/ccDjdIod.s 			page 32
+
+
+ 1007              	.L46:
+ 389:src/drivers/ubertooth_usb.c **** 	{
+ 1008              		.loc 1 389 10 discriminator 1 view .LVU312
+ 1009 00a6 6406     		lsls	r4, r4, #25
+ 1010 00a8 E9D4     		bmi	.L45
+ 391:src/drivers/ubertooth_usb.c **** 		USBHwEPWrite(BULK_IN_EP, buf, buf_idx+len);
+ 1011              		.loc 1 391 3 is_stmt 1 view .LVU313
+ 1012 00aa E946     		mov	r9, sp
+ 1013              	.LBB155:
+ 1014              	.LBB156:
+  76:include/ubtbr/msg.h **** 		DIE("msg_pull: short buf\n");
+ 1015              		.loc 2 76 5 is_stmt 0 view .LVU314
+ 1016 00ac B542     		cmp	r5, r6
+ 1017              	.LBE156:
+ 1018              	.LBE155:
+ 391:src/drivers/ubertooth_usb.c **** 		USBHwEPWrite(BULK_IN_EP, buf, buf_idx+len);
+ 1019              		.loc 1 391 23 view .LVU315
+ 1020 00ae 3246     		mov	r2, r6
+ 391:src/drivers/ubertooth_usb.c **** 		USBHwEPWrite(BULK_IN_EP, buf, buf_idx+len);
+ 1021              		.loc 1 391 3 view .LVU316
+ 1022 00b0 4844     		add	r0, r0, r9
+ 1023              	.LVL92:
+ 1024              	.LBB160:
+ 1025              	.LBI155:
+  73:include/ubtbr/msg.h **** {
+ 1026              		.loc 2 73 24 is_stmt 1 view .LVU317
+ 1027              	.LBB157:
+  75:include/ubtbr/msg.h **** 	if (msg_read_avail(msg) < (int) len)
+ 1028              		.loc 2 75 2 view .LVU318
+  76:include/ubtbr/msg.h **** 		DIE("msg_pull: short buf\n");
+ 1029              		.loc 2 76 2 view .LVU319
+  76:include/ubtbr/msg.h **** 		DIE("msg_pull: short buf\n");
+ 1030              		.loc 2 76 2 is_stmt 0 view .LVU320
+ 1031              	.LBE157:
+ 1032              	.LBE160:
+  41:include/ubtbr/msg.h **** }
+ 1033              		.loc 2 41 2 is_stmt 1 view .LVU321
+ 1034              	.LBB161:
+ 1035              	.LBB158:
+  76:include/ubtbr/msg.h **** 		DIE("msg_pull: short buf\n");
+ 1036              		.loc 2 76 5 is_stmt 0 view .LVU322
+ 1037 00b2 3ADB     		blt	.L50
+ 1038              	.LVL93:
+ 1039              	.L51:
+  78:include/ubtbr/msg.h **** 	return read;
+ 1040              		.loc 2 78 2 is_stmt 1 view .LVU323
+  78:include/ubtbr/msg.h **** 	return read;
+ 1041              		.loc 2 78 12 is_stmt 0 view .LVU324
+ 1042 00b4 8C18     		adds	r4, r1, r2
+ 1043 00b6 5C60     		str	r4, [r3, #4]
+ 1044              	.LVL94:
+ 1045              		.loc 2 79 2 is_stmt 1 view .LVU325
+ 1046              		.loc 2 79 2 is_stmt 0 view .LVU326
+ 1047              	.LBE158:
+ 1048              	.LBE161:
+ 391:src/drivers/ubertooth_usb.c **** 		USBHwEPWrite(BULK_IN_EP, buf, buf_idx+len);
+ 1049              		.loc 1 391 3 view .LVU327
+ARM GAS  /tmp/ccDjdIod.s 			page 33
+
+
+ 1050 00b8 FFF7FEFF 		bl	memcpy
+ 1051              	.LVL95:
+ 392:src/drivers/ubertooth_usb.c **** 	}
+ 1052              		.loc 1 392 3 is_stmt 1 view .LVU328
+ 1053 00bc 06EB0802 		add	r2, r6, r8
+ 1054 00c0 4946     		mov	r1, r9
+ 1055 00c2 8220     		movs	r0, #130
+ 1056 00c4 FFF7FEFF 		bl	USBHwEPWrite
+ 1057              	.LVL96:
+ 395:src/drivers/ubertooth_usb.c **** 
+ 1058              		.loc 1 395 2 view .LVU329
+ 1059 00c8 FFF7FEFF 		bl	USBHwISR
+ 1060              	.LVL97:
+ 398:src/drivers/ubertooth_usb.c **** 	{
+ 1061              		.loc 1 398 2 view .LVU330
+ 398:src/drivers/ubertooth_usb.c **** 	{
+ 1062              		.loc 1 398 7 is_stmt 0 view .LVU331
+ 1063 00cc D7F80801 		ldr	r0, [r7, #264]
+ 1064              	.LVL98:
+  41:include/ubtbr/msg.h **** }
+ 1065              		.loc 2 41 2 is_stmt 1 view .LVU332
+ 398:src/drivers/ubertooth_usb.c **** 	{
+ 1066              		.loc 1 398 5 is_stmt 0 view .LVU333
+ 1067 00d0 D0E90123 		ldrd	r2, r3, [r0, #4]
+ 1068 00d4 9A42     		cmp	r2, r3
+ 1069 00d6 DAD1     		bne	.L54
+ 1070              	.LVL99:
+ 1071              	.L60:
+ 401:src/drivers/ubertooth_usb.c **** 		tx_msg = NULL;
+ 1072              		.loc 1 401 3 is_stmt 1 view .LVU334
+ 1073              	.LBB162:
+ 1074              	.LBI162:
+  26:include/ubtbr/msg.h **** {
+ 1075              		.loc 2 26 20 view .LVU335
+ 1076              	.LBB163:
+  28:include/ubtbr/msg.h **** }
+ 1077              		.loc 2 28 2 view .LVU336
+ 1078 00d8 FFF7FEFF 		bl	mem_pool_free
+ 1079              	.LVL100:
+  28:include/ubtbr/msg.h **** }
+ 1080              		.loc 2 28 2 is_stmt 0 view .LVU337
+ 1081              	.LBE163:
+ 1082              	.LBE162:
+ 402:src/drivers/ubertooth_usb.c **** 	}
+ 1083              		.loc 1 402 3 is_stmt 1 view .LVU338
+ 402:src/drivers/ubertooth_usb.c **** 	}
+ 1084              		.loc 1 402 10 is_stmt 0 view .LVU339
+ 1085 00dc 0023     		movs	r3, #0
+ 404:src/drivers/ubertooth_usb.c **** end:
+ 1086              		.loc 1 404 7 view .LVU340
+ 1087 00de 0120     		movs	r0, #1
+ 402:src/drivers/ubertooth_usb.c **** 	}
+ 1088              		.loc 1 402 10 view .LVU341
+ 1089 00e0 C7F80831 		str	r3, [r7, #264]
+ 1090 00e4 D4E7     		b	.L40
+ 1091              	.L52:
+ 391:src/drivers/ubertooth_usb.c **** 		USBHwEPWrite(BULK_IN_EP, buf, buf_idx+len);
+ARM GAS  /tmp/ccDjdIod.s 			page 34
+
+
+ 1092              		.loc 1 391 3 is_stmt 1 view .LVU342
+ 391:src/drivers/ubertooth_usb.c **** 		USBHwEPWrite(BULK_IN_EP, buf, buf_idx+len);
+ 1093              		.loc 1 391 23 is_stmt 0 view .LVU343
+ 1094 00e6 4FF00108 		mov	r8, #1
+ 1095 00ea 2A46     		mov	r2, r5
+ 1096              	.LVL101:
+ 1097              	.LBB164:
+  73:include/ubtbr/msg.h **** {
+ 1098              		.loc 2 73 24 is_stmt 1 view .LVU344
+ 1099              	.LBB159:
+  75:include/ubtbr/msg.h **** 	if (msg_read_avail(msg) < (int) len)
+ 1100              		.loc 2 75 2 view .LVU345
+  76:include/ubtbr/msg.h **** 		DIE("msg_pull: short buf\n");
+ 1101              		.loc 2 76 2 view .LVU346
+  76:include/ubtbr/msg.h **** 		DIE("msg_pull: short buf\n");
+ 1102              		.loc 2 76 2 is_stmt 0 view .LVU347
+ 1103              	.LBE159:
+ 1104              	.LBE164:
+  41:include/ubtbr/msg.h **** }
+ 1105              		.loc 2 41 2 is_stmt 1 view .LVU348
+ 391:src/drivers/ubertooth_usb.c **** 		USBHwEPWrite(BULK_IN_EP, buf, buf_idx+len);
+ 1106              		.loc 1 391 23 is_stmt 0 view .LVU349
+ 1107 00ec 2E46     		mov	r6, r5
+ 391:src/drivers/ubertooth_usb.c **** 		USBHwEPWrite(BULK_IN_EP, buf, buf_idx+len);
+ 1108              		.loc 1 391 3 view .LVU350
+ 1109 00ee 0DEB0800 		add	r0, sp, r8
+ 1110 00f2 DFE7     		b	.L51
+ 1111              	.LVL102:
+ 1112              	.L42:
+ 347:src/drivers/ubertooth_usb.c **** 
+ 1113              		.loc 1 347 6 view .LVU351
+ 1114 00f4 0020     		movs	r0, #0
+ 1115 00f6 CBE7     		b	.L40
+ 1116              	.LVL103:
+ 1117              	.L59:
+ 363:src/drivers/ubertooth_usb.c **** 			goto end;
+ 1118              		.loc 1 363 3 is_stmt 1 view .LVU352
+ 1119              	.LBB165:
+ 1120              	.LBI165:
+  70:include/ubtbr/btctl_intf.h **** {
+ 1121              		.loc 3 70 22 view .LVU353
+ 1122              	.LBB166:
+  72:include/ubtbr/btctl_intf.h **** }
+ 1123              		.loc 3 72 2 view .LVU354
+ 1124              	.LBB167:
+ 1125              	.LBI167:
+  47:include/ubtbr/btctl_intf.h **** {
+ 1126              		.loc 3 47 22 view .LVU355
+ 1127              	.LBB168:
+  49:include/ubtbr/btctl_intf.h **** 	msg_t *msg;
+ 1128              		.loc 3 49 2 view .LVU356
+ 1129              	.LBB169:
+ 1130              	.LBI169:
+   5:include/ubtbr/system.h **** {
+ 1131              		.loc 4 5 24 view .LVU357
+ 1132              	.LBB170:
+   7:include/ubtbr/system.h **** 
+ARM GAS  /tmp/ccDjdIod.s 			page 35
+
+
+ 1133              		.loc 4 7 2 view .LVU358
+   9:include/ubtbr/system.h **** 	"\tmrs    %0, primask\n"
+ 1134              		.loc 4 9 2 view .LVU359
+ 1135              		.syntax unified
+ 1136              	@ 9 "include/ubtbr/system.h" 1
+ 1137 00f8 EFF31085 			mrs    r5, primask
+ 1138 00fc 72B6     		cpsid  i
+ 1139              	
+ 1140              	@ 0 "" 2
+ 1141              	.LVL104:
+  16:include/ubtbr/system.h **** }
+ 1142              		.loc 4 16 2 view .LVU360
+  16:include/ubtbr/system.h **** }
+ 1143              		.loc 4 16 2 is_stmt 0 view .LVU361
+ 1144              		.thumb
+ 1145              		.syntax unified
+ 1146              	.LBE170:
+ 1147              	.LBE169:
+  50:include/ubtbr/btctl_intf.h **** 
+ 1148              		.loc 3 50 2 is_stmt 1 view .LVU362
+  52:include/ubtbr/btctl_intf.h **** 	irq_restore(flags);
+ 1149              		.loc 3 52 2 view .LVU363
+  52:include/ubtbr/btctl_intf.h **** 	irq_restore(flags);
+ 1150              		.loc 3 52 8 is_stmt 0 view .LVU364
+ 1151 00fe 0F48     		ldr	r0, .L61+12
+ 1152              	.LVL105:
+  52:include/ubtbr/btctl_intf.h **** 	irq_restore(flags);
+ 1153              		.loc 3 52 8 view .LVU365
+ 1154 0100 FFF7FEFF 		bl	msg_dequeue
+ 1155              	.LVL106:
+  52:include/ubtbr/btctl_intf.h **** 	irq_restore(flags);
+ 1156              		.loc 3 52 8 view .LVU366
+ 1157 0104 0346     		mov	r3, r0
+ 1158              	.LVL107:
+  53:include/ubtbr/btctl_intf.h **** 
+ 1159              		.loc 3 53 2 is_stmt 1 view .LVU367
+ 1160              	.LBB171:
+ 1161              	.LBI171:
+  19:include/ubtbr/system.h **** {
+ 1162              		.loc 4 19 20 view .LVU368
+ 1163              	.LBB172:
+ 1164              		.loc 4 21 2 view .LVU369
+ 1165              		.syntax unified
+ 1166              	@ 21 "include/ubtbr/system.h" 1
+ 1167 0106 85F31088 		msr primask, r5
+ 1168              	@ 0 "" 2
+ 1169              	.LVL108:
+ 1170              		.loc 4 21 2 is_stmt 0 view .LVU370
+ 1171              		.thumb
+ 1172              		.syntax unified
+ 1173              	.LBE172:
+ 1174              	.LBE171:
+  55:include/ubtbr/btctl_intf.h **** }
+ 1175              		.loc 3 55 2 is_stmt 1 view .LVU371
+  55:include/ubtbr/btctl_intf.h **** }
+ 1176              		.loc 3 55 2 is_stmt 0 view .LVU372
+ 1177              	.LBE168:
+ARM GAS  /tmp/ccDjdIod.s 			page 36
+
+
+ 1178              	.LBE167:
+ 1179              	.LBE166:
+ 1180              	.LBE165:
+ 363:src/drivers/ubertooth_usb.c **** 			goto end;
+ 1181              		.loc 1 363 15 view .LVU373
+ 1182 010a C7F80801 		str	r0, [r7, #264]
+ 363:src/drivers/ubertooth_usb.c **** 			goto end;
+ 1183              		.loc 1 363 5 view .LVU374
+ 1184 010e 0028     		cmp	r0, #0
+ 1185 0110 F0D0     		beq	.L42
+ 366:src/drivers/ubertooth_usb.c **** 		/* write 4 bytes header */
+ 1186              		.loc 1 366 3 is_stmt 1 view .LVU375
+ 1187              	.LBB173:
+ 1188              	.LBB174:
+  41:include/ubtbr/msg.h **** }
+ 1189              		.loc 2 41 9 is_stmt 0 view .LVU376
+ 1190 0112 D3E90115 		ldrd	r1, r5, [r3, #4]
+ 1191              	.LVL109:
+  41:include/ubtbr/msg.h **** }
+ 1192              		.loc 2 41 9 view .LVU377
+ 1193              	.LBE174:
+ 1194              	.LBE173:
+ 368:src/drivers/ubertooth_usb.c **** 		buf[1] = 0;
+ 1195              		.loc 1 368 10 view .LVU378
+ 1196 0116 5322     		movs	r2, #83
+ 1197 0118 0420     		movs	r0, #4
+ 1198              	.LBB176:
+ 1199              	.LBB175:
+  41:include/ubtbr/msg.h **** }
+ 1200              		.loc 2 41 9 view .LVU379
+ 1201 011a 6D1A     		subs	r5, r5, r1
+ 1202              	.LVL110:
+  41:include/ubtbr/msg.h **** }
+ 1203              		.loc 2 41 9 view .LVU380
+ 1204              	.LBE175:
+ 1205              	.LBE176:
+ 368:src/drivers/ubertooth_usb.c **** 		buf[1] = 0;
+ 1206              		.loc 1 368 3 is_stmt 1 view .LVU381
+ 369:src/drivers/ubertooth_usb.c **** 		buf[2] = full_len & 0xff;
+ 1207              		.loc 1 369 3 view .LVU382
+ 370:src/drivers/ubertooth_usb.c **** 		buf[3] = full_len >> 8;
+ 1208              		.loc 1 370 3 view .LVU383
+ 371:src/drivers/ubertooth_usb.c **** 		buf_idx = 4;
+ 1209              		.loc 1 371 3 view .LVU384
+ 1210 011c 8046     		mov	r8, r0
+ 1211 011e 3C26     		movs	r6, #60
+ 368:src/drivers/ubertooth_usb.c **** 		buf[1] = 0;
+ 1212              		.loc 1 368 10 is_stmt 0 view .LVU385
+ 1213 0120 ADF80020 		strh	r2, [sp]	@ movhi
+ 370:src/drivers/ubertooth_usb.c **** 		buf[3] = full_len >> 8;
+ 1214              		.loc 1 370 10 view .LVU386
+ 1215 0124 ADF80250 		strh	r5, [sp, #2]	@ movhi
+ 372:src/drivers/ubertooth_usb.c **** 	}
+ 1216              		.loc 1 372 3 is_stmt 1 view .LVU387
+ 1217              	.LVL111:
+ 372:src/drivers/ubertooth_usb.c **** 	}
+ 1218              		.loc 1 372 3 is_stmt 0 view .LVU388
+ARM GAS  /tmp/ccDjdIod.s 			page 37
+
+
+ 1219 0128 87E7     		b	.L43
+ 1220              	.LVL112:
+ 1221              	.L50:
+ 1222              	.LBB177:
+ 1223              	.LBB150:
+  77:include/ubtbr/msg.h **** 	msg->read += len;
+ 1224              		.loc 2 77 3 is_stmt 1 view .LVU389
+ 1225 012a 0548     		ldr	r0, .L61+16
+ 1226 012c FFF7FEFF 		bl	die
+ 1227              	.LVL113:
+ 1228              	.L62:
+ 1229              		.align	2
+ 1230              	.L61:
+ 1231 0130 80E100E0 		.word	-536813184
+ 1232 0134 00000000 		.word	.LANCHOR0
+ 1233 0138 00E100E0 		.word	-536813312
+ 1234 013c 2C000000 		.word	btctl+44
+ 1235 0140 A4000000 		.word	.LC4
+ 1236              	.LBE150:
+ 1237              	.LBE177:
+ 1238              		.cfi_endproc
+ 1239              	.LFE30:
+ 1241              		.comm	v_req_handler,4,4
+ 1242              		.data
+ 1243              		.align	2
+ 1244              		.set	.LANCHOR1,. + 0
+ 1247              	abDescriptors:
+ 1248 0000 12010002 		.ascii	"\022\001\000\002\377\000\000@P\035\002`\006\001\001"
+ 1248      FF000040 
+ 1248      501D0260 
+ 1248      060101
+ 1249 000f 02030109 		.ascii	"\002\003\001\011\002 \000\001\001\000\200n\011\004\000"
+ 1249      02200001 
+ 1249      0100806E 
+ 1249      090400
+ 1250 001e 0002FF00 		.ascii	"\000\002\377\000\000\000\007\005\202\002@\000\000\007"
+ 1250      00000705 
+ 1250      82024000 
+ 1250      0007
+ 1251 002c 05050240 		.ascii	"\005\005\002@\000\000\004\003\011\004(\003G\000r\000"
+ 1251      00000403 
+ 1251      09042803 
+ 1251      47007200 
+ 1252 003c 65006100 		.ascii	"e\000a\000t\000 \000S\000c\000o\000t\000t\000 \000G"
+ 1252      74002000 
+ 1252      53006300 
+ 1252      6F007400 
+ 1252      74002000 
+ 1253 0051 00610064 		.ascii	"\000a\000d\000g\000e\000t\000s\000\034\003U\000b\000"
+ 1253      00670065 
+ 1253      00740073 
+ 1253      001C0355 
+ 1253      006200
+ 1254 0064 65007200 		.ascii	"e\000r\000t\000o\000o\000t\000h\000 \000O\000n\000e"
+ 1254      74006F00 
+ 1254      6F007400 
+ 1254      68002000 
+ARM GAS  /tmp/ccDjdIod.s 			page 38
+
+
+ 1254      4F006E00 
+ 1255 0079 00420330 		.ascii	"\000B\0030\0000\0000\0000\0000\0000\0000\0000\0000\000"
+ 1255      00300030 
+ 1255      00300030 
+ 1255      00300030 
+ 1255      00300030 
+ 1256 008e 30003000 		.ascii	"0\0000\0000\0000\0000\0000\0000\0000\0000\0000\0000"
+ 1256      30003000 
+ 1256      30003000 
+ 1256      30003000 
+ 1256      30003000 
+ 1257 00a3 00300030 		.ascii	"\0000\0000\0000\0000\0000\0000\0000\0000\0000\0000\000"
+ 1257      00300030 
+ 1257      00300030 
+ 1257      00300030 
+ 1257      00300030 
+ 1258 00b8 30003100 		.ascii	"0\0001\000\000"
+ 1258      00
+ 1259              		.bss
+ 1260              		.align	2
+ 1261              		.set	.LANCHOR0,. + 0
+ 1264              	rx_msg:
+ 1265 0000 00000000 		.space	4
+ 1268              	abVendorReqData:
+ 1269 0004 00000000 		.space	258
+ 1269      00000000 
+ 1269      00000000 
+ 1269      00000000 
+ 1269      00000000 
+ 1270 0106 0000     		.space	2
+ 1273              	tx_msg:
+ 1274 0108 00000000 		.space	4
+ 1275              		.text
+ 1276              	.Letext0:
+ 1277              		.file 5 "/usr/lib/gcc/arm-none-eabi/9.2.1/include/stddef.h"
+ 1278              		.file 6 "/usr/include/newlib/sys/_types.h"
+ 1279              		.file 7 "/usr/include/newlib/sys/reent.h"
+ 1280              		.file 8 "/usr/include/newlib/sys/lock.h"
+ 1281              		.file 9 "../common/lpcusb/target/type.h"
+ 1282              		.file 10 "../common/lpcusb/target/usbstruct.h"
+ 1283              		.file 11 "/usr/lib/gcc/arm-none-eabi/9.2.1/include/stdint.h"
+ 1284              		.file 12 "../../host/libubertooth/src/ubertooth_interface.h"
+ 1285              		.file 13 "../common/ubertooth.h"
+ 1286              		.file 14 "include/ubtbr/ubertooth_usb.h"
+ 1287              		.file 15 "include/ubtbr/queue.h"
+ 1288              		.file 16 "include/ubtbr/btphy.h"
+ 1289              		.file 17 "include/ubtbr/mem_pool.h"
+ 1290              		.file 18 "../common/lpcusb/target/usbhw_lpc.h"
+ 1291              		.file 19 "/usr/include/newlib/string.h"
+ 1292              		.file 20 "../common/lpcusb/target/usbapi.h"
+ 1293              		.file 21 "include/ubtbr/debug.h"
+ARM GAS  /tmp/ccDjdIod.s 			page 39
+
+
+DEFINED SYMBOLS
+                            *ABS*:0000000000000000 ubertooth_usb.c
+     /tmp/ccDjdIod.s:16     .text.usb_vendor_request_handler:0000000000000000 $t
+     /tmp/ccDjdIod.s:25     .text.usb_vendor_request_handler:0000000000000000 usb_vendor_request_handler
+     /tmp/ccDjdIod.s:86     .text.usb_vendor_request_handler:000000000000002c $d
+                            *COM*:0000000000000004 v_req_handler
+     /tmp/ccDjdIod.s:91     .rodata.str1.4:0000000000000000 $d
+     /tmp/ccDjdIod.s:103    .text.usb_bulk_out_handler:0000000000000000 $t
+     /tmp/ccDjdIod.s:111    .text.usb_bulk_out_handler:0000000000000000 usb_bulk_out_handler
+     /tmp/ccDjdIod.s:510    .text.usb_bulk_out_handler:00000000000000c0 $d
+     /tmp/ccDjdIod.s:519    .text.set_serial_descriptor:0000000000000000 $t
+     /tmp/ccDjdIod.s:527    .text.set_serial_descriptor:0000000000000000 set_serial_descriptor
+     /tmp/ccDjdIod.s:630    .text.ubertooth_usb_init:0000000000000000 $t
+     /tmp/ccDjdIod.s:638    .text.ubertooth_usb_init:0000000000000000 ubertooth_usb_init
+     /tmp/ccDjdIod.s:710    .text.ubertooth_usb_init:0000000000000048 $d
+     /tmp/ccDjdIod.s:721    .text.usb_send_sync:0000000000000000 $t
+     /tmp/ccDjdIod.s:729    .text.usb_send_sync:0000000000000000 usb_send_sync
+     /tmp/ccDjdIod.s:793    .text.usb_send_sync:0000000000000038 $d
+     /tmp/ccDjdIod.s:803    .text.usb_work:0000000000000000 $t
+     /tmp/ccDjdIod.s:811    .text.usb_work:0000000000000000 usb_work
+     /tmp/ccDjdIod.s:1231   .text.usb_work:0000000000000130 $d
+     /tmp/ccDjdIod.s:1243   .data:0000000000000000 $d
+     /tmp/ccDjdIod.s:1247   .data:0000000000000000 abDescriptors
+     /tmp/ccDjdIod.s:1260   .bss:0000000000000000 $d
+     /tmp/ccDjdIod.s:1264   .bss:0000000000000000 rx_msg
+     /tmp/ccDjdIod.s:1268   .bss:0000000000000004 abVendorReqData
+     /tmp/ccDjdIod.s:1273   .bss:0000000000000108 tx_msg
+
+UNDEFINED SYMBOLS
+USBHwEPRead
+memcpy
+die
+mem_pool_alloc
+msg_enqueue
+btctl
+get_device_serial
+USBInit
+USBRegisterDescriptors
+USBRegisterRequestHandler
+USBHwRegisterEPIntHandler
+USBRegisterWinusbInterface
+USBHwConnect
+USBHwEPGetStatus
+USBHwEPWrite
+USBHwISR
+mem_pool_free
+msg_dequeue

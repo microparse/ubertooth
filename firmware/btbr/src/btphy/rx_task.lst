@@ -1,0 +1,3105 @@
+ARM GAS  /tmp/cctHFqHy.s 			page 1
+
+
+   1              		.cpu cortex-m3
+   2              		.eabi_attribute 20, 1
+   3              		.eabi_attribute 21, 1
+   4              		.eabi_attribute 23, 3
+   5              		.eabi_attribute 24, 1
+   6              		.eabi_attribute 25, 1
+   7              		.eabi_attribute 26, 1
+   8              		.eabi_attribute 30, 2
+   9              		.eabi_attribute 34, 1
+  10              		.eabi_attribute 18, 4
+  11              		.file	"rx_task.c"
+  12              		.text
+  13              	.Ltext0:
+  14              		.cfi_sections	.debug_frame
+  15              		.section	.rodata.str1.4,"aMS",%progbits,1
+  16              		.align	2
+  17              	.LC0:
+  18 0000 4449457C 		.ascii	"DIE|msg_put: short buf\012\012\000"
+  18      6D73675F 
+  18      7075743A 
+  18      2073686F 
+  18      72742062 
+  19              		.section	.text.rx_prepare,"ax",%progbits
+  20              		.align	1
+  21              		.p2align 2,,3
+  22              		.arch armv7-m
+  23              		.syntax unified
+  24              		.thumb
+  25              		.thumb_func
+  26              		.fpu softvfp
+  28              	rx_prepare:
+  29              	.LVL0:
+  30              	.LFB41:
+  31              		.file 1 "src/btphy/rx_task.c"
+   1:src/btphy/rx_task.c **** /* RX task
+   2:src/btphy/rx_task.c ****  *
+   3:src/btphy/rx_task.c ****  * Copyright 2020 Etienne Helluy-Lafont, Univ. Lille, CNRS.
+   4:src/btphy/rx_task.c ****  *
+   5:src/btphy/rx_task.c ****  * This file is part of Project Ubertooth.
+   6:src/btphy/rx_task.c ****  *
+   7:src/btphy/rx_task.c ****  * This program is free software; you can redistribute it and/or modify
+   8:src/btphy/rx_task.c ****  * it under the terms of the GNU General Public License as published by
+   9:src/btphy/rx_task.c ****  * the Free Software Foundation; either version 2, or (at your option)
+  10:src/btphy/rx_task.c ****  * any later version.
+  11:src/btphy/rx_task.c ****  *
+  12:src/btphy/rx_task.c ****  * This program is distributed in the hope that it will be useful,
+  13:src/btphy/rx_task.c ****  * but WITHOUT ANY WARRANTY; without even the implied warranty of
+  14:src/btphy/rx_task.c ****  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  15:src/btphy/rx_task.c ****  * GNU General Public License for more details.
+  16:src/btphy/rx_task.c ****  *
+  17:src/btphy/rx_task.c ****  * You should have received a copy of the GNU General Public License
+  18:src/btphy/rx_task.c ****  * along with this program; see the file COPYING.  If not, write to
+  19:src/btphy/rx_task.c ****  * the Free Software Foundation, Inc., 51 Franklin Street,
+  20:src/btphy/rx_task.c ****  * Boston, MA 02110-1301, USA.
+  21:src/btphy/rx_task.c ****  */
+  22:src/btphy/rx_task.c **** #include <string.h>
+  23:src/btphy/rx_task.c **** #include <ubtbr/cfg.h>
+ARM GAS  /tmp/cctHFqHy.s 			page 2
+
+
+  24:src/btphy/rx_task.c **** #include <ubtbr/debug.h>
+  25:src/btphy/rx_task.c **** #include <ubtbr/rf.h>
+  26:src/btphy/rx_task.c **** #include <ubtbr/ubertooth_dma.h>
+  27:src/btphy/rx_task.c **** #include <ubtbr/btctl_intf.h>
+  28:src/btphy/rx_task.c **** #include <ubtbr/btphy.h>
+  29:src/btphy/rx_task.c **** #include <ubtbr/tdma_sched.h>
+  30:src/btphy/rx_task.c **** #include <ubtbr/codec.h>
+  31:src/btphy/rx_task.c **** #include <ubtbr/hop.h>
+  32:src/btphy/rx_task.c **** #include <ubtbr/rx_task.h>
+  33:src/btphy/rx_task.c **** 
+  34:src/btphy/rx_task.c **** /* Exclude sw from size (see rx_buf_update()) */
+  35:src/btphy/rx_task.c **** #define NUM_PKT_HDR_BYTES BYTE_ALIGN(4+54)
+  36:src/btphy/rx_task.c **** 
+  37:src/btphy/rx_task.c **** /* Data header should fit in a fec23 encoded codec chunk */
+  38:src/btphy/rx_task.c **** #define NUM_DATA_HDR_BYTES BYTE_ALIGN(4+54+12*CODEC_RX_CHUNK_SIZE)
+  39:src/btphy/rx_task.c **** 
+  40:src/btphy/rx_task.c **** /* The receiver must listen for at least 426usec. (BT Vol B, part 2, fig 2.3)
+  41:src/btphy/rx_task.c ****  * Reception deadline is setup_time + sym_count + 28usec of lag
+  42:src/btphy/rx_task.c ****  * (we wait until 312.5+150 = 462.5usec.)
+  43:src/btphy/rx_task.c ****   (426+28)  */
+  44:src/btphy/rx_task.c **** #define	WAIT_SYNCWORD	(610+100) // perfect_time=61.usec, max_delta=10.usec
+  45:src/btphy/rx_task.c **** 
+  46:src/btphy/rx_task.c **** /* Maximum transmission size, for debug purpose */
+  47:src/btphy/rx_task.c **** #define	WAIT_RX_MAX	1500 
+  48:src/btphy/rx_task.c **** 
+  49:src/btphy/rx_task.c **** /* Maximum size we can RX in WAIT_RX_MAX
+  50:src/btphy/rx_task.c ****  * (minus 2 bytes to avoid crashing in case we're unlucky.)
+  51:src/btphy/rx_task.c ****  */
+  52:src/btphy/rx_task.c **** #define MAX_WAIT_BYTES	(150/8-2)
+  53:src/btphy/rx_task.c **** 
+  54:src/btphy/rx_task.c **** static struct {
+  55:src/btphy/rx_task.c **** 	/* arguments */
+  56:src/btphy/rx_task.c **** 	rx_task_cb_t pkt_cb;
+  57:src/btphy/rx_task.c **** 	void *cb_arg;
+  58:src/btphy/rx_task.c **** 
+  59:src/btphy/rx_task.c **** 	/* variables */
+  60:src/btphy/rx_task.c **** 	//btbr_pkt_t *rx_pkt;
+  61:src/btphy/rx_task.c **** 	msg_t *rx_msg;
+  62:src/btphy/rx_task.c **** 	btctl_rx_pkt_t *rx_pkt;
+  63:src/btphy/rx_task.c **** 
+  64:src/btphy/rx_task.c **** 	bbcodec_t codec;
+  65:src/btphy/rx_task.c **** 	uint8_t do_rx_payload;
+  66:src/btphy/rx_task.c **** 	/* Maximum acl packet is DH5: 32+4+54+(2+339+2)*8 */
+  67:src/btphy/rx_task.c **** 	uint8_t rx_dma_buf[BYTE_ALIGN(32+4+54+MAX_ACL_SIZE*12)];
+  68:src/btphy/rx_task.c **** 	uint16_t pkt_time;
+  69:src/btphy/rx_task.c **** 	unsigned rx_offset;
+  70:src/btphy/rx_task.c **** 	uint8_t rx_done;
+  71:src/btphy/rx_task.c **** 	uint8_t slot_num;
+  72:src/btphy/rx_task.c **** 	uint8_t rx_raw;
+  73:src/btphy/rx_task.c **** } rx_task; 
+  74:src/btphy/rx_task.c **** 
+  75:src/btphy/rx_task.c **** static int rx_decode(uint8_t p1, uint8_t p2, uint16_t p3);
+  76:src/btphy/rx_task.c **** 
+  77:src/btphy/rx_task.c **** /* This is the function to call to know what's available in rx_buf */
+  78:src/btphy/rx_task.c **** static unsigned rx_buf_update(void)
+  79:src/btphy/rx_task.c **** {
+  80:src/btphy/rx_task.c **** 	unsigned i, size = dma_get_rx_offset();
+ARM GAS  /tmp/cctHFqHy.s 			page 3
+
+
+  81:src/btphy/rx_task.c **** 
+  82:src/btphy/rx_task.c **** 	/* Reverse bytes to host order */
+  83:src/btphy/rx_task.c **** 	for(i=rx_task.rx_offset;i<size;i++)
+  84:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+  85:src/btphy/rx_task.c **** 	rx_task.rx_offset = size;
+  86:src/btphy/rx_task.c **** 
+  87:src/btphy/rx_task.c **** 	/* Skip 32-bits of syncword*/
+  88:src/btphy/rx_task.c **** 	if (size > 4)
+  89:src/btphy/rx_task.c **** 		return size-4;
+  90:src/btphy/rx_task.c **** 	return 0;
+  91:src/btphy/rx_task.c **** }
+  92:src/btphy/rx_task.c **** 
+  93:src/btphy/rx_task.c **** /* Stop RX and call user callback */
+  94:src/btphy/rx_task.c **** static void rx_finalize(void)
+  95:src/btphy/rx_task.c **** {
+  96:src/btphy/rx_task.c **** 	int rc;
+  97:src/btphy/rx_task.c **** 	uint32_t i, size;
+  98:src/btphy/rx_task.c **** 	uint16_t rx_size;
+  99:src/btphy/rx_task.c **** 	msg_t *msg = rx_task.rx_msg;
+ 100:src/btphy/rx_task.c **** 	btctl_rx_pkt_t *pkt = rx_task.rx_pkt;
+ 101:src/btphy/rx_task.c **** 
+ 102:src/btphy/rx_task.c **** 	/* Stop RX */
+ 103:src/btphy/rx_task.c **** 	btphy_rf_idle();
+ 104:src/btphy/rx_task.c **** 	dio_ssp_stop();
+ 105:src/btphy/rx_task.c **** 
+ 106:src/btphy/rx_task.c **** 	if (!pkt)
+ 107:src/btphy/rx_task.c **** 		DIE("rxnd: no rx_pkt");
+ 108:src/btphy/rx_task.c **** 	if (!rx_task.pkt_cb)
+ 109:src/btphy/rx_task.c **** 		DIE("rxnd: no pkt_cb");
+ 110:src/btphy/rx_task.c **** 
+ 111:src/btphy/rx_task.c **** 	if (BBPKT_HAS_HDR(pkt))
+ 112:src/btphy/rx_task.c **** 	{
+ 113:src/btphy/rx_task.c **** 		/* Reverse payload to host order */
+ 114:src/btphy/rx_task.c **** 		size=rx_buf_update();
+ 115:src/btphy/rx_task.c **** 
+ 116:src/btphy/rx_task.c **** 		/* Finalize pkt's payload decoding */
+ 117:src/btphy/rx_task.c **** 		pkt->flags |= bbcodec_decode_finalize(&rx_task.codec, pkt->bt_data, &pkt->data_size);
+ 118:src/btphy/rx_task.c **** 	}
+ 119:src/btphy/rx_task.c **** 	else
+ 120:src/btphy/rx_task.c **** 	{
+ 121:src/btphy/rx_task.c **** 		pkt->data_size = 0;
+ 122:src/btphy/rx_task.c **** 	}
+ 123:src/btphy/rx_task.c **** 	/* Trim the message to its real length */
+ 124:src/btphy/rx_task.c **** 	msg_set_write(rx_task.rx_msg, &pkt->bt_data[pkt->data_size]);
+ 125:src/btphy/rx_task.c **** 
+ 126:src/btphy/rx_task.c **** 	/* Reset rx state before calling callback,
+ 127:src/btphy/rx_task.c **** 	 * because callback can schedule a new RX */
+ 128:src/btphy/rx_task.c **** 	rx_task.rx_msg = NULL;
+ 129:src/btphy/rx_task.c **** 	rx_task.rx_pkt = NULL;
+ 130:src/btphy/rx_task.c **** 
+ 131:src/btphy/rx_task.c **** 	/* Call user callback */
+ 132:src/btphy/rx_task.c **** 	rx_task.pkt_cb(msg, rx_task.cb_arg, rx_task.pkt_time-RF_EXPECTED_RX_CLKN_OFFSET);
+ 133:src/btphy/rx_task.c **** }
+ 134:src/btphy/rx_task.c **** 
+ 135:src/btphy/rx_task.c **** // -1
+ 136:src/btphy/rx_task.c **** static int rx_prepare(uint8_t p1, uint8_t p2, uint16_t p3)
+ 137:src/btphy/rx_task.c **** {
+ARM GAS  /tmp/cctHFqHy.s 			page 4
+
+
+  32              		.loc 1 137 1 view -0
+  33              		.cfi_startproc
+  34              		@ args = 0, pretend = 0, frame = 0
+  35              		@ frame_needed = 0, uses_anonymous_args = 0
+  36              		.loc 1 137 1 is_stmt 0 view .LVU1
+  37 0000 2DE9F041 		push	{r4, r5, r6, r7, r8, lr}
+  38              		.cfi_def_cfa_offset 24
+  39              		.cfi_offset 4, -24
+  40              		.cfi_offset 5, -20
+  41              		.cfi_offset 6, -16
+  42              		.cfi_offset 7, -12
+  43              		.cfi_offset 8, -8
+  44              		.cfi_offset 14, -4
+ 138:src/btphy/rx_task.c **** 	uint8_t chan;
+  45              		.loc 1 138 2 is_stmt 1 view .LVU2
+ 139:src/btphy/rx_task.c **** 	uint32_t rx_clkn = btphy_cur_clkn()+1;
+  46              		.loc 1 139 2 view .LVU3
+  47              	.LBB72:
+  48              	.LBI72:
+  49              		.file 2 "include/ubtbr/btphy.h"
+   1:include/ubtbr/btphy.h **** #ifndef __BTPHY_H
+   2:include/ubtbr/btphy.h **** #define __BTPHY_H
+   3:include/ubtbr/btphy.h **** #include <stdint.h>
+   4:include/ubtbr/btphy.h **** #include <ubertooth_interface.h>
+   5:include/ubtbr/btphy.h **** #include <ubtbr/cfg.h>
+   6:include/ubtbr/btphy.h **** #include <ubtbr/queue.h>
+   7:include/ubtbr/btphy.h **** 
+   8:include/ubtbr/btphy.h **** #define CLKN_RATE 3200
+   9:include/ubtbr/btphy.h **** #define PERIPH_CLK_RATE	50000000			// 50Mhz
+  10:include/ubtbr/btphy.h **** #define PERIPH_CLK_NS (1000000000/PERIPH_CLK_RATE)	// 20ns
+  11:include/ubtbr/btphy.h **** #define CLK100NS_SECOND (1000000000/100)
+  12:include/ubtbr/btphy.h **** /* clkn_offset prescale value (from peripheral clock -> 100ns) */
+  13:include/ubtbr/btphy.h **** #define CLKN_OFFSET_PRESCALE_VAL 	(100/PERIPH_CLK_NS)
+  14:include/ubtbr/btphy.h **** /* clk_offset match register value */
+  15:include/ubtbr/btphy.h **** #define CLKN_OFFSET_RESET_VAL ((PERIPH_CLK_RATE/CLKN_OFFSET_PRESCALE_VAL)/CLKN_RATE)
+  16:include/ubtbr/btphy.h **** #define MASTER_CLKN	T1TC
+  17:include/ubtbr/btphy.h **** #define CLKN_OFFSET	T0TC
+  18:include/ubtbr/btphy.h **** 
+  19:include/ubtbr/btphy.h **** typedef enum btphy_mode_e {
+  20:include/ubtbr/btphy.h **** 	BT_MODE_INQUIRY,
+  21:include/ubtbr/btphy.h **** 	BT_MODE_PAGING,
+  22:include/ubtbr/btphy.h **** 	BT_MODE_INQUIRY_SCAN,
+  23:include/ubtbr/btphy.h **** 	BT_MODE_PAGE_SCAN,
+  24:include/ubtbr/btphy.h **** 	BT_MODE_MASTER,
+  25:include/ubtbr/btphy.h **** 	BT_MODE_SLAVE,
+  26:include/ubtbr/btphy.h **** } btphy_mode_t ; 
+  27:include/ubtbr/btphy.h **** 
+  28:include/ubtbr/btphy.h **** typedef struct btphy_s {
+  29:include/ubtbr/btphy.h **** 	btphy_mode_t mode;
+  30:include/ubtbr/btphy.h **** 	uint32_t master_clkn; 
+  31:include/ubtbr/btphy.h **** 	uint32_t slave_clkn; 
+  32:include/ubtbr/btphy.h **** 	int slave_clkn_delay;
+  33:include/ubtbr/btphy.h **** 	int clkn_delayed;
+  34:include/ubtbr/btphy.h **** 	uint32_t chan_lap;
+  35:include/ubtbr/btphy.h **** 	uint8_t chan_uap;
+  36:include/ubtbr/btphy.h **** 	uint64_t chan_sw;
+  37:include/ubtbr/btphy.h **** 	uint8_t chan_trailer;
+ARM GAS  /tmp/cctHFqHy.s 			page 5
+
+
+  38:include/ubtbr/btphy.h **** 	uint8_t chan_sw_lo[4];
+  39:include/ubtbr/btphy.h **** 	uint8_t chan_sw_hi[4];
+  40:include/ubtbr/btphy.h **** 	uint32_t my_lap;
+  41:include/ubtbr/btphy.h **** 	uint8_t  my_uap;
+  42:include/ubtbr/btphy.h **** 	uint16_t my_nap;
+  43:include/ubtbr/btphy.h **** 	uint64_t my_sw;
+  44:include/ubtbr/btphy.h **** } btphy_t;
+  45:include/ubtbr/btphy.h **** 
+  46:include/ubtbr/btphy.h **** typedef void (*btphy_timer_fn_t)(void *arg);
+  47:include/ubtbr/btphy.h **** 
+  48:include/ubtbr/btphy.h **** extern btphy_t btphy;
+  49:include/ubtbr/btphy.h **** 
+  50:include/ubtbr/btphy.h **** #define CUR_MASTER_SLOT_IDX()	(btphy.master_clkn&3)
+  51:include/ubtbr/btphy.h **** #define CUR_SLAVE_SLOT_IDX()	(btphy.slave_clkn&3)
+  52:include/ubtbr/btphy.h **** 
+  53:include/ubtbr/btphy.h **** static inline uint32_t btphy_cur_clkn(void)
+  50              		.loc 2 53 24 view .LVU4
+  51              	.LBB73:
+  54:include/ubtbr/btphy.h **** {
+  55:include/ubtbr/btphy.h **** 	switch(btphy.mode)
+  52              		.loc 2 55 2 view .LVU5
+  53              		.loc 2 55 14 is_stmt 0 view .LVU6
+  54 0004 DFF82C81 		ldr	r8, .L13+24
+  55 0008 98F80030 		ldrb	r3, [r8]	@ zero_extendqisi2
+  56              		.loc 2 55 2 view .LVU7
+  57 000c 032B     		cmp	r3, #3
+  58 000e 70D8     		bhi	.L2
+  59 0010 012B     		cmp	r3, #1
+  60 0012 74D8     		bhi	.L11
+  61              	.L4:
+  56:include/ubtbr/btphy.h **** 	{
+  57:include/ubtbr/btphy.h **** 	case BT_MODE_INQUIRY_SCAN:
+  58:include/ubtbr/btphy.h **** 	case BT_MODE_PAGE_SCAN:
+  59:include/ubtbr/btphy.h **** 	case BT_MODE_SLAVE:
+  60:include/ubtbr/btphy.h **** 		return btphy.slave_clkn;
+  61:include/ubtbr/btphy.h **** 	default:
+  62:include/ubtbr/btphy.h **** 		return btphy.master_clkn;
+  62              		.loc 2 62 3 is_stmt 1 view .LVU8
+  63              	.LBE73:
+  64              	.LBE72:
+  65              		.loc 1 139 11 is_stmt 0 view .LVU9
+  66 0014 D8F80460 		ldr	r6, [r8, #4]
+  67 0018 0136     		adds	r6, r6, #1
+  68              	.LVL1:
+ 140:src/btphy/rx_task.c **** 	btctl_rx_pkt_t *pkt;
+  69              		.loc 1 140 2 is_stmt 1 view .LVU10
+ 141:src/btphy/rx_task.c **** 
+ 142:src/btphy/rx_task.c **** 	/* In inquiry/paging, hop.x must be incremented before each tx
+ 143:src/btphy/rx_task.c **** 	 * of the master / RX of the slave
+ 144:src/btphy/rx_task.c **** 	 * (Actually, rx_task in not used in mode INQUIRY_SCAN)
+ 145:src/btphy/rx_task.c **** 	 */
+ 146:src/btphy/rx_task.c **** 	if (btphy.mode == BT_MODE_PAGE_SCAN)
+  70              		.loc 1 146 2 view .LVU11
+  71              	.L7:
+ 147:src/btphy/rx_task.c **** 		hop_increment();
+ 148:src/btphy/rx_task.c **** 	chan = hop_channel(rx_clkn);
+  72              		.loc 1 148 2 view .LVU12
+ARM GAS  /tmp/cctHFqHy.s 			page 6
+
+
+  73              		.loc 1 148 9 is_stmt 0 view .LVU13
+  74 001a 3046     		mov	r0, r6
+  75              	.LVL2:
+  76              		.loc 1 148 9 view .LVU14
+  77 001c FFF7FEFF 		bl	hop_channel
+  78              	.LVL3:
+  79              		.loc 1 148 9 view .LVU15
+  80 0020 0746     		mov	r7, r0
+  81              	.LVL4:
+ 149:src/btphy/rx_task.c **** 
+ 150:src/btphy/rx_task.c **** 	/* Tune to chan & start RX */
+ 151:src/btphy/rx_task.c **** 	//cprintf("tune rx %d\n", pkt->chan);
+ 152:src/btphy/rx_task.c **** 	btphy_rf_tune_chan(2402+chan, 0);
+  82              		.loc 1 152 2 is_stmt 1 view .LVU16
+  83 0022 00F66210 		addw	r0, r0, #2402
+  84              	.LVL5:
+  85              		.loc 1 152 2 is_stmt 0 view .LVU17
+  86 0026 0021     		movs	r1, #0
+  87 0028 80B2     		uxth	r0, r0
+  88 002a FFF7FEFF 		bl	btphy_rf_tune_chan
+  89              	.LVL6:
+ 153:src/btphy/rx_task.c **** 	/* Here i must strobe SRX before & after GRMDM cfg. why ? */
+ 154:src/btphy/rx_task.c **** 	cc2400_strobe(SFSON);
+  90              		.loc 1 154 2 is_stmt 1 view .LVU18
+  91 002e 6120     		movs	r0, #97
+  92 0030 FFF7FEFF 		bl	cc2400_strobe
+  93              	.LVL7:
+ 155:src/btphy/rx_task.c **** 	btphy_rf_cfg_rx();
+  94              		.loc 1 155 2 view .LVU19
+  95              	.LBB76:
+  96              	.LBI76:
+  97              		.file 3 "include/ubtbr/rf.h"
+   1:include/ubtbr/rf.h **** #ifndef __BTPHY_RF_H
+   2:include/ubtbr/rf.h **** #define __BTPHY_RF_H
+   3:include/ubtbr/rf.h **** #include <stdint.h>
+   4:include/ubtbr/rf.h **** #include "ubertooth.h"
+   5:include/ubtbr/rf.h **** 
+   6:include/ubtbr/rf.h **** /* Num of bytes left in fifo when FIFO_EMPTY int trigger 64usec */
+   7:include/ubtbr/rf.h **** #define PHY_MIN_FIFO_BYTES 16
+   8:include/ubtbr/rf.h **** #define PHY_FIFO_THRESHOLD (32-PHY_MIN_FIFO_BYTES)
+   9:include/ubtbr/rf.h **** 
+  10:include/ubtbr/rf.h **** #define WAIT_CC2400_STATE(state) while((cc2400_get(FSMSTATE) & 0x1f) != (state));
+  11:include/ubtbr/rf.h **** #define FS_TUNED() (cc2400_status() & FS_LOCK)
+  12:include/ubtbr/rf.h **** #define WAIT_FS_TUNED() while(!FS_TUNED())
+  13:include/ubtbr/rf.h **** 
+  14:include/ubtbr/rf.h **** #define RF_EXPECTED_RX_CLKN_OFFSET 610	// (29usec of rf warmup + 32usec of sw)
+  15:include/ubtbr/rf.h **** 
+  16:include/ubtbr/rf.h **** typedef void (*btbr_int_cb_t)(void *arg);
+  17:include/ubtbr/rf.h **** 
+  18:include/ubtbr/rf.h **** #define MAX_AC_ERRORS_DEFAULT	1
+  19:include/ubtbr/rf.h **** typedef struct {
+  20:include/ubtbr/rf.h **** 	uint16_t freq_off_reg;
+  21:include/ubtbr/rf.h **** 	uint16_t max_ac_errors;
+  22:include/ubtbr/rf.h **** 	btbr_int_cb_t int_handler;
+  23:include/ubtbr/rf.h **** 	void *int_arg;
+  24:include/ubtbr/rf.h **** } rf_state_t;
+  25:include/ubtbr/rf.h **** 
+ARM GAS  /tmp/cctHFqHy.s 			page 7
+
+
+  26:include/ubtbr/rf.h **** extern volatile rf_state_t rf_state;
+  27:include/ubtbr/rf.h **** 
+  28:include/ubtbr/rf.h **** void btphy_rf_init(void);
+  29:include/ubtbr/rf.h **** void btphy_rf_off(void);
+  30:include/ubtbr/rf.h **** void btphy_rf_set_freq_off(uint8_t off);
+  31:include/ubtbr/rf.h **** void btphy_rf_set_max_ac_errors(uint8_t max_ac_errors);
+  32:include/ubtbr/rf.h **** void btphy_rf_cfg_sync(uint32_t sync);
+  33:include/ubtbr/rf.h **** void btphy_rf_tune_chan(uint16_t channel, int tx);
+  34:include/ubtbr/rf.h **** void btphy_rf_fifo_write(uint8_t *data, unsigned len);
+  35:include/ubtbr/rf.h **** 
+  36:include/ubtbr/rf.h **** void btphy_rf_enable_int(btbr_int_cb_t cb, void*cb_arg, int tx);
+  37:include/ubtbr/rf.h **** void btphy_rf_disable_int(void);
+  38:include/ubtbr/rf.h **** 
+  39:include/ubtbr/rf.h **** static inline void btphy_rf_idle(void)
+  40:include/ubtbr/rf.h **** {
+  41:include/ubtbr/rf.h **** 	cc2400_strobe(SRFOFF);
+  42:include/ubtbr/rf.h **** 	TXLED_CLR;
+  43:include/ubtbr/rf.h **** 	RXLED_CLR;
+  44:include/ubtbr/rf.h **** }
+  45:include/ubtbr/rf.h **** 
+  46:include/ubtbr/rf.h **** static inline void btphy_rf_tx(void)
+  47:include/ubtbr/rf.h **** {
+  48:include/ubtbr/rf.h **** 	cc2400_strobe(STX);
+  49:include/ubtbr/rf.h **** 	TXLED_SET;
+  50:include/ubtbr/rf.h **** }
+  51:include/ubtbr/rf.h **** static inline void btphy_rf_rx(void)
+  52:include/ubtbr/rf.h **** {
+  53:include/ubtbr/rf.h **** 	cc2400_strobe(SRX);
+  54:include/ubtbr/rf.h **** 	RXLED_SET;
+  55:include/ubtbr/rf.h **** }
+  56:include/ubtbr/rf.h **** 
+  57:include/ubtbr/rf.h **** /* cc2400 configure for un-buffered rx */
+  58:include/ubtbr/rf.h **** static inline void btphy_rf_cfg_rx(void)
+  98              		.loc 3 58 20 view .LVU20
+  99              	.LBB77:
+  59:include/ubtbr/rf.h **** {
+  60:include/ubtbr/rf.h **** 	/* un-buffered mode, packet w/ sync word detection */
+  61:include/ubtbr/rf.h **** 	cc2400_set(GRMDM,   0x4E1|(rf_state.max_ac_errors<<13));
+ 100              		.loc 3 61 2 view .LVU21
+ 101              		.loc 3 61 27 is_stmt 0 view .LVU22
+ 102 0034 40F2E141 		movw	r1, #1249
+ 103              		.loc 3 61 37 view .LVU23
+ 104 0038 384B     		ldr	r3, .L13
+ 105              		.loc 3 61 2 view .LVU24
+ 106 003a 2020     		movs	r0, #32
+ 107              		.loc 3 61 37 view .LVU25
+ 108 003c 5B88     		ldrh	r3, [r3, #2]
+ 109              	.LBE77:
+ 110              	.LBE76:
+ 111              	.LBB79:
+ 112              	.LBB80:
+ 113              	.LBB81:
+ 114              	.LBB82:
+ 115              		.file 4 "include/ubtbr/msg.h"
+   1:include/ubtbr/msg.h **** #ifndef __DEF_MSG_H
+   2:include/ubtbr/msg.h **** #define __DEF_MSG_H
+   3:include/ubtbr/msg.h **** #include <stdint.h>
+ARM GAS  /tmp/cctHFqHy.s 			page 8
+
+
+   4:include/ubtbr/msg.h **** 
+   5:include/ubtbr/msg.h **** typedef struct msg_s {
+   6:include/ubtbr/msg.h **** 	uint16_t len;
+   7:include/ubtbr/msg.h **** 	uint16_t data_len;
+   8:include/ubtbr/msg.h **** 	uint8_t *read;
+   9:include/ubtbr/msg.h **** 	uint8_t *write;
+  10:include/ubtbr/msg.h **** 	/* never move head */
+  11:include/ubtbr/msg.h **** 	uint8_t data[0];
+  12:include/ubtbr/msg.h **** } msg_t;
+  13:include/ubtbr/msg.h **** 
+  14:include/ubtbr/msg.h **** /* Allocate a msg_t wigh given room*/
+  15:include/ubtbr/msg.h **** static inline msg_t *msg_alloc(unsigned size)
+  16:include/ubtbr/msg.h **** {
+  17:include/ubtbr/msg.h **** 	msg_t *msg = (msg_t*)btctl_mem_alloc(sizeof(msg_t)+size);
+  18:include/ubtbr/msg.h **** 
+  19:include/ubtbr/msg.h **** 	msg->write = msg->data;
+  20:include/ubtbr/msg.h **** 	msg->read = msg->data;
+  21:include/ubtbr/msg.h **** 	msg->data_len = size;
+ 116              		.loc 4 21 16 view .LVU26
+ 117 003e 4FF4B475 		mov	r5, #360
+ 118              	.LBE82:
+ 119              	.LBE81:
+ 120              	.LBE80:
+ 121              	.LBE79:
+ 122              	.LBB98:
+ 123              	.LBB78:
+ 124              		.loc 3 61 37 view .LVU27
+ 125 0042 9BB2     		uxth	r3, r3
+ 126              		.loc 3 61 27 view .LVU28
+ 127 0044 41EA4331 		orr	r1, r1, r3, lsl #13
+ 128              		.loc 3 61 2 view .LVU29
+ 129 0048 89B2     		uxth	r1, r1
+ 130 004a FFF7FEFF 		bl	cc2400_set
+ 131              	.LVL8:
+  62:include/ubtbr/rf.h **** 	// 0 XX 00 1 001 11 0 00 0 1
+  63:include/ubtbr/rf.h **** 	//   |  |  | |   |  +--------> CRC off
+  64:include/ubtbr/rf.h **** 	//   |  |  | |   +-----------> sync word: 32 MSB bits of SYNC_WORD
+  65:include/ubtbr/rf.h **** 	//   |  |  | +---------------> 1 preamble bytes of (0)1010101
+  66:include/ubtbr/rf.h **** 	//   |  |  +-----------------> packet mode
+  67:include/ubtbr/rf.h **** 	//   |  +--------------------> un-buffered mode // use sync word to trigger 
+  68:include/ubtbr/rf.h **** 	//   +-----------------------> sync error bits allowed: N
+  69:include/ubtbr/rf.h **** 	cc2400_set(IOCFG, 0x170|(GIO_PKT<<9));
+ 132              		.loc 3 69 2 is_stmt 1 view .LVU30
+ 133 004e 4FF45761 		mov	r1, #3440
+ 134 0052 0820     		movs	r0, #8
+ 135 0054 FFF7FEFF 		bl	cc2400_set
+ 136              	.LVL9:
+ 137              	.LBE78:
+ 138              	.LBE98:
+ 156:src/btphy/rx_task.c **** 	btphy_rf_rx();
+ 139              		.loc 1 156 2 view .LVU31
+ 140              	.LBB99:
+ 141              	.LBI99:
+  51:include/ubtbr/rf.h **** {
+ 142              		.loc 3 51 20 view .LVU32
+ 143              	.LBB100:
+  53:include/ubtbr/rf.h **** 	RXLED_SET;
+ARM GAS  /tmp/cctHFqHy.s 			page 9
+
+
+ 144              		.loc 3 53 2 view .LVU33
+ 145 0058 6220     		movs	r0, #98
+ 146 005a FFF7FEFF 		bl	cc2400_strobe
+ 147              	.LVL10:
+  54:include/ubtbr/rf.h **** }
+ 148              		.loc 3 54 2 view .LVU34
+ 149 005e 1022     		movs	r2, #16
+ 150 0060 2F4B     		ldr	r3, .L13+4
+ 151              	.LBE100:
+ 152              	.LBE99:
+ 153              	.LBB102:
+ 154              	.LBB95:
+ 155              	.LBB87:
+ 156              	.LBB83:
+  17:include/ubtbr/msg.h **** 
+ 157              		.loc 4 17 23 is_stmt 0 view .LVU35
+ 158 0062 4FF4BA70 		mov	r0, #372
+ 159              	.LBE83:
+ 160              	.LBE87:
+ 161              	.LBE95:
+ 162              	.LBE102:
+ 163              	.LBB103:
+ 164              	.LBB101:
+  54:include/ubtbr/rf.h **** }
+ 165              		.loc 3 54 2 view .LVU36
+ 166 0066 1A60     		str	r2, [r3]
+ 167              	.LBE101:
+ 168              	.LBE103:
+ 157:src/btphy/rx_task.c **** 
+ 158:src/btphy/rx_task.c **** 	/* Alloc & reset RX packet */
+ 159:src/btphy/rx_task.c **** 	if (!(rx_task.rx_msg = btctl_msg_alloc(BTCTL_RX_PKT)))
+ 169              		.loc 1 159 2 is_stmt 1 view .LVU37
+ 170              	.LVL11:
+ 171              	.LBB104:
+ 172              	.LBI79:
+ 173              		.file 5 "include/ubtbr/btctl_intf.h"
+   1:include/ubtbr/btctl_intf.h **** #ifndef __BTCTL_INTF_H
+   2:include/ubtbr/btctl_intf.h **** #define __BTCTL_INTF_H
+   3:include/ubtbr/btctl_intf.h **** #include <ubtbr/bb_msg.h>
+   4:include/ubtbr/btctl_intf.h **** #include <ubtbr/queue.h>
+   5:include/ubtbr/btctl_intf.h **** #include <ubtbr/system.h>
+   6:include/ubtbr/btctl_intf.h **** #include <ubertooth_interface.h>
+   7:include/ubtbr/btctl_intf.h **** 
+   8:include/ubtbr/btctl_intf.h **** typedef struct btctl_s {
+   9:include/ubtbr/btctl_intf.h **** 	btctl_state_t state;
+  10:include/ubtbr/btctl_intf.h **** 	msg_queue_t rx_q;
+  11:include/ubtbr/btctl_intf.h **** 	msg_queue_t tx_q;
+  12:include/ubtbr/btctl_intf.h **** 	msg_queue_t acl_tx_q;
+  13:include/ubtbr/btctl_intf.h **** 	msg_t *eir_msg;
+  14:include/ubtbr/btctl_intf.h **** 	btctl_tx_pkt_t *eir_pkt;
+  15:include/ubtbr/btctl_intf.h **** } btctl_t;
+  16:include/ubtbr/btctl_intf.h **** 
+  17:include/ubtbr/btctl_intf.h **** extern btctl_t btctl;
+  18:include/ubtbr/btctl_intf.h **** 
+  19:include/ubtbr/btctl_intf.h **** void btctl_init(void);
+  20:include/ubtbr/btctl_intf.h **** int btctl_work(void);
+  21:include/ubtbr/btctl_intf.h **** 
+ARM GAS  /tmp/cctHFqHy.s 			page 10
+
+
+  22:include/ubtbr/btctl_intf.h **** void btctl_set_state(btctl_state_t state, btctl_reason_t reason);
+  23:include/ubtbr/btctl_intf.h **** 
+  24:include/ubtbr/btctl_intf.h **** static inline btctl_state_t btctl_get_state(void)
+  25:include/ubtbr/btctl_intf.h **** {
+  26:include/ubtbr/btctl_intf.h **** 	return btctl.state;
+  27:include/ubtbr/btctl_intf.h **** }
+  28:include/ubtbr/btctl_intf.h **** 
+  29:include/ubtbr/btctl_intf.h **** static inline btctl_tx_pkt_t *btctl_get_eir(void)
+  30:include/ubtbr/btctl_intf.h **** {
+  31:include/ubtbr/btctl_intf.h **** 	return btctl.eir_pkt;
+  32:include/ubtbr/btctl_intf.h **** }
+  33:include/ubtbr/btctl_intf.h **** 
+  34:include/ubtbr/btctl_intf.h **** static inline msg_t *btctl_msg_alloc(unsigned type)
+ 174              		.loc 5 34 22 view .LVU38
+ 175              	.LBB96:
+  35:include/ubtbr/btctl_intf.h **** {
+  36:include/ubtbr/btctl_intf.h **** 	msg_t *msg;
+ 176              		.loc 5 36 2 view .LVU39
+  37:include/ubtbr/btctl_intf.h **** 	btctl_hdr_t *hdr;
+ 177              		.loc 5 37 2 view .LVU40
+  38:include/ubtbr/btctl_intf.h **** 
+  39:include/ubtbr/btctl_intf.h **** 	/* maximum size ?*/
+  40:include/ubtbr/btctl_intf.h **** 	msg = msg_alloc(sizeof(btctl_hdr_t)+sizeof(btctl_rx_pkt_t)+MAX_ACL_PACKET_SIZE);
+ 178              		.loc 5 40 2 view .LVU41
+ 179              	.LBB88:
+ 180              	.LBI81:
+  15:include/ubtbr/msg.h **** {
+ 181              		.loc 4 15 22 view .LVU42
+ 182              	.LBB84:
+  17:include/ubtbr/msg.h **** 
+ 183              		.loc 4 17 2 view .LVU43
+  17:include/ubtbr/msg.h **** 
+ 184              		.loc 4 17 23 is_stmt 0 view .LVU44
+ 185 0068 FFF7FEFF 		bl	mem_pool_alloc
+ 186              	.LVL12:
+ 187 006c 0346     		mov	r3, r0
+ 188              	.LVL13:
+  19:include/ubtbr/msg.h **** 	msg->read = msg->data;
+ 189              		.loc 4 19 2 is_stmt 1 view .LVU45
+ 190              	.LBE84:
+ 191              	.LBE88:
+  41:include/ubtbr/btctl_intf.h **** 	hdr = (btctl_hdr_t*) msg_put(msg, sizeof(*hdr));
+  42:include/ubtbr/btctl_intf.h **** 	hdr->type = type;
+ 192              		.loc 5 42 12 is_stmt 0 view .LVU46
+ 193 006e 2822     		movs	r2, #40
+ 194              	.LBB89:
+ 195              	.LBB85:
+  19:include/ubtbr/msg.h **** 	msg->read = msg->data;
+ 196              		.loc 4 19 15 view .LVU47
+ 197 0070 0C30     		adds	r0, r0, #12
+ 198              	.LVL14:
+  20:include/ubtbr/msg.h **** 	msg->data_len = size;
+ 199              		.loc 4 20 2 is_stmt 1 view .LVU48
+ 200              	.LBE85:
+ 201              	.LBE89:
+ 202              	.LBB90:
+ 203              	.LBB91:
+ARM GAS  /tmp/cctHFqHy.s 			page 11
+
+
+  22:include/ubtbr/msg.h **** 
+  23:include/ubtbr/msg.h **** 	return msg;
+  24:include/ubtbr/msg.h **** }
+  25:include/ubtbr/msg.h **** 
+  26:include/ubtbr/msg.h **** static inline void msg_free(msg_t *msg)
+  27:include/ubtbr/msg.h **** {
+  28:include/ubtbr/msg.h **** 	btctl_mem_free(msg);
+  29:include/ubtbr/msg.h **** }
+  30:include/ubtbr/msg.h **** 
+  31:include/ubtbr/msg.h **** /* Return number of bytes written in the data buffer. */
+  32:include/ubtbr/msg.h **** static inline int msg_write_len(const msg_t *msg)
+  33:include/ubtbr/msg.h **** {
+  34:include/ubtbr/msg.h **** 	return (int)(msg->write - msg->data);
+  35:include/ubtbr/msg.h **** }
+  36:include/ubtbr/msg.h **** 
+  37:include/ubtbr/msg.h **** /* Return number of bytes we can pull between
+  38:include/ubtbr/msg.h ****  * the data pointer and the end of the buffer. */
+  39:include/ubtbr/msg.h **** static inline int msg_read_avail(const msg_t *msg)
+  40:include/ubtbr/msg.h **** {
+  41:include/ubtbr/msg.h **** 	return (int)(msg->write - msg->read);
+  42:include/ubtbr/msg.h **** }
+  43:include/ubtbr/msg.h **** 
+  44:include/ubtbr/msg.h **** /* Return number of bytes we can put between
+  45:include/ubtbr/msg.h ****  * the tail pointer and the end of the buffer. */
+  46:include/ubtbr/msg.h **** static inline int msg_write_avail(const msg_t *msg)
+  47:include/ubtbr/msg.h **** {
+  48:include/ubtbr/msg.h ****         return msg->data_len - msg_write_len(msg);
+  49:include/ubtbr/msg.h **** }
+  50:include/ubtbr/msg.h **** 
+  51:include/ubtbr/msg.h **** /* Set write pointer.
+  52:include/ubtbr/msg.h ****  * Meant to trim the msg to the end of data written. */
+  53:include/ubtbr/msg.h **** static inline int msg_set_write(msg_t *msg, uint8_t *write)
+  54:include/ubtbr/msg.h **** {
+  55:include/ubtbr/msg.h **** 	if (write < msg->data || write > (msg->data + msg->data_len))
+  56:include/ubtbr/msg.h ****                 return -1;
+  57:include/ubtbr/msg.h ****         msg->write = write;
+  58:include/ubtbr/msg.h **** 
+  59:include/ubtbr/msg.h ****         return 0;
+  60:include/ubtbr/msg.h **** }
+  61:include/ubtbr/msg.h **** 
+  62:include/ubtbr/msg.h **** static inline uint8_t *msg_put(msg_t *msg, unsigned int len)
+  63:include/ubtbr/msg.h **** {
+  64:include/ubtbr/msg.h ****         uint8_t *tmp = msg->write;
+  65:include/ubtbr/msg.h **** 
+  66:include/ubtbr/msg.h ****         if (msg_write_avail(msg) < (int) len)
+  67:include/ubtbr/msg.h **** 		DIE("msg_put: short buf\n");
+  68:include/ubtbr/msg.h ****         msg->write += len;
+ 204              		.loc 4 68 20 is_stmt 0 view .LVU49
+ 205 0072 03F11001 		add	r1, r3, #16
+ 206              	.LBE91:
+ 207              	.LBE90:
+ 208              		.loc 5 42 12 view .LVU50
+ 209 0076 1A73     		strb	r2, [r3, #12]
+ 210              	.LBE96:
+ 211              	.LBE104:
+ 212              	.LBB105:
+ 213              	.LBB106:
+ARM GAS  /tmp/cctHFqHy.s 			page 12
+
+
+ 214              	.LBB107:
+ 215              	.LBB108:
+ 216              	.LBB109:
+ 217              	.LBB110:
+  34:include/ubtbr/msg.h **** }
+ 218              		.loc 4 34 9 view .LVU51
+ 219 0078 0A1A     		subs	r2, r1, r0
+ 220              	.LBE110:
+ 221              	.LBE109:
+ 222              	.LBE108:
+ 223              	.LBE107:
+ 224              	.LBE106:
+ 225              	.LBE105:
+ 226              		.loc 1 159 23 view .LVU52
+ 227 007a 2A4C     		ldr	r4, .L13+8
+ 228              	.LBB121:
+ 229              	.LBB117:
+ 230              	.LBB115:
+ 231              	.LBB113:
+  48:include/ubtbr/msg.h **** }
+ 232              		.loc 4 48 30 view .LVU53
+ 233 007c AA1A     		subs	r2, r5, r2
+ 234              	.LBE113:
+ 235              	.LBE115:
+  66:include/ubtbr/msg.h **** 		DIE("msg_put: short buf\n");
+ 236              		.loc 4 66 12 view .LVU54
+ 237 007e 0B2A     		cmp	r2, #11
+ 238              	.LBE117:
+ 239              	.LBE121:
+ 240              	.LBB122:
+ 241              	.LBB97:
+ 242              	.LBB93:
+ 243              	.LBB92:
+ 244              		.loc 4 68 20 view .LVU55
+ 245 0080 C3E90101 		strd	r0, r1, [r3, #4]
+  69:include/ubtbr/msg.h **** 
+  70:include/ubtbr/msg.h ****         return tmp;
+ 246              		.loc 4 70 9 is_stmt 1 view .LVU56
+ 247              	.LVL15:
+ 248              		.loc 4 70 9 is_stmt 0 view .LVU57
+ 249              	.LBE92:
+ 250              	.LBE93:
+ 251              		.loc 5 42 2 is_stmt 1 view .LVU58
+  43:include/ubtbr/btctl_intf.h **** 
+  44:include/ubtbr/btctl_intf.h **** 	return msg;
+ 252              		.loc 5 44 2 view .LVU59
+ 253              	.LBB94:
+ 254              	.LBB86:
+  21:include/ubtbr/msg.h **** 
+ 255              		.loc 4 21 16 is_stmt 0 view .LVU60
+ 256 0084 5D80     		strh	r5, [r3, #2]	@ movhi
+ 257              	.LBE86:
+ 258              	.LBE94:
+ 259              	.LBE97:
+ 260              	.LBE122:
+ 261              		.loc 1 159 23 view .LVU61
+ 262 0086 A360     		str	r3, [r4, #8]
+ARM GAS  /tmp/cctHFqHy.s 			page 13
+
+
+ 160:src/btphy/rx_task.c **** 		DIE("rx_prepare: no more buf");
+ 161:src/btphy/rx_task.c **** 	pkt = rx_task.rx_pkt = (btctl_rx_pkt_t*)msg_put(rx_task.rx_msg, sizeof(*rx_task.rx_pkt));
+ 263              		.loc 1 161 2 is_stmt 1 view .LVU62
+ 264              	.LVL16:
+ 265              	.LBB123:
+ 266              	.LBI105:
+  62:include/ubtbr/msg.h **** {
+ 267              		.loc 4 62 24 view .LVU63
+ 268              	.LBB118:
+  64:include/ubtbr/msg.h **** 
+ 269              		.loc 4 64 9 view .LVU64
+  66:include/ubtbr/msg.h **** 		DIE("msg_put: short buf\n");
+ 270              		.loc 4 66 9 view .LVU65
+ 271              	.LBB116:
+ 272              	.LBI107:
+  46:include/ubtbr/msg.h **** {
+ 273              		.loc 4 46 19 view .LVU66
+ 274              	.LBB114:
+  48:include/ubtbr/msg.h **** }
+ 275              		.loc 4 48 9 view .LVU67
+ 276              	.LBB112:
+ 277              	.LBI109:
+  32:include/ubtbr/msg.h **** {
+ 278              		.loc 4 32 19 view .LVU68
+ 279              	.LBB111:
+  34:include/ubtbr/msg.h **** }
+ 280              		.loc 4 34 2 view .LVU69
+  34:include/ubtbr/msg.h **** }
+ 281              		.loc 4 34 2 is_stmt 0 view .LVU70
+ 282              	.LBE111:
+ 283              	.LBE112:
+ 284              	.LBE114:
+ 285              	.LBE116:
+  66:include/ubtbr/msg.h **** 		DIE("msg_put: short buf\n");
+ 286              		.loc 4 66 12 view .LVU71
+ 287 0088 44DD     		ble	.L12
+  68:include/ubtbr/msg.h **** 
+ 288              		.loc 4 68 9 is_stmt 1 view .LVU72
+ 289              	.LBE118:
+ 290              	.LBE123:
+ 162:src/btphy/rx_task.c **** 
+ 163:src/btphy/rx_task.c **** 	/* Setup rx packet */
+ 164:src/btphy/rx_task.c **** 	pkt->chan = chan;
+ 165:src/btphy/rx_task.c **** 	pkt->data_size = 0;
+ 291              		.loc 1 165 17 is_stmt 0 view .LVU73
+ 292 008a 0025     		movs	r5, #0
+ 293              	.LBB124:
+ 294              	.LBB119:
+  68:include/ubtbr/msg.h **** 
+ 295              		.loc 4 68 20 view .LVU74
+ 296 008c 03F11C02 		add	r2, r3, #28
+ 297 0090 9A60     		str	r2, [r3, #8]
+ 298              		.loc 4 70 9 is_stmt 1 view .LVU75
+ 299              	.LVL17:
+ 300              		.loc 4 70 9 is_stmt 0 view .LVU76
+ 301              	.LBE119:
+ 302              	.LBE124:
+ARM GAS  /tmp/cctHFqHy.s 			page 14
+
+
+ 164:src/btphy/rx_task.c **** 	pkt->data_size = 0;
+ 303              		.loc 1 164 12 view .LVU77
+ 304 0092 1F75     		strb	r7, [r3, #20]
+ 166:src/btphy/rx_task.c **** 	pkt->clkn = rx_clkn; // clkn at time of execute
+ 305              		.loc 1 166 12 view .LVU78
+ 306 0094 1E61     		str	r6, [r3, #16]	@ unaligned
+ 165:src/btphy/rx_task.c **** 	pkt->clkn = rx_clkn; // clkn at time of execute
+ 307              		.loc 1 165 17 view .LVU79
+ 308 0096 9D75     		strb	r5, [r3, #22]
+ 309 0098 DD75     		strb	r5, [r3, #23]
+ 167:src/btphy/rx_task.c **** 	pkt->flags = 0;
+ 310              		.loc 1 167 13 view .LVU80
+ 311 009a 5D75     		strb	r5, [r3, #21]
+ 168:src/btphy/rx_task.c **** 
+ 169:src/btphy/rx_task.c **** 	bbcodec_init(&rx_task.codec, btphy_whiten_seed(rx_clkn), btphy.chan_uap, 1, rx_task.rx_raw);
+ 312              		.loc 1 169 31 view .LVU81
+ 313 009c 3046     		mov	r0, r6
+ 314              	.LVL18:
+ 161:src/btphy/rx_task.c **** 
+ 315              		.loc 1 161 23 view .LVU82
+ 316 009e E160     		str	r1, [r4, #12]
+ 317              	.LVL19:
+ 164:src/btphy/rx_task.c **** 	pkt->data_size = 0;
+ 318              		.loc 1 164 2 is_stmt 1 view .LVU83
+ 165:src/btphy/rx_task.c **** 	pkt->clkn = rx_clkn; // clkn at time of execute
+ 319              		.loc 1 165 2 view .LVU84
+ 166:src/btphy/rx_task.c **** 	pkt->flags = 0;
+ 320              		.loc 1 166 2 view .LVU85
+ 167:src/btphy/rx_task.c **** 
+ 321              		.loc 1 167 2 view .LVU86
+ 322              		.loc 1 169 2 view .LVU87
+ 323              		.loc 1 169 31 is_stmt 0 view .LVU88
+ 324 00a0 FFF7FEFF 		bl	btphy_whiten_seed
+ 325              	.LVL20:
+ 326              	.LBB125:
+ 327              	.LBB126:
+ 328              		.file 6 "include/ubtbr/codec.h"
+   1:include/ubtbr/codec.h **** #ifndef __CODEC_H
+   2:include/ubtbr/codec.h **** #define __CODEC_H
+   3:include/ubtbr/codec.h **** #include <stdint.h>
+   4:include/ubtbr/codec.h **** #include <ubtbr/bb.h>
+   5:include/ubtbr/codec.h **** 
+   6:include/ubtbr/codec.h **** #define MAX_ACL_SIZE 344
+   7:include/ubtbr/codec.h **** 
+   8:include/ubtbr/codec.h **** /* FIXME: pkt_type interpretation depends on channel's type.
+   9:include/ubtbr/codec.h **** */
+  10:include/ubtbr/codec.h **** typedef struct bbcodec_types_s {
+  11:include/ubtbr/codec.h **** 	uint8_t nslots;		// Slot occupancy
+  12:include/ubtbr/codec.h **** 	uint8_t payload_header_bytes;	// Payload header bytes
+  13:include/ubtbr/codec.h **** 	uint16_t payload_bytes;	// Payload bytes len
+  14:include/ubtbr/codec.h **** 	uint8_t has_fec23;	// Payload is fec23 encoded
+  15:include/ubtbr/codec.h **** 	uint8_t has_crc;	// CRC is applied on payload
+  16:include/ubtbr/codec.h **** } bbcodec_types_t;
+  17:include/ubtbr/codec.h **** 
+  18:include/ubtbr/codec.h **** typedef struct bbcodec_s {
+  19:include/ubtbr/codec.h **** 	// common params 
+  20:include/ubtbr/codec.h **** 	uint8_t uap;	
+ARM GAS  /tmp/cctHFqHy.s 			page 15
+
+
+  21:include/ubtbr/codec.h **** 	int use_whiten;
+  22:include/ubtbr/codec.h **** 	int rx_raw;
+  23:include/ubtbr/codec.h **** 	uint8_t whiten_state;
+  24:include/ubtbr/codec.h **** 	uint16_t crc_state;
+  25:include/ubtbr/codec.h **** 	uint16_t crc_pos;
+  26:include/ubtbr/codec.h **** 	// codec type
+  27:include/ubtbr/codec.h **** 	const bbcodec_types_t *t;
+  28:include/ubtbr/codec.h **** 
+  29:include/ubtbr/codec.h **** 	/* packet size */
+  30:include/ubtbr/codec.h **** 	unsigned payload_length; // length of payload from spec or payload's header
+  31:include/ubtbr/codec.h **** 	unsigned air_bytes;	// total bytes required for rx/tx, incl. (58bits header)+encoded(payload)
+  32:include/ubtbr/codec.h **** 	unsigned coded_total;	// total payload bytes including payload_header, payload_daya, crc
+  33:include/ubtbr/codec.h **** 
+  34:include/ubtbr/codec.h **** 	// decoding state
+  35:include/ubtbr/codec.h **** 	unsigned air_off_b;	// air bit offset (dec: in, enc: out)
+  36:include/ubtbr/codec.h **** 	unsigned coded_pos;	// coded payload position
+  37:include/ubtbr/codec.h **** } bbcodec_t;
+  38:include/ubtbr/codec.h **** 
+  39:include/ubtbr/codec.h **** static inline void bbcodec_init(bbcodec_t *codec,
+  40:include/ubtbr/codec.h **** 		uint32_t whiten_init,
+  41:include/ubtbr/codec.h **** 		uint8_t uap,
+  42:include/ubtbr/codec.h **** 		int use_whiten,
+  43:include/ubtbr/codec.h **** 		int rx_raw)
+  44:include/ubtbr/codec.h **** {
+  45:include/ubtbr/codec.h **** 	codec->uap = uap;
+  46:include/ubtbr/codec.h **** 	codec->use_whiten = use_whiten;
+ 329              		.loc 6 46 20 view .LVU89
+ 330 00a4 0121     		movs	r1, #1
+  47:include/ubtbr/codec.h **** 	codec->rx_raw = rx_raw;
+  48:include/ubtbr/codec.h **** 	codec->crc_state = reverse8(uap)<<8;
+  49:include/ubtbr/codec.h **** 	codec->crc_pos = 0;
+  50:include/ubtbr/codec.h **** 	codec->whiten_state = whiten_init;
+  51:include/ubtbr/codec.h **** 	codec->t = NULL;
+  52:include/ubtbr/codec.h **** 	codec->payload_length = 0;
+ 331              		.loc 6 52 24 view .LVU90
+ 332 00a6 0026     		movs	r6, #0
+ 333              	.LVL21:
+ 334              		.loc 6 52 24 view .LVU91
+ 335 00a8 0027     		movs	r7, #0
+ 336              	.LBE126:
+ 337              	.LBE125:
+ 338              		.loc 1 169 2 view .LVU92
+ 339 00aa 98F81830 		ldrb	r3, [r8, #24]	@ zero_extendqisi2
+ 340              	.LBB135:
+ 341              	.LBB131:
+ 342              	.LBB127:
+ 343              	.LBB128:
+ 344              		.file 7 "include/ubtbr/bb.h"
+   1:include/ubtbr/bb.h **** #ifndef __BB_H
+   2:include/ubtbr/bb.h **** #define __BB_H
+   3:include/ubtbr/bb.h **** #include <stdint.h>
+   4:include/ubtbr/bb.h **** #include <ubertooth_interface.h>
+   5:include/ubtbr/bb.h **** #include <ubtbr/cfg.h>
+   6:include/ubtbr/bb.h **** #include <ubtbr/debug.h>
+   7:include/ubtbr/bb.h **** 
+   8:include/ubtbr/bb.h **** /* BLUETOOTH CORE SPECIFICATION Version 5.1 | Vol 2, Part B | Table 6.2 */
+   9:include/ubtbr/bb.h **** enum bbhdr_type_e {
+ARM GAS  /tmp/cctHFqHy.s 			page 16
+
+
+  10:include/ubtbr/bb.h **** 	BB_TYPE_NULL	= 0,
+  11:include/ubtbr/bb.h **** 	BB_TYPE_POLL	= 1,
+  12:include/ubtbr/bb.h **** 	BB_TYPE_FHS	= 2,
+  13:include/ubtbr/bb.h **** 	BB_TYPE_DM1	= 3,
+  14:include/ubtbr/bb.h **** 	BB_TYPE_DH1	= 4,
+  15:include/ubtbr/bb.h **** 	BB_TYPE_HV1	= 5,
+  16:include/ubtbr/bb.h **** 	BB_TYPE_HV2	= 6,
+  17:include/ubtbr/bb.h **** 	BB_TYPE_HV3	= 7,
+  18:include/ubtbr/bb.h **** 	BB_TYPE_DV	= 8,
+  19:include/ubtbr/bb.h **** 	BB_TYPE_AUX1	= 9,
+  20:include/ubtbr/bb.h **** 	BB_TYPE_DM3	= 10,
+  21:include/ubtbr/bb.h **** 	BB_TYPE_DH3	= 11,
+  22:include/ubtbr/bb.h **** 	BB_TYPE_EV4	= 12,
+  23:include/ubtbr/bb.h **** 	BB_TYPE_EV5	= 13,
+  24:include/ubtbr/bb.h **** 	BB_TYPE_DM5	= 14,
+  25:include/ubtbr/bb.h **** 	BB_TYPE_DH5	= 15,
+  26:include/ubtbr/bb.h **** };
+  27:include/ubtbr/bb.h **** 
+  28:include/ubtbr/bb.h **** typedef struct fhs_info_s {
+  29:include/ubtbr/bb.h **** 	uint64_t bdaddr;
+  30:include/ubtbr/bb.h **** 	uint32_t clk27_2;
+  31:include/ubtbr/bb.h **** 	uint8_t lt_addr;
+  32:include/ubtbr/bb.h **** } fhs_info_t;
+  33:include/ubtbr/bb.h **** 
+  34:include/ubtbr/bb.h **** /* All sizes are excluding the 4bit preamble, which
+  35:include/ubtbr/bb.h ****  * is prepended to the packet by the cc2400 */
+  36:include/ubtbr/bb.h **** #define BB_ACCESS_CODE_SIZE 		68
+  37:include/ubtbr/bb.h **** #define BB_SHORT_ACCESS_CODE_SIZE 	64
+  38:include/ubtbr/bb.h **** #define BB_FEC13_SIZE(n)		((n)*3)
+  39:include/ubtbr/bb.h **** #define BB_FEC23_SIZE(n)		((n)*3/2)
+  40:include/ubtbr/bb.h **** #define BB_HEADER_SIZE			BB_FEC13_SIZE(18)
+  41:include/ubtbr/bb.h **** #define BB_FHS_PKT_SIZE 		(BB_ACCESS_CODE_SIZE+BB_HEADER_SIZE+BB_FEC23_SIZE(160))
+  42:include/ubtbr/bb.h **** #define BB_POLL_PKT_SIZE 		(BB_ACCESS_CODE_SIZE+BB_HEADER_SIZE)
+  43:include/ubtbr/bb.h **** 
+  44:include/ubtbr/bb.h **** #define GIAC 0x9e8b33
+  45:include/ubtbr/bb.h **** 
+  46:include/ubtbr/bb.h **** /* Declare those helpers here, to be able to inline some functions */
+  47:include/ubtbr/bb.h **** // Grab 6 bits from a buffer
+  48:include/ubtbr/bb.h **** #define EXTRACT6_0(p)   ((((((uint8_t*)(p))[0])>>0)&0x3F))
+  49:include/ubtbr/bb.h **** #define EXTRACT6_2(p)   ((((((uint8_t*)(p))[0])>>2)&0x3F))
+  50:include/ubtbr/bb.h **** #define EXTRACT6_4(p)   ((((((uint8_t*)(p))[0])>>4))|(((((uint8_t*)(p))[1])&0x3)<<4))
+  51:include/ubtbr/bb.h **** #define EXTRACT6_6(p)   ((((((uint8_t*)(p))[0])>>6))|(((((uint8_t*)(p))[1])&0xf)<<2))
+  52:include/ubtbr/bb.h **** 
+  53:include/ubtbr/bb.h **** // Grab 15 bits from a buffer
+  54:include/ubtbr/bb.h **** #define EXTRACT15_0(p) ( ((((uint8_t*)(p))[0]     )   ) | ((((uint8_t*)(p))[1]&0x7f)<<8) )
+  55:include/ubtbr/bb.h **** #define EXTRACT15_1(p) ( ((((uint8_t*)(p))[0]&0xfe)>>1) | ((((uint8_t*)(p))[1]     )<<7) )
+  56:include/ubtbr/bb.h **** #define EXTRACT15_2(p) ( ((((uint8_t*)(p))[0]&0xfc)>>2) | ((((uint8_t*)(p))[1]     )<<6) | ((((uint
+  57:include/ubtbr/bb.h **** #define EXTRACT15_3(p) ( ((((uint8_t*)(p))[0]&0xf8)>>3) | ((((uint8_t*)(p))[1]     )<<5) | ((((uint
+  58:include/ubtbr/bb.h **** #define EXTRACT15_4(p) ( ((((uint8_t*)(p))[0]&0xf0)>>4) | ((((uint8_t*)(p))[1]     )<<4) | ((((uint
+  59:include/ubtbr/bb.h **** #define EXTRACT15_5(p) ( ((((uint8_t*)(p))[0]&0xe0)>>5) | ((((uint8_t*)(p))[1]     )<<3) | ((((uint
+  60:include/ubtbr/bb.h **** #define EXTRACT15_6(p) ( ((((uint8_t*)(p))[0]&0xc0)>>6) | ((((uint8_t*)(p))[1]     )<<2) | ((((uint
+  61:include/ubtbr/bb.h **** #define EXTRACT15_7(p) ( ((((uint8_t*)(p))[0]&0x80)>>7) | ((((uint8_t*)(p))[1]     )<<1) | ((((uint
+  62:include/ubtbr/bb.h **** 
+  63:include/ubtbr/bb.h **** // Grab 10 bits from a buffer
+  64:include/ubtbr/bb.h **** #define EXTRACT10_0(p) ( ((((uint8_t*)(p))[0])   ) | ((((uint8_t*)(p))[1]&0x03)<<8) )
+  65:include/ubtbr/bb.h **** #define EXTRACT10_1(p) ( ((((uint8_t*)(p))[0])>>1) | ((((uint8_t*)(p))[1]&0x07)<<7) )
+  66:include/ubtbr/bb.h **** #define EXTRACT10_2(p) ( ((((uint8_t*)(p))[0])>>2) | ((((uint8_t*)(p))[1]&0x0f)<<6) )
+ARM GAS  /tmp/cctHFqHy.s 			page 17
+
+
+  67:include/ubtbr/bb.h **** #define EXTRACT10_3(p) ( ((((uint8_t*)(p))[0])>>3) | ((((uint8_t*)(p))[1]&0x1f)<<5) )
+  68:include/ubtbr/bb.h **** #define EXTRACT10_4(p) ( ((((uint8_t*)(p))[0])>>4) | ((((uint8_t*)(p))[1]&0x3f)<<4) )
+  69:include/ubtbr/bb.h **** #define EXTRACT10_5(p) ( ((((uint8_t*)(p))[0])>>5) | ((((uint8_t*)(p))[1]&0x7f)<<3) )
+  70:include/ubtbr/bb.h **** #define EXTRACT10_6(p) ( ((((uint8_t*)(p))[0])>>6) | ((((uint8_t*)(p))[1]     )<<2) )
+  71:include/ubtbr/bb.h **** #define EXTRACT10_7(p) ( ((((uint8_t*)(p))[0])>>7) | ((((uint8_t*)(p))[1]     )<<1) | ((((uint8_t*)
+  72:include/ubtbr/bb.h **** 
+  73:include/ubtbr/bb.h **** // Encode 10 bytes in buffer (warning: buffer must be zeroed)
+  74:include/ubtbr/bb.h **** #define ENCODE15_0(p,val)  (((uint8_t*)(p))[0] =((val)   ),((uint8_t*)(p))[1]=((val)>>8))
+  75:include/ubtbr/bb.h **** #define ENCODE15_1(p,val)  (((uint8_t*)(p))[0]|=((val)<<1),((uint8_t*)(p))[1]=((val)>>7))
+  76:include/ubtbr/bb.h **** #define ENCODE15_2(p,val)  (((uint8_t*)(p))[0]|=((val)<<2),((uint8_t*)(p))[1]=((val)>>6),((uint8_t*
+  77:include/ubtbr/bb.h **** #define ENCODE15_3(p,val)  (((uint8_t*)(p))[0]|=((val)<<3),((uint8_t*)(p))[1]=((val)>>5),((uint8_t*
+  78:include/ubtbr/bb.h **** #define ENCODE15_4(p,val)  (((uint8_t*)(p))[0]|=((val)<<4),((uint8_t*)(p))[1]=((val)>>4),((uint8_t*
+  79:include/ubtbr/bb.h **** #define ENCODE15_5(p,val)  (((uint8_t*)(p))[0]|=((val)<<5),((uint8_t*)(p))[1]=((val)>>3),((uint8_t*
+  80:include/ubtbr/bb.h **** #define ENCODE15_6(p,val)  (((uint8_t*)(p))[0]|=((val)<<6),((uint8_t*)(p))[1]=((val)>>2),((uint8_t*
+  81:include/ubtbr/bb.h **** #define ENCODE15_7(p,val)  (((uint8_t*)(p))[0]|=((val)<<7),((uint8_t*)(p))[1]=((val)>>1),((uint8_t*
+  82:include/ubtbr/bb.h **** 
+  83:include/ubtbr/bb.h **** // warning: buffer must be zeroed
+  84:include/ubtbr/bb.h **** #define ENCODE10_0(p,val)  (((uint8_t*)(p))[0] =((val)   ),((uint8_t*)(p))[1]=((val)>>8))
+  85:include/ubtbr/bb.h **** #define ENCODE10_1(p,val)  (((uint8_t*)(p))[0]|=((val)<<1),((uint8_t*)(p))[1]=((val)>>7))
+  86:include/ubtbr/bb.h **** #define ENCODE10_2(p,val)  (((uint8_t*)(p))[0]|=((val)<<2),((uint8_t*)(p))[1]=((val)>>6))
+  87:include/ubtbr/bb.h **** #define ENCODE10_3(p,val)  (((uint8_t*)(p))[0]|=((val)<<3),((uint8_t*)(p))[1]=((val)>>5))
+  88:include/ubtbr/bb.h **** #define ENCODE10_4(p,val)  (((uint8_t*)(p))[0]|=((val)<<4),((uint8_t*)(p))[1]=((val)>>4))
+  89:include/ubtbr/bb.h **** #define ENCODE10_5(p,val)  (((uint8_t*)(p))[0]|=((val)<<5),((uint8_t*)(p))[1]=((val)>>3))
+  90:include/ubtbr/bb.h **** #define ENCODE10_6(p,val)  (((uint8_t*)(p))[0]|=((val)<<6),((uint8_t*)(p))[1]=((val)>>2))
+  91:include/ubtbr/bb.h **** #define ENCODE10_7(p,val)  (((uint8_t*)(p))[0]|=((val)<<7),((uint8_t*)(p))[1]=((val)>>1),((uint8_t*
+  92:include/ubtbr/bb.h **** 
+  93:include/ubtbr/bb.h **** #define ENCODE24_0(p,val)  (((uint8_t*)(p))[0] =((val)   ),((uint8_t*)(p))[1]=(val)>>8,((uint8_t*)(
+  94:include/ubtbr/bb.h **** #define ENCODE24_2(p,val)  (((uint8_t*)(p))[0]|=((val)<<2),((uint8_t*)(p))[1]=(val)>>6,((uint8_t*)(
+  95:include/ubtbr/bb.h **** #define ENCODE24_4(p,val)  (((uint8_t*)(p))[0]|=((val)<<4),((uint8_t*)(p))[1]=(val)>>4,((uint8_t*)(
+  96:include/ubtbr/bb.h **** #define ENCODE24_6(p,val)  (((uint8_t*)(p))[0]|=((val)<<6),((uint8_t*)(p))[1]=(val)>>2,((uint8_t*)(
+  97:include/ubtbr/bb.h **** 
+  98:include/ubtbr/bb.h **** #define BYTE_ALIGN(nbits)	(((nbits)+7)>>3)
+  99:include/ubtbr/bb.h **** 
+ 100:include/ubtbr/bb.h **** static inline uint8_t reverse8(uint8_t data)
+ 101:include/ubtbr/bb.h **** {
+ 102:include/ubtbr/bb.h **** 	extern const uint8_t rev8_map[256];
+ 103:include/ubtbr/bb.h ****         return rev8_map[data];
+ 345              		.loc 7 103 24 view .LVU93
+ 346 00ae 1E4A     		ldr	r2, .L13+12
+ 347              	.LBE128:
+ 348              	.LBE127:
+  45:include/ubtbr/codec.h **** 	codec->use_whiten = use_whiten;
+ 349              		.loc 6 45 13 view .LVU94
+ 350 00b0 2374     		strb	r3, [r4, #16]
+  48:include/ubtbr/codec.h **** 	codec->crc_pos = 0;
+ 351              		.loc 6 48 21 view .LVU95
+ 352 00b2 D35C     		ldrb	r3, [r2, r3]	@ zero_extendqisi2
+ 353              	.LBE131:
+ 354              	.LBE135:
+ 355              		.loc 1 169 2 view .LVU96
+ 356 00b4 94F85622 		ldrb	r2, [r4, #598]	@ zero_extendqisi2
+ 357              	.LBB136:
+ 358              	.LBB132:
+  48:include/ubtbr/codec.h **** 	codec->crc_pos = 0;
+ 359              		.loc 6 48 34 view .LVU97
+ 360 00b8 1B02     		lsls	r3, r3, #8
+  50:include/ubtbr/codec.h **** 	codec->t = NULL;
+ARM GAS  /tmp/cctHFqHy.s 			page 18
+
+
+ 361              		.loc 6 50 22 view .LVU98
+ 362 00ba 2077     		strb	r0, [r4, #28]
+  46:include/ubtbr/codec.h **** 	codec->rx_raw = rx_raw;
+ 363              		.loc 6 46 20 view .LVU99
+ 364 00bc 6161     		str	r1, [r4, #20]
+ 365              	.LBE132:
+ 366              	.LBE136:
+ 170:src/btphy/rx_task.c **** 	rx_task.pkt_time = 0;
+ 171:src/btphy/rx_task.c **** 	rx_task.rx_done = 0;
+ 172:src/btphy/rx_task.c **** 	rx_task.rx_offset = 0;
+ 173:src/btphy/rx_task.c **** 	/* Configure DMA RX */
+ 174:src/btphy/rx_task.c **** 	dma_init_rx_single(rx_task.rx_dma_buf, sizeof(rx_task.rx_dma_buf));
+ 367              		.loc 1 174 2 view .LVU100
+ 368 00be 04F13D00 		add	r0, r4, #61
+ 369 00c2 4FF40471 		mov	r1, #528
+ 370              	.LBB137:
+ 371              	.LBB133:
+  48:include/ubtbr/codec.h **** 	codec->crc_pos = 0;
+ 372              		.loc 6 48 19 view .LVU101
+ 373 00c6 E383     		strh	r3, [r4, #30]	@ movhi
+  47:include/ubtbr/codec.h **** 	codec->crc_state = reverse8(uap)<<8;
+ 374              		.loc 6 47 16 view .LVU102
+ 375 00c8 A261     		str	r2, [r4, #24]
+ 376              		.loc 6 52 24 view .LVU103
+ 377 00ca C4E90A67 		strd	r6, [r4, #40]
+ 378 00ce C4E90C67 		strd	r6, [r4, #48]
+  49:include/ubtbr/codec.h **** 	codec->whiten_state = whiten_init;
+ 379              		.loc 6 49 17 view .LVU104
+ 380 00d2 2584     		strh	r5, [r4, #32]	@ movhi
+  51:include/ubtbr/codec.h **** 	codec->payload_length = 0;
+ 381              		.loc 6 51 11 view .LVU105
+ 382 00d4 6562     		str	r5, [r4, #36]
+  53:include/ubtbr/codec.h **** 	codec->air_off_b = 0;
+  54:include/ubtbr/codec.h **** 	codec->air_bytes = 0;
+  55:include/ubtbr/codec.h **** 	codec->coded_total = 0;
+  56:include/ubtbr/codec.h **** 	codec->coded_pos = 0;
+ 383              		.loc 6 56 19 view .LVU106
+ 384 00d6 A563     		str	r5, [r4, #56]
+ 385              	.LBE133:
+ 386              	.LBE137:
+ 170:src/btphy/rx_task.c **** 	rx_task.rx_done = 0;
+ 387              		.loc 1 170 19 view .LVU107
+ 388 00d8 A4F84E52 		strh	r5, [r4, #590]	@ movhi
+ 171:src/btphy/rx_task.c **** 	rx_task.rx_offset = 0;
+ 389              		.loc 1 171 18 view .LVU108
+ 390 00dc 84F85452 		strb	r5, [r4, #596]
+ 172:src/btphy/rx_task.c **** 	/* Configure DMA RX */
+ 391              		.loc 1 172 20 view .LVU109
+ 392 00e0 C4F85052 		str	r5, [r4, #592]
+ 393              	.LVL22:
+ 394              	.LBB138:
+ 395              	.LBI125:
+  39:include/ubtbr/codec.h **** 		uint32_t whiten_init,
+ 396              		.loc 6 39 20 is_stmt 1 view .LVU110
+ 397              	.LBB134:
+  45:include/ubtbr/codec.h **** 	codec->use_whiten = use_whiten;
+ 398              		.loc 6 45 2 view .LVU111
+ARM GAS  /tmp/cctHFqHy.s 			page 19
+
+
+  46:include/ubtbr/codec.h **** 	codec->rx_raw = rx_raw;
+ 399              		.loc 6 46 2 view .LVU112
+  47:include/ubtbr/codec.h **** 	codec->crc_state = reverse8(uap)<<8;
+ 400              		.loc 6 47 2 view .LVU113
+  48:include/ubtbr/codec.h **** 	codec->crc_pos = 0;
+ 401              		.loc 6 48 2 view .LVU114
+ 402              	.LBB130:
+ 403              	.LBI127:
+ 100:include/ubtbr/bb.h **** {
+ 404              		.loc 7 100 23 view .LVU115
+ 405              	.LBB129:
+ 102:include/ubtbr/bb.h ****         return rev8_map[data];
+ 406              		.loc 7 102 2 view .LVU116
+ 407              		.loc 7 103 9 view .LVU117
+ 408              		.loc 7 103 9 is_stmt 0 view .LVU118
+ 409              	.LBE129:
+ 410              	.LBE130:
+  49:include/ubtbr/codec.h **** 	codec->whiten_state = whiten_init;
+ 411              		.loc 6 49 2 is_stmt 1 view .LVU119
+  50:include/ubtbr/codec.h **** 	codec->t = NULL;
+ 412              		.loc 6 50 2 view .LVU120
+  51:include/ubtbr/codec.h **** 	codec->payload_length = 0;
+ 413              		.loc 6 51 2 view .LVU121
+  52:include/ubtbr/codec.h **** 	codec->air_off_b = 0;
+ 414              		.loc 6 52 2 view .LVU122
+  53:include/ubtbr/codec.h **** 	codec->air_bytes = 0;
+ 415              		.loc 6 53 2 view .LVU123
+  54:include/ubtbr/codec.h **** 	codec->coded_total = 0;
+ 416              		.loc 6 54 2 view .LVU124
+  55:include/ubtbr/codec.h **** 	codec->coded_pos = 0;
+ 417              		.loc 6 55 2 view .LVU125
+ 418              		.loc 6 56 2 view .LVU126
+ 419              		.loc 6 56 2 is_stmt 0 view .LVU127
+ 420              	.LBE134:
+ 421              	.LBE138:
+ 170:src/btphy/rx_task.c **** 	rx_task.rx_done = 0;
+ 422              		.loc 1 170 2 is_stmt 1 view .LVU128
+ 171:src/btphy/rx_task.c **** 	rx_task.rx_offset = 0;
+ 423              		.loc 1 171 2 view .LVU129
+ 172:src/btphy/rx_task.c **** 	/* Configure DMA RX */
+ 424              		.loc 1 172 2 view .LVU130
+ 425              		.loc 1 174 2 view .LVU131
+ 426 00e4 FFF7FEFF 		bl	dma_init_rx_single
+ 427              	.LVL23:
+ 175:src/btphy/rx_task.c **** 
+ 176:src/btphy/rx_task.c **** 	/* Start SPI DMA */
+ 177:src/btphy/rx_task.c **** 	dio_ssp_start_rx();
+ 428              		.loc 1 177 2 view .LVU132
+ 429 00e8 FFF7FEFF 		bl	dio_ssp_start_rx
+ 430              	.LVL24:
+ 178:src/btphy/rx_task.c **** 
+ 179:src/btphy/rx_task.c **** 
+ 180:src/btphy/rx_task.c **** 	return 0; 
+ 431              		.loc 1 180 2 view .LVU133
+ 181:src/btphy/rx_task.c **** }
+ 432              		.loc 1 181 1 is_stmt 0 view .LVU134
+ 433 00ec 2846     		mov	r0, r5
+ARM GAS  /tmp/cctHFqHy.s 			page 20
+
+
+ 434 00ee BDE8F081 		pop	{r4, r5, r6, r7, r8, pc}
+ 435              	.LVL25:
+ 436              	.L2:
+ 437              	.LBB139:
+ 438              	.LBB74:
+  55:include/ubtbr/btphy.h **** 	{
+ 439              		.loc 2 55 2 view .LVU135
+ 440 00f2 052B     		cmp	r3, #5
+ 441 00f4 8ED1     		bne	.L4
+  60:include/ubtbr/btphy.h **** 	default:
+ 442              		.loc 2 60 3 is_stmt 1 view .LVU136
+ 443              	.LBE74:
+ 444              	.LBE139:
+ 139:src/btphy/rx_task.c **** 	btctl_rx_pkt_t *pkt;
+ 445              		.loc 1 139 11 is_stmt 0 view .LVU137
+ 446 00f6 D8F80860 		ldr	r6, [r8, #8]
+ 447 00fa 0136     		adds	r6, r6, #1
+ 448              	.LVL26:
+ 140:src/btphy/rx_task.c **** 
+ 449              		.loc 1 140 2 is_stmt 1 view .LVU138
+ 146:src/btphy/rx_task.c **** 		hop_increment();
+ 450              		.loc 1 146 2 view .LVU139
+ 451 00fc 8DE7     		b	.L7
+ 452              	.LVL27:
+ 453              	.L11:
+ 454              	.LBB140:
+ 455              	.LBB75:
+  60:include/ubtbr/btphy.h **** 	default:
+ 456              		.loc 2 60 3 view .LVU140
+ 457              	.LBE75:
+ 458              	.LBE140:
+ 139:src/btphy/rx_task.c **** 	btctl_rx_pkt_t *pkt;
+ 459              		.loc 1 139 11 is_stmt 0 view .LVU141
+ 460 00fe D8F80860 		ldr	r6, [r8, #8]
+ 146:src/btphy/rx_task.c **** 		hop_increment();
+ 461              		.loc 1 146 5 view .LVU142
+ 462 0102 032B     		cmp	r3, #3
+ 139:src/btphy/rx_task.c **** 	btctl_rx_pkt_t *pkt;
+ 463              		.loc 1 139 11 view .LVU143
+ 464 0104 06F10106 		add	r6, r6, #1
+ 465              	.LVL28:
+ 140:src/btphy/rx_task.c **** 
+ 466              		.loc 1 140 2 is_stmt 1 view .LVU144
+ 146:src/btphy/rx_task.c **** 		hop_increment();
+ 467              		.loc 1 146 2 view .LVU145
+ 146:src/btphy/rx_task.c **** 		hop_increment();
+ 468              		.loc 1 146 5 is_stmt 0 view .LVU146
+ 469 0108 87D1     		bne	.L7
+ 147:src/btphy/rx_task.c **** 	chan = hop_channel(rx_clkn);
+ 470              		.loc 1 147 3 is_stmt 1 view .LVU147
+ 471              	.LBB141:
+ 472              	.LBI141:
+ 473              		.file 8 "include/ubtbr/hop.h"
+   1:include/ubtbr/hop.h **** #ifndef __HOP_H
+   2:include/ubtbr/hop.h **** #define __HOP_H
+   3:include/ubtbr/hop.h **** #include <stdint.h>
+   4:include/ubtbr/hop.h **** #include <ubertooth_interface.h>
+ARM GAS  /tmp/cctHFqHy.s 			page 21
+
+
+   5:include/ubtbr/hop.h **** 
+   6:include/ubtbr/hop.h **** typedef struct hop_state_s {
+   7:include/ubtbr/hop.h **** 	uint8_t a27_23, a22_19, C, E;
+   8:include/ubtbr/hop.h **** 	uint16_t a18_10;
+   9:include/ubtbr/hop.h **** 	uint8_t x;
+  10:include/ubtbr/hop.h **** 	/* frequency register bank */
+  11:include/ubtbr/hop.h **** 	uint8_t basic_bank[NUM_BREDR_CHANNELS];
+  12:include/ubtbr/hop.h **** 	uint8_t afh_bank[NUM_BREDR_CHANNELS];
+  13:include/ubtbr/hop.h **** 	uint8_t afh_chan_count;
+  14:include/ubtbr/hop.h **** 	uint8_t afh_enabled;
+  15:include/ubtbr/hop.h **** 	uint8_t *bank;
+  16:include/ubtbr/hop.h **** 	uint8_t chan_count;
+  17:include/ubtbr/hop.h **** } hop_state_t;
+  18:include/ubtbr/hop.h **** 
+  19:include/ubtbr/hop.h **** void hop_init(uint32_t address);
+  20:include/ubtbr/hop.h **** uint8_t hop_basic(uint32_t clk);
+  21:include/ubtbr/hop.h **** uint8_t hop_inquiry(uint32_t clk);
+  22:include/ubtbr/hop.h **** uint8_t hop_channel(uint32_t clk);
+  23:include/ubtbr/hop.h **** void hop_cfg_afh(uint8_t* buf);
+  24:include/ubtbr/hop.h **** 
+  25:include/ubtbr/hop.h **** /* FIXME ?*/
+  26:include/ubtbr/hop.h **** extern hop_state_t hop_state;
+  27:include/ubtbr/hop.h **** 
+  28:include/ubtbr/hop.h **** static inline uint8_t perm5(uint8_t z, uint8_t p_high, uint16_t p_low)
+  29:include/ubtbr/hop.h **** {
+  30:include/ubtbr/hop.h **** 	extern uint8_t perm5_lut[2][4096];
+  31:include/ubtbr/hop.h **** 	uint16_t p = (p_low&0x1ff)|((p_high&0x1f)<<9);
+  32:include/ubtbr/hop.h **** 
+  33:include/ubtbr/hop.h **** 	z &= 0x1f;
+  34:include/ubtbr/hop.h **** 	z = perm5_lut[0][(((p>>7))<<5)|z];
+  35:include/ubtbr/hop.h **** 	z = perm5_lut[1][((0x7f&(p>>0))<<5)|z];
+  36:include/ubtbr/hop.h **** 
+  37:include/ubtbr/hop.h **** 	return z;
+  38:include/ubtbr/hop.h **** }
+  39:include/ubtbr/hop.h **** 
+  40:include/ubtbr/hop.h **** /* This function increment the x variable of for paging/inquiry hopping.
+  41:include/ubtbr/hop.h ****  * It must be called before each master's transmission. */
+  42:include/ubtbr/hop.h **** static inline void hop_increment(void)
+ 474              		.loc 8 42 20 view .LVU148
+ 475              	.LBB142:
+  43:include/ubtbr/hop.h **** {
+  44:include/ubtbr/hop.h **** 	hop_state.x++;
+ 476              		.loc 8 44 2 view .LVU149
+ 477              		.loc 8 44 13 is_stmt 0 view .LVU150
+ 478 010a 084A     		ldr	r2, .L13+16
+ 479              	.LVL29:
+ 480              		.loc 8 44 13 view .LVU151
+ 481 010c 9379     		ldrb	r3, [r2, #6]	@ zero_extendqisi2
+ 482 010e 0133     		adds	r3, r3, #1
+ 483 0110 9371     		strb	r3, [r2, #6]
+  45:include/ubtbr/hop.h **** }
+ 484              		.loc 8 45 1 view .LVU152
+ 485 0112 82E7     		b	.L7
+ 486              	.LVL30:
+ 487              	.L12:
+ 488              		.loc 8 45 1 view .LVU153
+ 489              	.LBE142:
+ARM GAS  /tmp/cctHFqHy.s 			page 22
+
+
+ 490              	.LBE141:
+ 491              	.LBB143:
+ 492              	.LBB120:
+  67:include/ubtbr/msg.h ****         msg->write += len;
+ 493              		.loc 4 67 3 is_stmt 1 view .LVU154
+ 494 0114 0648     		ldr	r0, .L13+20
+ 495              	.LVL31:
+  67:include/ubtbr/msg.h ****         msg->write += len;
+ 496              		.loc 4 67 3 is_stmt 0 view .LVU155
+ 497 0116 FFF7FEFF 		bl	die
+ 498              	.LVL32:
+ 499              	.L14:
+  67:include/ubtbr/msg.h ****         msg->write += len;
+ 500              		.loc 4 67 3 view .LVU156
+ 501 011a 00BF     		.align	2
+ 502              	.L13:
+ 503 011c 00000000 		.word	rf_state
+ 504 0120 38C00920 		.word	537509944
+ 505 0124 00000000 		.word	.LANCHOR0
+ 506 0128 00000000 		.word	rev8_map
+ 507 012c 00000000 		.word	hop_state
+ 508 0130 00000000 		.word	.LC0
+ 509 0134 00000000 		.word	btphy
+ 510              	.LBE120:
+ 511              	.LBE143:
+ 512              		.cfi_endproc
+ 513              	.LFE41:
+ 515              		.section	.rodata.str1.4
+ 516 0019 000000   		.align	2
+ 517              	.LC1:
+ 518 001c 4449457C 		.ascii	"DIE|rxnd: no rx_pkt\012\000"
+ 518      72786E64 
+ 518      3A206E6F 
+ 518      2072785F 
+ 518      706B740A 
+ 519 0031 000000   		.align	2
+ 520              	.LC2:
+ 521 0034 4449457C 		.ascii	"DIE|rxnd: no pkt_cb\012\000"
+ 521      72786E64 
+ 521      3A206E6F 
+ 521      20706B74 
+ 521      5F63620A 
+ 522              		.section	.text.rx_finalize,"ax",%progbits
+ 523              		.align	1
+ 524              		.p2align 2,,3
+ 525              		.syntax unified
+ 526              		.thumb
+ 527              		.thumb_func
+ 528              		.fpu softvfp
+ 530              	rx_finalize:
+ 531              	.LFB40:
+  95:src/btphy/rx_task.c **** 	int rc;
+ 532              		.loc 1 95 1 is_stmt 1 view -0
+ 533              		.cfi_startproc
+ 534              		@ args = 0, pretend = 0, frame = 0
+ 535              		@ frame_needed = 0, uses_anonymous_args = 0
+ 536 0000 2DE9F047 		push	{r4, r5, r6, r7, r8, r9, r10, lr}
+ARM GAS  /tmp/cctHFqHy.s 			page 23
+
+
+ 537              		.cfi_def_cfa_offset 32
+ 538              		.cfi_offset 4, -32
+ 539              		.cfi_offset 5, -28
+ 540              		.cfi_offset 6, -24
+ 541              		.cfi_offset 7, -20
+ 542              		.cfi_offset 8, -16
+ 543              		.cfi_offset 9, -12
+ 544              		.cfi_offset 10, -8
+ 545              		.cfi_offset 14, -4
+  96:src/btphy/rx_task.c **** 	uint32_t i, size;
+ 546              		.loc 1 96 2 view .LVU158
+  97:src/btphy/rx_task.c **** 	uint16_t rx_size;
+ 547              		.loc 1 97 2 view .LVU159
+  98:src/btphy/rx_task.c **** 	msg_t *msg = rx_task.rx_msg;
+ 548              		.loc 1 98 2 view .LVU160
+  99:src/btphy/rx_task.c **** 	btctl_rx_pkt_t *pkt = rx_task.rx_pkt;
+ 549              		.loc 1 99 2 view .LVU161
+  99:src/btphy/rx_task.c **** 	btctl_rx_pkt_t *pkt = rx_task.rx_pkt;
+ 550              		.loc 1 99 9 is_stmt 0 view .LVU162
+ 551 0004 2E4D     		ldr	r5, .L28
+ 552              	.LBB152:
+ 553              	.LBB153:
+  41:include/ubtbr/rf.h **** 	TXLED_CLR;
+ 554              		.loc 3 41 2 view .LVU163
+ 555 0006 6420     		movs	r0, #100
+ 556              	.LBE153:
+ 557              	.LBE152:
+ 100:src/btphy/rx_task.c **** 
+ 558              		.loc 1 100 18 view .LVU164
+ 559 0008 D5E90264 		ldrd	r6, r4, [r5, #8]
+ 560              	.LVL33:
+ 103:src/btphy/rx_task.c **** 	dio_ssp_stop();
+ 561              		.loc 1 103 2 is_stmt 1 view .LVU165
+ 562              	.LBB155:
+ 563              	.LBI152:
+  39:include/ubtbr/rf.h **** {
+ 564              		.loc 3 39 20 view .LVU166
+ 565              	.LBB154:
+  41:include/ubtbr/rf.h **** 	TXLED_CLR;
+ 566              		.loc 3 41 2 view .LVU167
+ 567 000c FFF7FEFF 		bl	cc2400_strobe
+ 568              	.LVL34:
+  42:include/ubtbr/rf.h **** 	RXLED_CLR;
+ 569              		.loc 3 42 2 view .LVU168
+ 570 0010 4FF48071 		mov	r1, #256
+  43:include/ubtbr/rf.h **** }
+ 571              		.loc 3 43 2 is_stmt 0 view .LVU169
+ 572 0014 1022     		movs	r2, #16
+  42:include/ubtbr/rf.h **** 	RXLED_CLR;
+ 573              		.loc 3 42 2 view .LVU170
+ 574 0016 2B4B     		ldr	r3, .L28+4
+ 575 0018 1960     		str	r1, [r3]
+  43:include/ubtbr/rf.h **** }
+ 576              		.loc 3 43 2 is_stmt 1 view .LVU171
+ 577 001a 1A60     		str	r2, [r3]
+ 578              	.LBE154:
+ 579              	.LBE155:
+ARM GAS  /tmp/cctHFqHy.s 			page 24
+
+
+ 104:src/btphy/rx_task.c **** 
+ 580              		.loc 1 104 2 view .LVU172
+ 581 001c FFF7FEFF 		bl	dio_ssp_stop
+ 582              	.LVL35:
+ 106:src/btphy/rx_task.c **** 		DIE("rxnd: no rx_pkt");
+ 583              		.loc 1 106 2 view .LVU173
+ 106:src/btphy/rx_task.c **** 		DIE("rxnd: no rx_pkt");
+ 584              		.loc 1 106 5 is_stmt 0 view .LVU174
+ 585 0020 002C     		cmp	r4, #0
+ 586 0022 49D0     		beq	.L25
+ 108:src/btphy/rx_task.c **** 		DIE("rxnd: no pkt_cb");
+ 587              		.loc 1 108 2 is_stmt 1 view .LVU175
+ 108:src/btphy/rx_task.c **** 		DIE("rxnd: no pkt_cb");
+ 588              		.loc 1 108 14 is_stmt 0 view .LVU176
+ 589 0024 2F68     		ldr	r7, [r5]
+ 108:src/btphy/rx_task.c **** 		DIE("rxnd: no pkt_cb");
+ 590              		.loc 1 108 5 view .LVU177
+ 591 0026 002F     		cmp	r7, #0
+ 592 0028 43D0     		beq	.L26
+ 111:src/btphy/rx_task.c **** 	{
+ 593              		.loc 1 111 2 is_stmt 1 view .LVU178
+ 111:src/btphy/rx_task.c **** 	{
+ 594              		.loc 1 111 5 is_stmt 0 view .LVU179
+ 595 002a 6379     		ldrb	r3, [r4, #5]	@ zero_extendqisi2
+ 596 002c 13F00203 		ands	r3, r3, #2
+ 597 0030 1DD1     		bne	.L27
+ 121:src/btphy/rx_task.c **** 	}
+ 598              		.loc 1 121 3 is_stmt 1 view .LVU180
+ 121:src/btphy/rx_task.c **** 	}
+ 599              		.loc 1 121 18 is_stmt 0 view .LVU181
+ 600 0032 0C21     		movs	r1, #12
+ 601 0034 A371     		strb	r3, [r4, #6]
+ 602 0036 E371     		strb	r3, [r4, #7]
+ 603              	.L20:
+ 124:src/btphy/rx_task.c **** 
+ 604              		.loc 1 124 2 is_stmt 1 view .LVU182
+ 605 0038 AA68     		ldr	r2, [r5, #8]
+ 606 003a 0C44     		add	r4, r4, r1
+ 607              	.LVL36:
+ 608              	.LBB156:
+ 609              	.LBI156:
+  53:include/ubtbr/msg.h **** {
+ 610              		.loc 4 53 19 view .LVU183
+ 611              	.LBB157:
+  55:include/ubtbr/msg.h ****                 return -1;
+ 612              		.loc 4 55 2 view .LVU184
+  55:include/ubtbr/msg.h ****                 return -1;
+ 613              		.loc 4 55 12 is_stmt 0 view .LVU185
+ 614 003c 02F10C03 		add	r3, r2, #12
+  55:include/ubtbr/msg.h ****                 return -1;
+ 615              		.loc 4 55 5 view .LVU186
+ 616 0040 9C42     		cmp	r4, r3
+ 617 0042 04D3     		bcc	.L23
+  55:include/ubtbr/msg.h ****                 return -1;
+ 618              		.loc 4 55 51 view .LVU187
+ 619 0044 5188     		ldrh	r1, [r2, #2]
+  55:include/ubtbr/msg.h ****                 return -1;
+ARM GAS  /tmp/cctHFqHy.s 			page 25
+
+
+ 620              		.loc 4 55 46 view .LVU188
+ 621 0046 0B44     		add	r3, r3, r1
+  55:include/ubtbr/msg.h ****                 return -1;
+ 622              		.loc 4 55 24 view .LVU189
+ 623 0048 9C42     		cmp	r4, r3
+  57:include/ubtbr/msg.h **** 
+ 624              		.loc 4 57 9 is_stmt 1 view .LVU190
+  57:include/ubtbr/msg.h **** 
+ 625              		.loc 4 57 20 is_stmt 0 view .LVU191
+ 626 004a 98BF     		it	ls
+ 627 004c 9460     		strls	r4, [r2, #8]
+  59:include/ubtbr/msg.h **** }
+ 628              		.loc 4 59 9 is_stmt 1 view .LVU192
+ 629              	.L23:
+ 630              	.LVL37:
+  59:include/ubtbr/msg.h **** }
+ 631              		.loc 4 59 9 is_stmt 0 view .LVU193
+ 632              	.LBE157:
+ 633              	.LBE156:
+ 128:src/btphy/rx_task.c **** 	rx_task.rx_pkt = NULL;
+ 634              		.loc 1 128 2 is_stmt 1 view .LVU194
+ 129:src/btphy/rx_task.c **** 
+ 635              		.loc 1 129 2 view .LVU195
+ 128:src/btphy/rx_task.c **** 	rx_task.rx_pkt = NULL;
+ 636              		.loc 1 128 17 is_stmt 0 view .LVU196
+ 637 004e 4FF00008 		mov	r8, #0
+ 638 0052 4FF00009 		mov	r9, #0
+ 132:src/btphy/rx_task.c **** }
+ 639              		.loc 1 132 45 view .LVU197
+ 640 0056 B5F84E22 		ldrh	r2, [r5, #590]
+ 132:src/btphy/rx_task.c **** }
+ 641              		.loc 1 132 2 view .LVU198
+ 642 005a 3046     		mov	r0, r6
+ 643 005c 3B46     		mov	r3, r7
+ 128:src/btphy/rx_task.c **** 	rx_task.rx_pkt = NULL;
+ 644              		.loc 1 128 17 view .LVU199
+ 645 005e C5E90289 		strd	r8, [r5, #8]
+ 132:src/btphy/rx_task.c **** }
+ 646              		.loc 1 132 2 is_stmt 1 view .LVU200
+ 647 0062 6968     		ldr	r1, [r5, #4]
+ 648 0064 A2F26222 		subw	r2, r2, #610
+ 133:src/btphy/rx_task.c **** 
+ 649              		.loc 1 133 1 is_stmt 0 view .LVU201
+ 650 0068 BDE8F047 		pop	{r4, r5, r6, r7, r8, r9, r10, lr}
+ 651              		.cfi_remember_state
+ 652              		.cfi_restore 14
+ 653              		.cfi_restore 10
+ 654              		.cfi_restore 9
+ 655              		.cfi_restore 8
+ 656              		.cfi_restore 7
+ 657              		.cfi_restore 6
+ 658              		.cfi_restore 5
+ 659              		.cfi_restore 4
+ 660              		.cfi_def_cfa_offset 0
+ 132:src/btphy/rx_task.c **** }
+ 661              		.loc 1 132 2 view .LVU202
+ 662 006c 1847     		bx	r3
+ARM GAS  /tmp/cctHFqHy.s 			page 26
+
+
+ 663              	.LVL38:
+ 664              	.L27:
+ 665              		.cfi_restore_state
+ 114:src/btphy/rx_task.c **** 
+ 666              		.loc 1 114 3 is_stmt 1 view .LVU203
+ 667              	.LBB158:
+ 668              	.LBI158:
+  78:src/btphy/rx_task.c **** {
+ 669              		.loc 1 78 17 view .LVU204
+ 670              	.LBB159:
+  80:src/btphy/rx_task.c **** 
+ 671              		.loc 1 80 2 view .LVU205
+  80:src/btphy/rx_task.c **** 
+ 672              		.loc 1 80 21 is_stmt 0 view .LVU206
+ 673 006e FFF7FEFF 		bl	dma_get_rx_offset
+ 674              	.LVL39:
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 675              		.loc 1 83 7 view .LVU207
+ 676 0072 D5F85032 		ldr	r3, [r5, #592]
+  80:src/btphy/rx_task.c **** 
+ 677              		.loc 1 80 21 view .LVU208
+ 678 0076 0746     		mov	r7, r0
+ 679              	.LVL40:
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 680              		.loc 1 83 2 is_stmt 1 view .LVU209
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 681              		.loc 1 83 26 view .LVU210
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 682              		.loc 1 83 2 is_stmt 0 view .LVU211
+ 683 0078 9842     		cmp	r0, r3
+ 684 007a 0BD9     		bls	.L22
+ 685 007c 3D33     		adds	r3, r3, #61
+ 686              	.LVL41:
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 687              		.loc 1 83 2 view .LVU212
+ 688 007e 05F13D01 		add	r1, r5, #61
+ 689 0082 1148     		ldr	r0, .L28+8
+ 690              	.LVL42:
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 691              		.loc 1 83 2 view .LVU213
+ 692 0084 2B44     		add	r3, r3, r5
+ 693 0086 3944     		add	r1, r1, r7
+ 694              	.LVL43:
+ 695              	.L21:
+  84:src/btphy/rx_task.c **** 	rx_task.rx_offset = size;
+ 696              		.loc 1 84 3 is_stmt 1 view .LVU214
+  84:src/btphy/rx_task.c **** 	rx_task.rx_offset = size;
+ 697              		.loc 1 84 27 is_stmt 0 view .LVU215
+ 698 0088 1A78     		ldrb	r2, [r3]	@ zero_extendqisi2
+ 699              	.LVL44:
+ 700              	.LBB160:
+ 701              	.LBI160:
+ 100:include/ubtbr/bb.h **** {
+ 702              		.loc 7 100 23 is_stmt 1 view .LVU216
+ 703              	.LBB161:
+ 102:include/ubtbr/bb.h ****         return rev8_map[data];
+ 704              		.loc 7 102 2 view .LVU217
+ARM GAS  /tmp/cctHFqHy.s 			page 27
+
+
+ 705              		.loc 7 103 9 view .LVU218
+ 706              		.loc 7 103 9 is_stmt 0 view .LVU219
+ 707              	.LBE161:
+ 708              	.LBE160:
+  84:src/btphy/rx_task.c **** 	rx_task.rx_offset = size;
+ 709              		.loc 1 84 25 view .LVU220
+ 710 008a 825C     		ldrb	r2, [r0, r2]	@ zero_extendqisi2
+ 711 008c 03F8012B 		strb	r2, [r3], #1
+ 712              	.LVL45:
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 713              		.loc 1 83 33 is_stmt 1 view .LVU221
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 714              		.loc 1 83 26 view .LVU222
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 715              		.loc 1 83 2 is_stmt 0 view .LVU223
+ 716 0090 8B42     		cmp	r3, r1
+ 717 0092 F9D1     		bne	.L21
+ 718              	.LVL46:
+ 719              	.L22:
+  85:src/btphy/rx_task.c **** 
+ 720              		.loc 1 85 2 is_stmt 1 view .LVU224
+ 721              	.LBE159:
+ 722              	.LBE158:
+ 117:src/btphy/rx_task.c **** 	}
+ 723              		.loc 1 117 17 is_stmt 0 view .LVU225
+ 724 0094 04F10C01 		add	r1, r4, #12
+ 725 0098 0C48     		ldr	r0, .L28+12
+ 726 009a A21D     		adds	r2, r4, #6
+ 727              	.LBB163:
+ 728              	.LBB162:
+  85:src/btphy/rx_task.c **** 
+ 729              		.loc 1 85 20 view .LVU226
+ 730 009c C5F85072 		str	r7, [r5, #592]
+  88:src/btphy/rx_task.c **** 		return size-4;
+ 731              		.loc 1 88 2 is_stmt 1 view .LVU227
+ 732              	.LVL47:
+  88:src/btphy/rx_task.c **** 		return size-4;
+ 733              		.loc 1 88 2 is_stmt 0 view .LVU228
+ 734              	.LBE162:
+ 735              	.LBE163:
+ 117:src/btphy/rx_task.c **** 	}
+ 736              		.loc 1 117 3 is_stmt 1 view .LVU229
+ 117:src/btphy/rx_task.c **** 	}
+ 737              		.loc 1 117 17 is_stmt 0 view .LVU230
+ 738 00a0 FFF7FEFF 		bl	bbcodec_decode_finalize
+ 739              	.LVL48:
+ 117:src/btphy/rx_task.c **** 	}
+ 740              		.loc 1 117 14 view .LVU231
+ 741 00a4 6379     		ldrb	r3, [r4, #5]	@ zero_extendqisi2
+ 742 00a6 E188     		ldrh	r1, [r4, #6]	@ unaligned
+ 743 00a8 1843     		orrs	r0, r0, r3
+ 744 00aa 2F68     		ldr	r7, [r5]
+ 745 00ac 6071     		strb	r0, [r4, #5]
+ 746 00ae 0C31     		adds	r1, r1, #12
+ 747 00b0 C2E7     		b	.L20
+ 748              	.L26:
+ 109:src/btphy/rx_task.c **** 
+ARM GAS  /tmp/cctHFqHy.s 			page 28
+
+
+ 749              		.loc 1 109 3 is_stmt 1 view .LVU232
+ 750 00b2 0748     		ldr	r0, .L28+16
+ 751 00b4 FFF7FEFF 		bl	die
+ 752              	.LVL49:
+ 753              	.L25:
+ 107:src/btphy/rx_task.c **** 	if (!rx_task.pkt_cb)
+ 754              		.loc 1 107 3 view .LVU233
+ 755 00b8 0648     		ldr	r0, .L28+20
+ 756 00ba FFF7FEFF 		bl	die
+ 757              	.LVL50:
+ 758              	.L29:
+ 759 00be 00BF     		.align	2
+ 760              	.L28:
+ 761 00c0 00000000 		.word	.LANCHOR0
+ 762 00c4 3CC00920 		.word	537509948
+ 763 00c8 00000000 		.word	rev8_map
+ 764 00cc 10000000 		.word	.LANCHOR0+16
+ 765 00d0 34000000 		.word	.LC2
+ 766 00d4 1C000000 		.word	.LC1
+ 767              		.cfi_endproc
+ 768              	.LFE40:
+ 770              		.section	.rodata.str1.4
+ 771 0049 000000   		.align	2
+ 772              	.LC3:
+ 773 004c 72786E65 		.ascii	"rxne: RF not rdy\012\000"
+ 773      3A205246 
+ 773      206E6F74 
+ 773      20726479 
+ 773      0A00
+ 774 005e 0000     		.align	2
+ 775              	.LC4:
+ 776 0060 4449457C 		.ascii	"DIE|dec hdr %d: rc=%d\012\012\000"
+ 776      64656320 
+ 776      68647220 
+ 776      25643A20 
+ 776      72633D25 
+ 777              		.section	.text.rx_execute,"ax",%progbits
+ 778              		.align	1
+ 779              		.p2align 2,,3
+ 780              		.syntax unified
+ 781              		.thumb
+ 782              		.thumb_func
+ 783              		.fpu softvfp
+ 785              	rx_execute:
+ 786              	.LVL51:
+ 787              	.LFB44:
+ 182:src/btphy/rx_task.c **** 
+ 183:src/btphy/rx_task.c **** static int rx_pkt_hdr_callback(void)
+ 184:src/btphy/rx_task.c **** {
+ 185:src/btphy/rx_task.c **** 	unsigned size;
+ 186:src/btphy/rx_task.c **** 	btctl_rx_pkt_t *pkt = rx_task.rx_pkt;
+ 187:src/btphy/rx_task.c **** 
+ 188:src/btphy/rx_task.c **** 	/* Wait for 32 bits sw + 4bits trailer + 54 bits header*/
+ 189:src/btphy/rx_task.c **** 	while((size=rx_buf_update()) < NUM_PKT_HDR_BYTES);
+ 190:src/btphy/rx_task.c **** 
+ 191:src/btphy/rx_task.c **** 	/* Decode pkt's header (skipping 32-bits of syncword in the dma_buf) & configure codec */
+ 192:src/btphy/rx_task.c **** 	if(bbcodec_decode_header(&rx_task.codec, &pkt->bb_hdr, rx_task.rx_dma_buf+4))
+ARM GAS  /tmp/cctHFqHy.s 			page 29
+
+
+ 193:src/btphy/rx_task.c **** 	{
+ 194:src/btphy/rx_task.c **** 		return -1;
+ 195:src/btphy/rx_task.c **** 	}
+ 196:src/btphy/rx_task.c **** 
+ 197:src/btphy/rx_task.c **** 	if (rx_task.codec.t->has_crc)
+ 198:src/btphy/rx_task.c **** 		pkt->flags |= 1<<BBPKT_F_HAS_CRC;
+ 199:src/btphy/rx_task.c **** 
+ 200:src/btphy/rx_task.c **** 	pkt->flags |= 1<<BBPKT_F_HAS_HDR;
+ 201:src/btphy/rx_task.c **** 
+ 202:src/btphy/rx_task.c **** 	return 0;
+ 203:src/btphy/rx_task.c **** }
+ 204:src/btphy/rx_task.c **** 
+ 205:src/btphy/rx_task.c **** static void rx_data_hdr_callback(void)
+ 206:src/btphy/rx_task.c **** {
+ 207:src/btphy/rx_task.c **** 	int rc;
+ 208:src/btphy/rx_task.c **** 	unsigned size;
+ 209:src/btphy/rx_task.c **** 	btctl_rx_pkt_t *pkt = rx_task.rx_pkt;
+ 210:src/btphy/rx_task.c **** 
+ 211:src/btphy/rx_task.c **** 	/* Wait for a full chunk */
+ 212:src/btphy/rx_task.c **** 	while((size=rx_buf_update()) < NUM_DATA_HDR_BYTES);
+ 213:src/btphy/rx_task.c **** 
+ 214:src/btphy/rx_task.c **** 	/* Decode first data chunk, for the payload header */
+ 215:src/btphy/rx_task.c **** 	if((rc=bbcodec_decode_chunk(&rx_task.codec, pkt->bt_data, &pkt->bb_hdr, rx_task.rx_dma_buf+4, size
+ 216:src/btphy/rx_task.c **** 	{
+ 217:src/btphy/rx_task.c **** 		if (rc == 1)
+ 218:src/btphy/rx_task.c **** 			rx_task.rx_done = 1;
+ 219:src/btphy/rx_task.c **** 		else
+ 220:src/btphy/rx_task.c **** 			DIE("dec hdr %d: rc=%d\n", pkt->bb_hdr.type, rc);
+ 221:src/btphy/rx_task.c **** 
+ 222:src/btphy/rx_task.c **** 	}
+ 223:src/btphy/rx_task.c **** }
+ 224:src/btphy/rx_task.c **** 
+ 225:src/btphy/rx_task.c **** // 0
+ 226:src/btphy/rx_task.c **** static int rx_execute(uint8_t p1, uint8_t p2, uint16_t p3)
+ 227:src/btphy/rx_task.c **** {
+ 788              		.loc 1 227 1 view -0
+ 789              		.cfi_startproc
+ 790              		@ args = 0, pretend = 0, frame = 0
+ 791              		@ frame_needed = 0, uses_anonymous_args = 0
+ 792              		.loc 1 227 1 is_stmt 0 view .LVU235
+ 793 0000 F0B5     		push	{r4, r5, r6, r7, lr}
+ 794              		.cfi_def_cfa_offset 20
+ 795              		.cfi_offset 4, -20
+ 796              		.cfi_offset 5, -16
+ 797              		.cfi_offset 6, -12
+ 798              		.cfi_offset 7, -8
+ 799              		.cfi_offset 14, -4
+ 800 0002 83B0     		sub	sp, sp, #12
+ 801              		.cfi_def_cfa_offset 32
+ 228:src/btphy/rx_task.c **** 	unsigned i, delay;
+ 802              		.loc 1 228 2 is_stmt 1 view .LVU236
+ 229:src/btphy/rx_task.c **** 	btctl_rx_pkt_t *pkt = rx_task.rx_pkt;
+ 803              		.loc 1 229 2 view .LVU237
+ 804              		.loc 1 229 18 is_stmt 0 view .LVU238
+ 805 0004 4E4C     		ldr	r4, .L67
+ 230:src/btphy/rx_task.c **** 
+ 231:src/btphy/rx_task.c **** 	if ((cc2400_get(FSMSTATE) & 0x1f) != STATE_STROBE_RX)
+ARM GAS  /tmp/cctHFqHy.s 			page 30
+
+
+ 806              		.loc 1 231 7 view .LVU239
+ 807 0006 0E20     		movs	r0, #14
+ 808              	.LVL52:
+ 229:src/btphy/rx_task.c **** 	btctl_rx_pkt_t *pkt = rx_task.rx_pkt;
+ 809              		.loc 1 229 18 view .LVU240
+ 810 0008 E568     		ldr	r5, [r4, #12]
+ 811              	.LVL53:
+ 812              		.loc 1 231 2 is_stmt 1 view .LVU241
+ 813              		.loc 1 231 7 is_stmt 0 view .LVU242
+ 814 000a FFF7FEFF 		bl	cc2400_get
+ 815              	.LVL54:
+ 816              		.loc 1 231 5 view .LVU243
+ 817 000e 00F01F00 		and	r0, r0, #31
+ 818 0012 1028     		cmp	r0, #16
+ 819 0014 70D1     		bne	.L65
+ 232:src/btphy/rx_task.c **** 	{
+ 233:src/btphy/rx_task.c **** 		cprintf("rxne: RF not rdy\n");
+ 234:src/btphy/rx_task.c **** 		rx_finalize();
+ 235:src/btphy/rx_task.c **** 		return 0;
+ 236:src/btphy/rx_task.c **** 	}
+ 237:src/btphy/rx_task.c **** 
+ 238:src/btphy/rx_task.c **** 	while (CLKN_OFFSET < WAIT_SYNCWORD)
+ 820              		.loc 1 238 8 view .LVU244
+ 821 0016 40F2C521 		movw	r1, #709
+ 822              		.loc 1 238 9 view .LVU245
+ 823 001a 4A4A     		ldr	r2, .L67+4
+ 239:src/btphy/rx_task.c **** 	{
+ 240:src/btphy/rx_task.c **** 		/* PKT strobe goes low if a syncword is detected */
+ 241:src/btphy/rx_task.c **** 		if (GIO6 == 0)
+ 824              		.loc 1 241 7 view .LVU246
+ 825 001c 4A48     		ldr	r0, .L67+8
+ 826 001e 02E0     		b	.L31
+ 827              	.L34:
+ 828              		.loc 1 241 3 is_stmt 1 view .LVU247
+ 829              		.loc 1 241 7 is_stmt 0 view .LVU248
+ 830 0020 0368     		ldr	r3, [r0]
+ 831              		.loc 1 241 6 view .LVU249
+ 832 0022 5E07     		lsls	r6, r3, #29
+ 833 0024 0AD5     		bpl	.L66
+ 834              	.L31:
+ 238:src/btphy/rx_task.c **** 	{
+ 835              		.loc 1 238 8 is_stmt 1 view .LVU250
+ 238:src/btphy/rx_task.c **** 	{
+ 836              		.loc 1 238 9 is_stmt 0 view .LVU251
+ 837 0026 1368     		ldr	r3, [r2]
+ 238:src/btphy/rx_task.c **** 	{
+ 838              		.loc 1 238 8 view .LVU252
+ 839 0028 8B42     		cmp	r3, r1
+ 840 002a F9D9     		bls	.L34
+ 242:src/btphy/rx_task.c **** 		{
+ 243:src/btphy/rx_task.c **** 			rx_task.pkt_time = CLKN_OFFSET;
+ 244:src/btphy/rx_task.c **** 			pkt->flags |= 1<<BBPKT_F_HAS_PKT;
+ 245:src/btphy/rx_task.c **** 			break;
+ 246:src/btphy/rx_task.c **** 		}
+ 247:src/btphy/rx_task.c **** 	}
+ 248:src/btphy/rx_task.c **** 	/* If a packet is being received and it has a payload,*/
+ 249:src/btphy/rx_task.c **** 	if (BBPKT_HAS_PKT(pkt) && rx_task.do_rx_payload)
+ARM GAS  /tmp/cctHFqHy.s 			page 31
+
+
+ 841              		.loc 1 249 2 is_stmt 1 view .LVU253
+ 842              		.loc 1 249 5 is_stmt 0 view .LVU254
+ 843 002c 6B79     		ldrb	r3, [r5, #5]	@ zero_extendqisi2
+ 844 002e DB07     		lsls	r3, r3, #31
+ 845 0030 0BD4     		bmi	.L33
+ 846              	.LVL55:
+ 847              	.L50:
+ 250:src/btphy/rx_task.c **** 	{
+ 251:src/btphy/rx_task.c **** 		/* Decode the pkt header */
+ 252:src/btphy/rx_task.c **** 		if (rx_pkt_hdr_callback() == 0)
+ 253:src/btphy/rx_task.c **** 		{
+ 254:src/btphy/rx_task.c **** 			/* If this packet kind has data in it */
+ 255:src/btphy/rx_task.c **** 			if (rx_task.codec.t->payload_bytes)
+ 256:src/btphy/rx_task.c **** 			{
+ 257:src/btphy/rx_task.c **** 				/* Decode the data header */
+ 258:src/btphy/rx_task.c **** 				rx_data_hdr_callback();
+ 259:src/btphy/rx_task.c **** 
+ 260:src/btphy/rx_task.c **** 				/* If the data is not fully decoded yet */
+ 261:src/btphy/rx_task.c **** 				if (!rx_task.rx_done)
+ 262:src/btphy/rx_task.c **** 				{
+ 263:src/btphy/rx_task.c **** 					/* Maximum decode count */
+ 264:src/btphy/rx_task.c **** 					rx_task.slot_num = rx_task.codec.t->nslots*2-1;
+ 265:src/btphy/rx_task.c **** 
+ 266:src/btphy/rx_task.c **** 					/* Schedule next decode */
+ 267:src/btphy/rx_task.c **** 					tdma_schedule(1, rx_decode, 0, 0, 0, 0);
+ 268:src/btphy/rx_task.c **** 					return 0;
+ 269:src/btphy/rx_task.c **** 				}
+ 270:src/btphy/rx_task.c **** 			}
+ 271:src/btphy/rx_task.c **** 		}
+ 272:src/btphy/rx_task.c **** 	}
+ 273:src/btphy/rx_task.c **** 	/* No packet/ID was received, stop now */
+ 274:src/btphy/rx_task.c **** 	rx_finalize();
+ 848              		.loc 1 274 2 is_stmt 1 view .LVU255
+ 849 0032 FFF7FEFF 		bl	rx_finalize
+ 850              	.LVL56:
+ 275:src/btphy/rx_task.c **** 
+ 276:src/btphy/rx_task.c **** 	return 0; 
+ 851              		.loc 1 276 2 view .LVU256
+ 852              	.L32:
+ 277:src/btphy/rx_task.c **** }
+ 853              		.loc 1 277 1 is_stmt 0 view .LVU257
+ 854 0036 0020     		movs	r0, #0
+ 855 0038 03B0     		add	sp, sp, #12
+ 856              		.cfi_remember_state
+ 857              		.cfi_def_cfa_offset 20
+ 858              		@ sp needed
+ 859 003a F0BD     		pop	{r4, r5, r6, r7, pc}
+ 860              	.LVL57:
+ 861              	.L66:
+ 862              		.cfi_restore_state
+ 243:src/btphy/rx_task.c **** 			pkt->flags |= 1<<BBPKT_F_HAS_PKT;
+ 863              		.loc 1 243 4 is_stmt 1 view .LVU258
+ 243:src/btphy/rx_task.c **** 			pkt->flags |= 1<<BBPKT_F_HAS_PKT;
+ 864              		.loc 1 243 23 is_stmt 0 view .LVU259
+ 865 003c 1368     		ldr	r3, [r2]
+ 243:src/btphy/rx_task.c **** 			pkt->flags |= 1<<BBPKT_F_HAS_PKT;
+ 866              		.loc 1 243 21 view .LVU260
+ARM GAS  /tmp/cctHFqHy.s 			page 32
+
+
+ 867 003e A4F84E32 		strh	r3, [r4, #590]	@ movhi
+ 244:src/btphy/rx_task.c **** 			break;
+ 868              		.loc 1 244 4 is_stmt 1 view .LVU261
+ 244:src/btphy/rx_task.c **** 			break;
+ 869              		.loc 1 244 15 is_stmt 0 view .LVU262
+ 870 0042 6B79     		ldrb	r3, [r5, #5]	@ zero_extendqisi2
+ 871 0044 43F00103 		orr	r3, r3, #1
+ 872 0048 6B71     		strb	r3, [r5, #5]
+ 245:src/btphy/rx_task.c **** 		}
+ 873              		.loc 1 245 4 is_stmt 1 view .LVU263
+ 249:src/btphy/rx_task.c **** 	{
+ 874              		.loc 1 249 2 view .LVU264
+ 875              	.L33:
+ 249:src/btphy/rx_task.c **** 	{
+ 876              		.loc 1 249 25 is_stmt 0 discriminator 1 view .LVU265
+ 877 004a 94F83C30 		ldrb	r3, [r4, #60]	@ zero_extendqisi2
+ 878 004e 002B     		cmp	r3, #0
+ 879 0050 EFD0     		beq	.L50
+ 252:src/btphy/rx_task.c **** 		{
+ 880              		.loc 1 252 3 is_stmt 1 view .LVU266
+ 881              	.LBB176:
+ 882              	.LBI176:
+ 183:src/btphy/rx_task.c **** {
+ 883              		.loc 1 183 12 view .LVU267
+ 884              	.LBB177:
+ 185:src/btphy/rx_task.c **** 	btctl_rx_pkt_t *pkt = rx_task.rx_pkt;
+ 885              		.loc 1 185 2 view .LVU268
+ 186:src/btphy/rx_task.c **** 
+ 886              		.loc 1 186 2 view .LVU269
+ 186:src/btphy/rx_task.c **** 
+ 887              		.loc 1 186 18 is_stmt 0 view .LVU270
+ 888 0052 E668     		ldr	r6, [r4, #12]
+ 889              	.LVL58:
+ 189:src/btphy/rx_task.c **** 
+ 890              		.loc 1 189 2 is_stmt 1 view .LVU271
+ 891 0054 3D4D     		ldr	r5, .L67+12
+ 892              	.LVL59:
+ 189:src/btphy/rx_task.c **** 
+ 893              		.loc 1 189 2 is_stmt 0 view .LVU272
+ 894 0056 3E4F     		ldr	r7, .L67+16
+ 895              	.L38:
+ 189:src/btphy/rx_task.c **** 
+ 896              		.loc 1 189 51 is_stmt 1 view .LVU273
+ 189:src/btphy/rx_task.c **** 
+ 897              		.loc 1 189 7 view .LVU274
+ 898              	.LBB178:
+ 899              	.LBI178:
+  78:src/btphy/rx_task.c **** {
+ 900              		.loc 1 78 17 view .LVU275
+ 901              	.LBB179:
+  80:src/btphy/rx_task.c **** 
+ 902              		.loc 1 80 2 view .LVU276
+  80:src/btphy/rx_task.c **** 
+ 903              		.loc 1 80 21 is_stmt 0 view .LVU277
+ 904 0058 FFF7FEFF 		bl	dma_get_rx_offset
+ 905              	.LVL60:
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ARM GAS  /tmp/cctHFqHy.s 			page 33
+
+
+ 906              		.loc 1 83 2 is_stmt 1 view .LVU278
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 907              		.loc 1 83 7 is_stmt 0 view .LVU279
+ 908 005c D4F85032 		ldr	r3, [r4, #592]
+ 909              	.LVL61:
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 910              		.loc 1 83 26 is_stmt 1 view .LVU280
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 911              		.loc 1 83 2 is_stmt 0 view .LVU281
+ 912 0060 9842     		cmp	r0, r3
+ 913 0062 08D9     		bls	.L40
+ 914 0064 3D33     		adds	r3, r3, #61
+ 915              	.LVL62:
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 916              		.loc 1 83 2 view .LVU282
+ 917 0066 2344     		add	r3, r3, r4
+ 918 0068 2918     		adds	r1, r5, r0
+ 919              	.LVL63:
+ 920              	.L39:
+  84:src/btphy/rx_task.c **** 	rx_task.rx_offset = size;
+ 921              		.loc 1 84 3 is_stmt 1 view .LVU283
+  84:src/btphy/rx_task.c **** 	rx_task.rx_offset = size;
+ 922              		.loc 1 84 27 is_stmt 0 view .LVU284
+ 923 006a 1A78     		ldrb	r2, [r3]	@ zero_extendqisi2
+ 924              	.LVL64:
+ 925              	.LBB180:
+ 926              	.LBI180:
+ 100:include/ubtbr/bb.h **** {
+ 927              		.loc 7 100 23 is_stmt 1 view .LVU285
+ 928              	.LBB181:
+ 102:include/ubtbr/bb.h ****         return rev8_map[data];
+ 929              		.loc 7 102 2 view .LVU286
+ 930              		.loc 7 103 9 view .LVU287
+ 931              		.loc 7 103 9 is_stmt 0 view .LVU288
+ 932              	.LBE181:
+ 933              	.LBE180:
+  84:src/btphy/rx_task.c **** 	rx_task.rx_offset = size;
+ 934              		.loc 1 84 25 view .LVU289
+ 935 006c BA5C     		ldrb	r2, [r7, r2]	@ zero_extendqisi2
+ 936 006e 03F8012B 		strb	r2, [r3], #1
+ 937              	.LVL65:
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 938              		.loc 1 83 33 is_stmt 1 view .LVU290
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 939              		.loc 1 83 26 view .LVU291
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 940              		.loc 1 83 2 is_stmt 0 view .LVU292
+ 941 0072 8B42     		cmp	r3, r1
+ 942 0074 F9D1     		bne	.L39
+ 943              	.LVL66:
+ 944              	.L40:
+  85:src/btphy/rx_task.c **** 
+ 945              		.loc 1 85 2 is_stmt 1 view .LVU293
+  88:src/btphy/rx_task.c **** 		return size-4;
+ 946              		.loc 1 88 5 is_stmt 0 view .LVU294
+ 947 0076 0B28     		cmp	r0, #11
+  85:src/btphy/rx_task.c **** 
+ARM GAS  /tmp/cctHFqHy.s 			page 34
+
+
+ 948              		.loc 1 85 20 view .LVU295
+ 949 0078 C4F85002 		str	r0, [r4, #592]
+  88:src/btphy/rx_task.c **** 		return size-4;
+ 950              		.loc 1 88 2 is_stmt 1 view .LVU296
+  88:src/btphy/rx_task.c **** 		return size-4;
+ 951              		.loc 1 88 5 is_stmt 0 view .LVU297
+ 952 007c ECD9     		bls	.L38
+  89:src/btphy/rx_task.c **** 	return 0;
+ 953              		.loc 1 89 3 is_stmt 1 view .LVU298
+ 954              	.LVL67:
+  89:src/btphy/rx_task.c **** 	return 0;
+ 955              		.loc 1 89 3 is_stmt 0 view .LVU299
+ 956              	.LBE179:
+ 957              	.LBE178:
+ 192:src/btphy/rx_task.c **** 	{
+ 958              		.loc 1 192 2 is_stmt 1 view .LVU300
+ 192:src/btphy/rx_task.c **** 	{
+ 959              		.loc 1 192 5 is_stmt 0 view .LVU301
+ 960 007e 354A     		ldr	r2, .L67+20
+ 961 0080 06F10801 		add	r1, r6, #8
+ 962 0084 A2F13100 		sub	r0, r2, #49
+ 963              	.LVL68:
+ 192:src/btphy/rx_task.c **** 	{
+ 964              		.loc 1 192 5 view .LVU302
+ 965 0088 FFF7FEFF 		bl	bbcodec_decode_header
+ 966              	.LVL69:
+ 192:src/btphy/rx_task.c **** 	{
+ 967              		.loc 1 192 4 view .LVU303
+ 968 008c 0028     		cmp	r0, #0
+ 969 008e D0D1     		bne	.L50
+ 197:src/btphy/rx_task.c **** 		pkt->flags |= 1<<BBPKT_F_HAS_CRC;
+ 970              		.loc 1 197 2 is_stmt 1 view .LVU304
+ 197:src/btphy/rx_task.c **** 		pkt->flags |= 1<<BBPKT_F_HAS_CRC;
+ 971              		.loc 1 197 19 is_stmt 0 view .LVU305
+ 972 0090 626A     		ldr	r2, [r4, #36]
+ 197:src/btphy/rx_task.c **** 		pkt->flags |= 1<<BBPKT_F_HAS_CRC;
+ 973              		.loc 1 197 5 view .LVU306
+ 974 0092 5379     		ldrb	r3, [r2, #5]	@ zero_extendqisi2
+ 975 0094 002B     		cmp	r3, #0
+ 976 0096 37D1     		bne	.L41
+ 977 0098 7379     		ldrb	r3, [r6, #5]	@ zero_extendqisi2
+ 978              	.L42:
+ 200:src/btphy/rx_task.c **** 
+ 979              		.loc 1 200 2 is_stmt 1 view .LVU307
+ 200:src/btphy/rx_task.c **** 
+ 980              		.loc 1 200 13 is_stmt 0 view .LVU308
+ 981 009a 43F00203 		orr	r3, r3, #2
+ 982 009e 7371     		strb	r3, [r6, #5]
+ 202:src/btphy/rx_task.c **** }
+ 983              		.loc 1 202 2 is_stmt 1 view .LVU309
+ 984              	.LVL70:
+ 202:src/btphy/rx_task.c **** }
+ 985              		.loc 1 202 2 is_stmt 0 view .LVU310
+ 986              	.LBE177:
+ 987              	.LBE176:
+ 255:src/btphy/rx_task.c **** 			{
+ 988              		.loc 1 255 4 is_stmt 1 view .LVU311
+ARM GAS  /tmp/cctHFqHy.s 			page 35
+
+
+ 255:src/btphy/rx_task.c **** 			{
+ 989              		.loc 1 255 7 is_stmt 0 view .LVU312
+ 990 00a0 5388     		ldrh	r3, [r2, #2]
+ 991 00a2 002B     		cmp	r3, #0
+ 992 00a4 C5D0     		beq	.L50
+ 258:src/btphy/rx_task.c **** 
+ 993              		.loc 1 258 5 is_stmt 1 view .LVU313
+ 994              	.LBB183:
+ 995              	.LBI183:
+ 205:src/btphy/rx_task.c **** {
+ 996              		.loc 1 205 13 view .LVU314
+ 997              	.LBB184:
+ 207:src/btphy/rx_task.c **** 	unsigned size;
+ 998              		.loc 1 207 2 view .LVU315
+ 208:src/btphy/rx_task.c **** 	btctl_rx_pkt_t *pkt = rx_task.rx_pkt;
+ 999              		.loc 1 208 2 view .LVU316
+ 209:src/btphy/rx_task.c **** 
+ 1000              		.loc 1 209 2 view .LVU317
+ 209:src/btphy/rx_task.c **** 
+ 1001              		.loc 1 209 18 is_stmt 0 view .LVU318
+ 1002 00a6 E668     		ldr	r6, [r4, #12]
+ 1003              	.LVL71:
+ 212:src/btphy/rx_task.c **** 
+ 1004              		.loc 1 212 2 is_stmt 1 view .LVU319
+ 1005 00a8 284D     		ldr	r5, .L67+12
+ 1006 00aa 294F     		ldr	r7, .L67+16
+ 1007              	.L61:
+ 212:src/btphy/rx_task.c **** 
+ 1008              		.loc 1 212 52 view .LVU320
+ 212:src/btphy/rx_task.c **** 
+ 1009              		.loc 1 212 7 view .LVU321
+ 1010              	.LBB185:
+ 1011              	.LBI185:
+  78:src/btphy/rx_task.c **** {
+ 1012              		.loc 1 78 17 view .LVU322
+ 1013              	.LBB186:
+  80:src/btphy/rx_task.c **** 
+ 1014              		.loc 1 80 2 view .LVU323
+  80:src/btphy/rx_task.c **** 
+ 1015              		.loc 1 80 21 is_stmt 0 view .LVU324
+ 1016 00ac FFF7FEFF 		bl	dma_get_rx_offset
+ 1017              	.LVL72:
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 1018              		.loc 1 83 2 is_stmt 1 view .LVU325
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 1019              		.loc 1 83 7 is_stmt 0 view .LVU326
+ 1020 00b0 D4F85032 		ldr	r3, [r4, #592]
+ 1021              	.LVL73:
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 1022              		.loc 1 83 26 is_stmt 1 view .LVU327
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 1023              		.loc 1 83 2 is_stmt 0 view .LVU328
+ 1024 00b4 9842     		cmp	r0, r3
+ 1025 00b6 08D9     		bls	.L47
+ 1026 00b8 3D33     		adds	r3, r3, #61
+ 1027              	.LVL74:
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ARM GAS  /tmp/cctHFqHy.s 			page 36
+
+
+ 1028              		.loc 1 83 2 view .LVU329
+ 1029 00ba 2344     		add	r3, r3, r4
+ 1030 00bc 2918     		adds	r1, r5, r0
+ 1031              	.LVL75:
+ 1032              	.L46:
+  84:src/btphy/rx_task.c **** 	rx_task.rx_offset = size;
+ 1033              		.loc 1 84 3 is_stmt 1 view .LVU330
+  84:src/btphy/rx_task.c **** 	rx_task.rx_offset = size;
+ 1034              		.loc 1 84 27 is_stmt 0 view .LVU331
+ 1035 00be 1A78     		ldrb	r2, [r3]	@ zero_extendqisi2
+ 1036              	.LVL76:
+ 1037              	.LBB187:
+ 1038              	.LBI187:
+ 100:include/ubtbr/bb.h **** {
+ 1039              		.loc 7 100 23 is_stmt 1 view .LVU332
+ 1040              	.LBB188:
+ 102:include/ubtbr/bb.h ****         return rev8_map[data];
+ 1041              		.loc 7 102 2 view .LVU333
+ 1042              		.loc 7 103 9 view .LVU334
+ 1043              		.loc 7 103 9 is_stmt 0 view .LVU335
+ 1044              	.LBE188:
+ 1045              	.LBE187:
+  84:src/btphy/rx_task.c **** 	rx_task.rx_offset = size;
+ 1046              		.loc 1 84 25 view .LVU336
+ 1047 00c0 BA5C     		ldrb	r2, [r7, r2]	@ zero_extendqisi2
+ 1048 00c2 03F8012B 		strb	r2, [r3], #1
+ 1049              	.LVL77:
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 1050              		.loc 1 83 33 is_stmt 1 view .LVU337
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 1051              		.loc 1 83 26 view .LVU338
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 1052              		.loc 1 83 2 is_stmt 0 view .LVU339
+ 1053 00c6 8B42     		cmp	r3, r1
+ 1054 00c8 F9D1     		bne	.L46
+ 1055              	.LVL78:
+ 1056              	.L47:
+  85:src/btphy/rx_task.c **** 
+ 1057              		.loc 1 85 2 is_stmt 1 view .LVU340
+  88:src/btphy/rx_task.c **** 		return size-4;
+ 1058              		.loc 1 88 5 is_stmt 0 view .LVU341
+ 1059 00ca 0428     		cmp	r0, #4
+  85:src/btphy/rx_task.c **** 
+ 1060              		.loc 1 85 20 view .LVU342
+ 1061 00cc C4F85002 		str	r0, [r4, #592]
+  88:src/btphy/rx_task.c **** 		return size-4;
+ 1062              		.loc 1 88 2 is_stmt 1 view .LVU343
+  88:src/btphy/rx_task.c **** 		return size-4;
+ 1063              		.loc 1 88 5 is_stmt 0 view .LVU344
+ 1064 00d0 ECD9     		bls	.L61
+  89:src/btphy/rx_task.c **** 	return 0;
+ 1065              		.loc 1 89 3 is_stmt 1 view .LVU345
+  89:src/btphy/rx_task.c **** 	return 0;
+ 1066              		.loc 1 89 14 is_stmt 0 view .LVU346
+ 1067 00d2 0438     		subs	r0, r0, #4
+ 1068              	.LVL79:
+  89:src/btphy/rx_task.c **** 	return 0;
+ARM GAS  /tmp/cctHFqHy.s 			page 37
+
+
+ 1069              		.loc 1 89 14 view .LVU347
+ 1070              	.LBE186:
+ 1071              	.LBE185:
+ 212:src/btphy/rx_task.c **** 
+ 1072              		.loc 1 212 7 view .LVU348
+ 1073 00d4 1628     		cmp	r0, #22
+ 1074 00d6 E9D9     		bls	.L61
+ 215:src/btphy/rx_task.c **** 	{
+ 1075              		.loc 1 215 2 is_stmt 1 view .LVU349
+ 215:src/btphy/rx_task.c **** 	{
+ 1076              		.loc 1 215 9 is_stmt 0 view .LVU350
+ 1077 00d8 1E4B     		ldr	r3, .L67+20
+ 1078 00da 0090     		str	r0, [sp]
+ 1079 00dc 06F10802 		add	r2, r6, #8
+ 1080 00e0 A3F13100 		sub	r0, r3, #49
+ 1081              	.LVL80:
+ 215:src/btphy/rx_task.c **** 	{
+ 1082              		.loc 1 215 9 view .LVU351
+ 1083 00e4 06F10C01 		add	r1, r6, #12
+ 1084 00e8 FFF7FEFF 		bl	bbcodec_decode_chunk
+ 1085              	.LVL81:
+ 215:src/btphy/rx_task.c **** 	{
+ 1086              		.loc 1 215 4 view .LVU352
+ 1087 00ec 80B1     		cbz	r0, .L48
+ 217:src/btphy/rx_task.c **** 			rx_task.rx_done = 1;
+ 1088              		.loc 1 217 3 is_stmt 1 view .LVU353
+ 217:src/btphy/rx_task.c **** 			rx_task.rx_done = 1;
+ 1089              		.loc 1 217 6 is_stmt 0 view .LVU354
+ 1090 00ee 0128     		cmp	r0, #1
+ 1091 00f0 20D1     		bne	.L49
+ 218:src/btphy/rx_task.c **** 		else
+ 1092              		.loc 1 218 4 is_stmt 1 view .LVU355
+ 218:src/btphy/rx_task.c **** 		else
+ 1093              		.loc 1 218 20 is_stmt 0 view .LVU356
+ 1094 00f2 84F85402 		strb	r0, [r4, #596]
+ 1095              	.LVL82:
+ 218:src/btphy/rx_task.c **** 		else
+ 1096              		.loc 1 218 20 view .LVU357
+ 1097              	.LBE184:
+ 1098              	.LBE183:
+ 261:src/btphy/rx_task.c **** 				{
+ 1099              		.loc 1 261 5 is_stmt 1 view .LVU358
+ 1100 00f6 9CE7     		b	.L50
+ 1101              	.LVL83:
+ 1102              	.L65:
+ 233:src/btphy/rx_task.c **** 		rx_finalize();
+ 1103              		.loc 1 233 3 view .LVU359
+ 1104 00f8 1748     		ldr	r0, .L67+24
+ 1105 00fa FFF7FEFF 		bl	cprintf
+ 1106              	.LVL84:
+ 234:src/btphy/rx_task.c **** 		return 0;
+ 1107              		.loc 1 234 3 view .LVU360
+ 1108 00fe FFF7FEFF 		bl	rx_finalize
+ 1109              	.LVL85:
+ 235:src/btphy/rx_task.c **** 	}
+ 1110              		.loc 1 235 3 view .LVU361
+ 1111              		.loc 1 277 1 is_stmt 0 view .LVU362
+ARM GAS  /tmp/cctHFqHy.s 			page 38
+
+
+ 1112 0102 0020     		movs	r0, #0
+ 1113 0104 03B0     		add	sp, sp, #12
+ 1114              		.cfi_remember_state
+ 1115              		.cfi_def_cfa_offset 20
+ 1116              		@ sp needed
+ 1117 0106 F0BD     		pop	{r4, r5, r6, r7, pc}
+ 1118              	.LVL86:
+ 1119              	.L41:
+ 1120              		.cfi_restore_state
+ 1121              	.LBB190:
+ 1122              	.LBB182:
+ 198:src/btphy/rx_task.c **** 
+ 1123              		.loc 1 198 3 is_stmt 1 view .LVU363
+ 198:src/btphy/rx_task.c **** 
+ 1124              		.loc 1 198 14 is_stmt 0 view .LVU364
+ 1125 0108 7379     		ldrb	r3, [r6, #5]	@ zero_extendqisi2
+ 1126 010a 43F00403 		orr	r3, r3, #4
+ 1127 010e C4E7     		b	.L42
+ 1128              	.LVL87:
+ 1129              	.L48:
+ 198:src/btphy/rx_task.c **** 
+ 1130              		.loc 1 198 14 view .LVU365
+ 1131              	.LBE182:
+ 1132              	.LBE190:
+ 261:src/btphy/rx_task.c **** 				{
+ 1133              		.loc 1 261 5 is_stmt 1 view .LVU366
+ 261:src/btphy/rx_task.c **** 				{
+ 1134              		.loc 1 261 8 is_stmt 0 view .LVU367
+ 1135 0110 94F85432 		ldrb	r3, [r4, #596]	@ zero_extendqisi2
+ 1136 0114 002B     		cmp	r3, #0
+ 1137 0116 8CD1     		bne	.L50
+ 264:src/btphy/rx_task.c **** 
+ 1138              		.loc 1 264 6 is_stmt 1 view .LVU368
+ 264:src/btphy/rx_task.c **** 
+ 1139              		.loc 1 264 40 is_stmt 0 view .LVU369
+ 1140 0118 626A     		ldr	r2, [r4, #36]
+ 267:src/btphy/rx_task.c **** 					return 0;
+ 1141              		.loc 1 267 6 view .LVU370
+ 1142 011a 1049     		ldr	r1, .L67+28
+ 264:src/btphy/rx_task.c **** 
+ 1143              		.loc 1 264 50 view .LVU371
+ 1144 011c 1578     		ldrb	r5, [r2]	@ zero_extendqisi2
+ 267:src/btphy/rx_task.c **** 					return 0;
+ 1145              		.loc 1 267 6 view .LVU372
+ 1146 011e 0120     		movs	r0, #1
+ 264:src/btphy/rx_task.c **** 
+ 1147              		.loc 1 264 50 view .LVU373
+ 1148 0120 6D00     		lsls	r5, r5, #1
+ 1149 0122 013D     		subs	r5, r5, #1
+ 267:src/btphy/rx_task.c **** 					return 0;
+ 1150              		.loc 1 267 6 view .LVU374
+ 1151 0124 1A46     		mov	r2, r3
+ 1152 0126 CDE90033 		strd	r3, r3, [sp]
+ 264:src/btphy/rx_task.c **** 
+ 1153              		.loc 1 264 23 view .LVU375
+ 1154 012a 84F85552 		strb	r5, [r4, #597]
+ 267:src/btphy/rx_task.c **** 					return 0;
+ARM GAS  /tmp/cctHFqHy.s 			page 39
+
+
+ 1155              		.loc 1 267 6 is_stmt 1 view .LVU376
+ 1156 012e FFF7FEFF 		bl	tdma_schedule
+ 1157              	.LVL88:
+ 268:src/btphy/rx_task.c **** 				}
+ 1158              		.loc 1 268 6 view .LVU377
+ 268:src/btphy/rx_task.c **** 				}
+ 1159              		.loc 1 268 13 is_stmt 0 view .LVU378
+ 1160 0132 80E7     		b	.L32
+ 1161              	.LVL89:
+ 1162              	.L49:
+ 1163              	.LBB191:
+ 1164              	.LBB189:
+ 220:src/btphy/rx_task.c **** 
+ 1165              		.loc 1 220 4 is_stmt 1 view .LVU379
+ 1166 0134 0246     		mov	r2, r0
+ 1167 0136 717A     		ldrb	r1, [r6, #9]	@ zero_extendqisi2
+ 1168 0138 0948     		ldr	r0, .L67+32
+ 1169              	.LVL90:
+ 220:src/btphy/rx_task.c **** 
+ 1170              		.loc 1 220 4 is_stmt 0 view .LVU380
+ 1171 013a FFF7FEFF 		bl	die
+ 1172              	.LVL91:
+ 1173              	.L68:
+ 220:src/btphy/rx_task.c **** 
+ 1174              		.loc 1 220 4 view .LVU381
+ 1175 013e 00BF     		.align	2
+ 1176              	.L67:
+ 1177 0140 00000000 		.word	.LANCHOR0
+ 1178 0144 08400040 		.word	1073758216
+ 1179 0148 54C00920 		.word	537509972
+ 1180 014c 3D000000 		.word	.LANCHOR0+61
+ 1181 0150 00000000 		.word	rev8_map
+ 1182 0154 41000000 		.word	.LANCHOR0+65
+ 1183 0158 4C000000 		.word	.LC3
+ 1184 015c 00000000 		.word	rx_decode
+ 1185 0160 60000000 		.word	.LC4
+ 1186              	.LBE189:
+ 1187              	.LBE191:
+ 1188              		.cfi_endproc
+ 1189              	.LFE44:
+ 1191              		.section	.text.rx_decode,"ax",%progbits
+ 1192              		.align	1
+ 1193              		.p2align 2,,3
+ 1194              		.syntax unified
+ 1195              		.thumb
+ 1196              		.thumb_func
+ 1197              		.fpu softvfp
+ 1199              	rx_decode:
+ 1200              	.LVL92:
+ 1201              	.LFB45:
+ 278:src/btphy/rx_task.c **** 
+ 279:src/btphy/rx_task.c **** /* 1+n : Rx multislot: decode available data */
+ 280:src/btphy/rx_task.c **** static int rx_decode(uint8_t p1, uint8_t p2, uint16_t p3)
+ 281:src/btphy/rx_task.c **** {
+ 1202              		.loc 1 281 1 is_stmt 1 view -0
+ 1203              		.cfi_startproc
+ 1204              		@ args = 0, pretend = 0, frame = 0
+ARM GAS  /tmp/cctHFqHy.s 			page 40
+
+
+ 1205              		@ frame_needed = 0, uses_anonymous_args = 0
+ 1206              		.loc 1 281 1 is_stmt 0 view .LVU383
+ 1207 0000 2DE9F043 		push	{r4, r5, r6, r7, r8, r9, lr}
+ 1208              		.cfi_def_cfa_offset 28
+ 1209              		.cfi_offset 4, -28
+ 1210              		.cfi_offset 5, -24
+ 1211              		.cfi_offset 6, -20
+ 1212              		.cfi_offset 7, -16
+ 1213              		.cfi_offset 8, -12
+ 1214              		.cfi_offset 9, -8
+ 1215              		.cfi_offset 14, -4
+ 1216 0004 83B0     		sub	sp, sp, #12
+ 1217              		.cfi_def_cfa_offset 40
+ 282:src/btphy/rx_task.c **** 	unsigned i, size, bytes_left;
+ 1218              		.loc 1 282 2 is_stmt 1 view .LVU384
+ 283:src/btphy/rx_task.c **** 	int rc, last;
+ 1219              		.loc 1 283 2 view .LVU385
+ 284:src/btphy/rx_task.c **** 	btctl_rx_pkt_t *pkt = rx_task.rx_pkt;
+ 1220              		.loc 1 284 2 view .LVU386
+ 1221              		.loc 1 284 18 is_stmt 0 view .LVU387
+ 1222 0006 3C4D     		ldr	r5, .L97
+ 285:src/btphy/rx_task.c **** 
+ 286:src/btphy/rx_task.c **** 	/* Check if we're in the last slot according to BT spec table 6.2 */
+ 287:src/btphy/rx_task.c **** 	last = --rx_task.slot_num == 0;
+ 1223              		.loc 1 287 9 view .LVU388
+ 1224 0008 95F85562 		ldrb	r6, [r5, #597]	@ zero_extendqisi2
+ 284:src/btphy/rx_task.c **** 	btctl_rx_pkt_t *pkt = rx_task.rx_pkt;
+ 1225              		.loc 1 284 18 view .LVU389
+ 1226 000c EC68     		ldr	r4, [r5, #12]
+ 1227              	.LVL93:
+ 1228              		.loc 1 287 2 is_stmt 1 view .LVU390
+ 1229              		.loc 1 287 9 is_stmt 0 view .LVU391
+ 1230 000e 013E     		subs	r6, r6, #1
+ 1231 0010 F6B2     		uxtb	r6, r6
+ 1232              		.loc 1 287 7 view .LVU392
+ 1233 0012 85F85562 		strb	r6, [r5, #597]
+ 1234              	.LBB202:
+ 1235              	.LBB203:
+  80:src/btphy/rx_task.c **** 
+ 1236              		.loc 1 80 21 view .LVU393
+ 1237 0016 FFF7FEFF 		bl	dma_get_rx_offset
+ 1238              	.LVL94:
+  80:src/btphy/rx_task.c **** 
+ 1239              		.loc 1 80 21 view .LVU394
+ 1240              	.LBE203:
+ 1241              	.LBE202:
+ 1242              		.loc 1 287 28 view .LVU395
+ 1243 001a B6FA86F6 		clz	r6, r6
+ 1244              	.LBB209:
+ 1245              	.LBB206:
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 1246              		.loc 1 83 7 view .LVU396
+ 1247 001e D5F85032 		ldr	r3, [r5, #592]
+ 1248              	.LBE206:
+ 1249              	.LBE209:
+ 1250              		.loc 1 287 28 view .LVU397
+ 1251 0022 7609     		lsrs	r6, r6, #5
+ARM GAS  /tmp/cctHFqHy.s 			page 41
+
+
+ 1252              	.LVL95:
+ 288:src/btphy/rx_task.c **** 
+ 289:src/btphy/rx_task.c **** 	/* Reverse the dma buf */
+ 290:src/btphy/rx_task.c **** 	size=rx_buf_update();
+ 1253              		.loc 1 290 2 is_stmt 1 view .LVU398
+ 1254              	.LBB210:
+ 1255              	.LBI202:
+  78:src/btphy/rx_task.c **** {
+ 1256              		.loc 1 78 17 view .LVU399
+ 1257              	.LBB207:
+  80:src/btphy/rx_task.c **** 
+ 1258              		.loc 1 80 2 view .LVU400
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 1259              		.loc 1 83 2 view .LVU401
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 1260              		.loc 1 83 26 view .LVU402
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 1261              		.loc 1 83 2 is_stmt 0 view .LVU403
+ 1262 0024 9842     		cmp	r0, r3
+ 1263 0026 0BD9     		bls	.L74
+ 1264 0028 3D33     		adds	r3, r3, #61
+ 1265              	.LVL96:
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 1266              		.loc 1 83 2 view .LVU404
+ 1267 002a 05F13D01 		add	r1, r5, #61
+ 1268 002e 334F     		ldr	r7, .L97+4
+ 1269 0030 2B44     		add	r3, r3, r5
+ 1270 0032 0144     		add	r1, r1, r0
+ 1271              	.LVL97:
+ 1272              	.L73:
+  84:src/btphy/rx_task.c **** 	rx_task.rx_offset = size;
+ 1273              		.loc 1 84 3 is_stmt 1 view .LVU405
+  84:src/btphy/rx_task.c **** 	rx_task.rx_offset = size;
+ 1274              		.loc 1 84 27 is_stmt 0 view .LVU406
+ 1275 0034 1A78     		ldrb	r2, [r3]	@ zero_extendqisi2
+ 1276              	.LVL98:
+ 1277              	.LBB204:
+ 1278              	.LBI204:
+ 100:include/ubtbr/bb.h **** {
+ 1279              		.loc 7 100 23 is_stmt 1 view .LVU407
+ 1280              	.LBB205:
+ 102:include/ubtbr/bb.h ****         return rev8_map[data];
+ 1281              		.loc 7 102 2 view .LVU408
+ 1282              		.loc 7 103 9 view .LVU409
+ 1283              		.loc 7 103 9 is_stmt 0 view .LVU410
+ 1284              	.LBE205:
+ 1285              	.LBE204:
+  84:src/btphy/rx_task.c **** 	rx_task.rx_offset = size;
+ 1286              		.loc 1 84 25 view .LVU411
+ 1287 0036 BA5C     		ldrb	r2, [r7, r2]	@ zero_extendqisi2
+ 1288 0038 03F8012B 		strb	r2, [r3], #1
+ 1289              	.LVL99:
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 1290              		.loc 1 83 33 is_stmt 1 view .LVU412
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 1291              		.loc 1 83 26 view .LVU413
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ARM GAS  /tmp/cctHFqHy.s 			page 42
+
+
+ 1292              		.loc 1 83 2 is_stmt 0 view .LVU414
+ 1293 003c 8B42     		cmp	r3, r1
+ 1294 003e F9D1     		bne	.L73
+ 1295              	.LVL100:
+ 1296              	.L74:
+  85:src/btphy/rx_task.c **** 
+ 1297              		.loc 1 85 2 is_stmt 1 view .LVU415
+  88:src/btphy/rx_task.c **** 		return size-4;
+ 1298              		.loc 1 88 5 is_stmt 0 view .LVU416
+ 1299 0040 0428     		cmp	r0, #4
+  85:src/btphy/rx_task.c **** 
+ 1300              		.loc 1 85 20 view .LVU417
+ 1301 0042 C5F85002 		str	r0, [r5, #592]
+  88:src/btphy/rx_task.c **** 		return size-4;
+ 1302              		.loc 1 88 2 is_stmt 1 view .LVU418
+  88:src/btphy/rx_task.c **** 		return size-4;
+ 1303              		.loc 1 88 5 is_stmt 0 view .LVU419
+ 1304 0046 54D8     		bhi	.L71
+  90:src/btphy/rx_task.c **** }
+ 1305              		.loc 1 90 9 view .LVU420
+ 1306 0048 4FF00008 		mov	r8, #0
+ 1307              	.L72:
+ 1308              	.LVL101:
+  90:src/btphy/rx_task.c **** }
+ 1309              		.loc 1 90 9 view .LVU421
+ 1310              	.LBE207:
+ 1311              	.LBE210:
+ 291:src/btphy/rx_task.c **** 
+ 292:src/btphy/rx_task.c **** 	/* Check if we can rx end of packet in this slot*/
+ 293:src/btphy/rx_task.c **** 	bytes_left = rx_task.codec.air_bytes - size;
+ 1312              		.loc 1 293 2 is_stmt 1 view .LVU422
+ 1313              		.loc 1 293 28 is_stmt 0 view .LVU423
+ 1314 004c EB6A     		ldr	r3, [r5, #44]
+ 1315              	.LVL102:
+ 294:src/btphy/rx_task.c **** 	last |= bytes_left < MAX_WAIT_BYTES;
+ 1316              		.loc 1 294 2 is_stmt 1 view .LVU424
+ 295:src/btphy/rx_task.c **** 
+ 296:src/btphy/rx_task.c **** 	/* last slot: wait for rx end */
+ 297:src/btphy/rx_task.c **** 	if (last)
+ 1317              		.loc 1 297 2 view .LVU425
+ 293:src/btphy/rx_task.c **** 	last |= bytes_left < MAX_WAIT_BYTES;
+ 1318              		.loc 1 293 13 is_stmt 0 view .LVU426
+ 1319 004e A3EB0802 		sub	r2, r3, r8
+ 1320              	.LVL103:
+ 1321              		.loc 1 297 5 view .LVU427
+ 1322 0052 0F2A     		cmp	r2, #15
+ 1323 0054 1CD9     		bls	.L87
+ 1324 0056 DEB9     		cbnz	r6, .L87
+ 1325              	.LVL104:
+ 1326              	.L75:
+ 298:src/btphy/rx_task.c **** 	{
+ 299:src/btphy/rx_task.c **** 		while(CLKN_OFFSET < WAIT_RX_MAX && size < rx_task.codec.air_bytes)
+ 300:src/btphy/rx_task.c **** 		{
+ 301:src/btphy/rx_task.c **** 			size=rx_buf_update();
+ 302:src/btphy/rx_task.c **** 		}
+ 303:src/btphy/rx_task.c **** 	}
+ 304:src/btphy/rx_task.c **** 
+ARM GAS  /tmp/cctHFqHy.s 			page 43
+
+
+ 305:src/btphy/rx_task.c **** 	/* Decode what we can */
+ 306:src/btphy/rx_task.c **** 	while((rc=bbcodec_decode_chunk(&rx_task.codec, pkt->bt_data, &pkt->bb_hdr, rx_task.rx_dma_buf+4, s
+ 1327              		.loc 1 306 12 discriminator 1 view .LVU428
+ 1328 0058 294E     		ldr	r6, .L97+8
+ 1329 005a 04F10C05 		add	r5, r4, #12
+ 1330 005e 0834     		adds	r4, r4, #8
+ 1331              	.LVL105:
+ 1332              	.L84:
+ 307:src/btphy/rx_task.c **** 	{
+ 308:src/btphy/rx_task.c **** 		//cputc('D');
+ 309:src/btphy/rx_task.c **** 	}
+ 1333              		.loc 1 309 2 is_stmt 1 discriminator 1 view .LVU429
+ 306:src/btphy/rx_task.c **** 	{
+ 1334              		.loc 1 306 7 discriminator 1 view .LVU430
+ 306:src/btphy/rx_task.c **** 	{
+ 1335              		.loc 1 306 12 is_stmt 0 discriminator 1 view .LVU431
+ 1336 0060 3346     		mov	r3, r6
+ 1337 0062 2246     		mov	r2, r4
+ 1338 0064 2946     		mov	r1, r5
+ 1339 0066 2748     		ldr	r0, .L97+12
+ 1340 0068 CDF80080 		str	r8, [sp]
+ 1341 006c FFF7FEFF 		bl	bbcodec_decode_chunk
+ 1342              	.LVL106:
+ 306:src/btphy/rx_task.c **** 	{
+ 1343              		.loc 1 306 7 discriminator 1 view .LVU432
+ 1344 0070 0028     		cmp	r0, #0
+ 1345 0072 F5D0     		beq	.L84
+ 310:src/btphy/rx_task.c **** 	if (rc == BBCODEC_DONE)
+ 1346              		.loc 1 310 2 is_stmt 1 view .LVU433
+ 1347              		.loc 1 310 5 is_stmt 0 view .LVU434
+ 1348 0074 0128     		cmp	r0, #1
+ 1349 0076 36D0     		beq	.L96
+ 1350              	.LBB211:
+ 1351              	.LBI211:
+ 280:src/btphy/rx_task.c **** {
+ 1352              		.loc 1 280 12 is_stmt 1 view .LVU435
+ 1353              	.LVL107:
+ 1354              	.LBB212:
+ 311:src/btphy/rx_task.c **** 	{
+ 312:src/btphy/rx_task.c **** 		rx_finalize();
+ 313:src/btphy/rx_task.c **** 	}
+ 314:src/btphy/rx_task.c **** 	else
+ 315:src/btphy/rx_task.c **** 	{
+ 316:src/btphy/rx_task.c **** 		/* Schedule one more decode */
+ 317:src/btphy/rx_task.c **** 		tdma_schedule(1, rx_decode, 0, 0, 0, 0);
+ 1355              		.loc 1 317 3 view .LVU436
+ 1356 0078 0023     		movs	r3, #0
+ 1357 007a 2349     		ldr	r1, .L97+16
+ 1358 007c 1A46     		mov	r2, r3
+ 1359 007e CDE90033 		strd	r3, r3, [sp]
+ 1360 0082 0120     		movs	r0, #1
+ 1361              	.LVL108:
+ 1362              		.loc 1 317 3 is_stmt 0 view .LVU437
+ 1363 0084 FFF7FEFF 		bl	tdma_schedule
+ 1364              	.LVL109:
+ 1365              		.loc 1 317 3 view .LVU438
+ 1366              	.LBE212:
+ARM GAS  /tmp/cctHFqHy.s 			page 44
+
+
+ 1367              	.LBE211:
+ 318:src/btphy/rx_task.c **** 	}
+ 319:src/btphy/rx_task.c **** 	return 0;
+ 1368              		.loc 1 319 2 is_stmt 1 view .LVU439
+ 320:src/btphy/rx_task.c **** }
+ 1369              		.loc 1 320 1 is_stmt 0 view .LVU440
+ 1370 0088 0020     		movs	r0, #0
+ 1371 008a 03B0     		add	sp, sp, #12
+ 1372              		.cfi_remember_state
+ 1373              		.cfi_def_cfa_offset 28
+ 1374              		@ sp needed
+ 1375 008c BDE8F083 		pop	{r4, r5, r6, r7, r8, r9, pc}
+ 1376              	.LVL110:
+ 1377              	.L87:
+ 1378              		.cfi_restore_state
+ 299:src/btphy/rx_task.c **** 		{
+ 1379              		.loc 1 299 8 is_stmt 1 view .LVU441
+ 1380 0090 40F2DB52 		movw	r2, #1499
+ 1381              	.LVL111:
+ 299:src/btphy/rx_task.c **** 		{
+ 1382              		.loc 1 299 9 is_stmt 0 view .LVU442
+ 1383 0094 1D4E     		ldr	r6, .L97+20
+ 1384              	.LVL112:
+ 299:src/btphy/rx_task.c **** 		{
+ 1385              		.loc 1 299 9 view .LVU443
+ 1386 0096 3168     		ldr	r1, [r6]
+ 299:src/btphy/rx_task.c **** 		{
+ 1387              		.loc 1 299 8 view .LVU444
+ 1388 0098 9142     		cmp	r1, r2
+ 1389 009a DDD8     		bhi	.L75
+ 1390 009c 1C4F     		ldr	r7, .L97+24
+ 1391 009e DFF85C90 		ldr	r9, .L97+4
+ 1392              	.LVL113:
+ 1393              	.L77:
+ 299:src/btphy/rx_task.c **** 		{
+ 1394              		.loc 1 299 35 discriminator 1 view .LVU445
+ 1395 00a2 9845     		cmp	r8, r3
+ 1396 00a4 D8D2     		bcs	.L75
+ 301:src/btphy/rx_task.c **** 		}
+ 1397              		.loc 1 301 4 is_stmt 1 view .LVU446
+ 1398              	.LBB213:
+ 1399              	.LBI213:
+  78:src/btphy/rx_task.c **** {
+ 1400              		.loc 1 78 17 view .LVU447
+ 1401              	.LBB214:
+  80:src/btphy/rx_task.c **** 
+ 1402              		.loc 1 80 2 view .LVU448
+  80:src/btphy/rx_task.c **** 
+ 1403              		.loc 1 80 21 is_stmt 0 view .LVU449
+ 1404 00a6 FFF7FEFF 		bl	dma_get_rx_offset
+ 1405              	.LVL114:
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 1406              		.loc 1 83 2 is_stmt 1 view .LVU450
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 1407              		.loc 1 83 7 is_stmt 0 view .LVU451
+ 1408 00aa D5F85032 		ldr	r3, [r5, #592]
+ 1409              	.LVL115:
+ARM GAS  /tmp/cctHFqHy.s 			page 45
+
+
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 1410              		.loc 1 83 26 is_stmt 1 view .LVU452
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 1411              		.loc 1 83 2 is_stmt 0 view .LVU453
+ 1412 00ae 9842     		cmp	r0, r3
+ 1413 00b0 09D9     		bls	.L82
+ 1414 00b2 3D33     		adds	r3, r3, #61
+ 1415              	.LVL116:
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 1416              		.loc 1 83 2 view .LVU454
+ 1417 00b4 2B44     		add	r3, r3, r5
+ 1418 00b6 3918     		adds	r1, r7, r0
+ 1419              	.LVL117:
+ 1420              	.L81:
+  84:src/btphy/rx_task.c **** 	rx_task.rx_offset = size;
+ 1421              		.loc 1 84 3 is_stmt 1 view .LVU455
+  84:src/btphy/rx_task.c **** 	rx_task.rx_offset = size;
+ 1422              		.loc 1 84 27 is_stmt 0 view .LVU456
+ 1423 00b8 1A78     		ldrb	r2, [r3]	@ zero_extendqisi2
+ 1424              	.LVL118:
+ 1425              	.LBB215:
+ 1426              	.LBI215:
+ 100:include/ubtbr/bb.h **** {
+ 1427              		.loc 7 100 23 is_stmt 1 view .LVU457
+ 1428              	.LBB216:
+ 102:include/ubtbr/bb.h ****         return rev8_map[data];
+ 1429              		.loc 7 102 2 view .LVU458
+ 1430              		.loc 7 103 9 view .LVU459
+ 1431              		.loc 7 103 9 is_stmt 0 view .LVU460
+ 1432              	.LBE216:
+ 1433              	.LBE215:
+  84:src/btphy/rx_task.c **** 	rx_task.rx_offset = size;
+ 1434              		.loc 1 84 25 view .LVU461
+ 1435 00ba 19F80220 		ldrb	r2, [r9, r2]	@ zero_extendqisi2
+ 1436 00be 03F8012B 		strb	r2, [r3], #1
+ 1437              	.LVL119:
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 1438              		.loc 1 83 33 is_stmt 1 view .LVU462
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 1439              		.loc 1 83 26 view .LVU463
+  83:src/btphy/rx_task.c **** 		rx_task.rx_dma_buf[i] = reverse8(rx_task.rx_dma_buf[i]);
+ 1440              		.loc 1 83 2 is_stmt 0 view .LVU464
+ 1441 00c2 9942     		cmp	r1, r3
+ 1442 00c4 F8D1     		bne	.L81
+ 1443              	.LVL120:
+ 1444              	.L82:
+  85:src/btphy/rx_task.c **** 
+ 1445              		.loc 1 85 2 is_stmt 1 view .LVU465
+  88:src/btphy/rx_task.c **** 		return size-4;
+ 1446              		.loc 1 88 5 is_stmt 0 view .LVU466
+ 1447 00c6 0428     		cmp	r0, #4
+  85:src/btphy/rx_task.c **** 
+ 1448              		.loc 1 85 20 view .LVU467
+ 1449 00c8 C5F85002 		str	r0, [r5, #592]
+  88:src/btphy/rx_task.c **** 		return size-4;
+ 1450              		.loc 1 88 2 is_stmt 1 view .LVU468
+  88:src/btphy/rx_task.c **** 		return size-4;
+ARM GAS  /tmp/cctHFqHy.s 			page 46
+
+
+ 1451              		.loc 1 88 5 is_stmt 0 view .LVU469
+ 1452 00cc 08D8     		bhi	.L79
+  90:src/btphy/rx_task.c **** }
+ 1453              		.loc 1 90 9 view .LVU470
+ 1454 00ce 4FF00008 		mov	r8, #0
+ 1455              	.LVL121:
+ 1456              	.L80:
+  90:src/btphy/rx_task.c **** }
+ 1457              		.loc 1 90 9 view .LVU471
+ 1458              	.LBE214:
+ 1459              	.LBE213:
+ 299:src/btphy/rx_task.c **** 		{
+ 1460              		.loc 1 299 8 is_stmt 1 view .LVU472
+ 1461 00d2 40F2DB53 		movw	r3, #1499
+ 299:src/btphy/rx_task.c **** 		{
+ 1462              		.loc 1 299 9 is_stmt 0 view .LVU473
+ 1463 00d6 3268     		ldr	r2, [r6]
+ 299:src/btphy/rx_task.c **** 		{
+ 1464              		.loc 1 299 8 view .LVU474
+ 1465 00d8 9A42     		cmp	r2, r3
+ 1466 00da BDD8     		bhi	.L75
+ 1467 00dc EB6A     		ldr	r3, [r5, #44]
+ 1468 00de E0E7     		b	.L77
+ 1469              	.LVL122:
+ 1470              	.L79:
+ 1471              	.LBB218:
+ 1472              	.LBB217:
+  89:src/btphy/rx_task.c **** 	return 0;
+ 1473              		.loc 1 89 3 is_stmt 1 view .LVU475
+  89:src/btphy/rx_task.c **** 	return 0;
+ 1474              		.loc 1 89 14 is_stmt 0 view .LVU476
+ 1475 00e0 A0F10408 		sub	r8, r0, #4
+ 1476              	.LVL123:
+  89:src/btphy/rx_task.c **** 	return 0;
+ 1477              		.loc 1 89 14 view .LVU477
+ 1478 00e4 F5E7     		b	.L80
+ 1479              	.LVL124:
+ 1480              	.L96:
+  89:src/btphy/rx_task.c **** 	return 0;
+ 1481              		.loc 1 89 14 view .LVU478
+ 1482              	.LBE217:
+ 1483              	.LBE218:
+ 312:src/btphy/rx_task.c **** 	}
+ 1484              		.loc 1 312 3 is_stmt 1 view .LVU479
+ 1485 00e6 FFF7FEFF 		bl	rx_finalize
+ 1486              	.LVL125:
+ 319:src/btphy/rx_task.c **** }
+ 1487              		.loc 1 319 2 view .LVU480
+ 1488              		.loc 1 320 1 is_stmt 0 view .LVU481
+ 1489 00ea 0020     		movs	r0, #0
+ 1490 00ec 03B0     		add	sp, sp, #12
+ 1491              		.cfi_remember_state
+ 1492              		.cfi_def_cfa_offset 28
+ 1493              		@ sp needed
+ 1494 00ee BDE8F083 		pop	{r4, r5, r6, r7, r8, r9, pc}
+ 1495              	.LVL126:
+ 1496              	.L71:
+ARM GAS  /tmp/cctHFqHy.s 			page 47
+
+
+ 1497              		.cfi_restore_state
+ 1498              	.LBB219:
+ 1499              	.LBB208:
+  89:src/btphy/rx_task.c **** 	return 0;
+ 1500              		.loc 1 89 3 is_stmt 1 view .LVU482
+  89:src/btphy/rx_task.c **** 	return 0;
+ 1501              		.loc 1 89 14 is_stmt 0 view .LVU483
+ 1502 00f2 A0F10408 		sub	r8, r0, #4
+ 1503 00f6 A9E7     		b	.L72
+ 1504              	.L98:
+ 1505              		.align	2
+ 1506              	.L97:
+ 1507 00f8 00000000 		.word	.LANCHOR0
+ 1508 00fc 00000000 		.word	rev8_map
+ 1509 0100 41000000 		.word	.LANCHOR0+65
+ 1510 0104 10000000 		.word	.LANCHOR0+16
+ 1511 0108 00000000 		.word	rx_decode
+ 1512 010c 08400040 		.word	1073758216
+ 1513 0110 3D000000 		.word	.LANCHOR0+61
+ 1514              	.LBE208:
+ 1515              	.LBE219:
+ 1516              		.cfi_endproc
+ 1517              	.LFE45:
+ 1519              		.section	.text.rx_task_reset,"ax",%progbits
+ 1520              		.align	1
+ 1521              		.p2align 2,,3
+ 1522              		.global	rx_task_reset
+ 1523              		.syntax unified
+ 1524              		.thumb
+ 1525              		.thumb_func
+ 1526              		.fpu softvfp
+ 1528              	rx_task_reset:
+ 1529              	.LFB46:
+ 321:src/btphy/rx_task.c **** 
+ 322:src/btphy/rx_task.c **** const struct tdma_sched_item rx_sched_set[] = {				// clk1_0		
+ 323:src/btphy/rx_task.c **** 	SCHED_ITEM(rx_prepare,	0, 0, 0), 	SCHED_END_FRAME(), 	// 1
+ 324:src/btphy/rx_task.c **** 	SCHED_ITEM(rx_execute,  -3, 0, 0), 	SCHED_END_FRAME(),	// 2
+ 325:src/btphy/rx_task.c **** 	SCHED_END_SET()
+ 326:src/btphy/rx_task.c **** };
+ 327:src/btphy/rx_task.c **** 
+ 328:src/btphy/rx_task.c **** void rx_task_reset(void)
+ 329:src/btphy/rx_task.c **** {
+ 1530              		.loc 1 329 1 is_stmt 1 view -0
+ 1531              		.cfi_startproc
+ 1532              		@ args = 0, pretend = 0, frame = 0
+ 1533              		@ frame_needed = 0, uses_anonymous_args = 0
+ 1534 0000 10B5     		push	{r4, lr}
+ 1535              		.cfi_def_cfa_offset 8
+ 1536              		.cfi_offset 4, -8
+ 1537              		.cfi_offset 14, -4
+ 330:src/btphy/rx_task.c **** 	if (rx_task.rx_msg)
+ 1538              		.loc 1 330 2 view .LVU485
+ 1539              		.loc 1 330 13 is_stmt 0 view .LVU486
+ 1540 0002 054C     		ldr	r4, .L104
+ 1541 0004 A068     		ldr	r0, [r4, #8]
+ 1542              		.loc 1 330 5 view .LVU487
+ 1543 0006 28B1     		cbz	r0, .L99
+ARM GAS  /tmp/cctHFqHy.s 			page 48
+
+
+ 331:src/btphy/rx_task.c **** 	{
+ 332:src/btphy/rx_task.c **** 		msg_free(rx_task.rx_msg);
+ 1544              		.loc 1 332 3 is_stmt 1 view .LVU488
+ 1545              	.LVL127:
+ 1546              	.LBB220:
+ 1547              	.LBI220:
+  26:include/ubtbr/msg.h **** {
+ 1548              		.loc 4 26 20 view .LVU489
+ 1549              	.LBB221:
+  28:include/ubtbr/msg.h **** }
+ 1550              		.loc 4 28 2 view .LVU490
+ 1551 0008 FFF7FEFF 		bl	mem_pool_free
+ 1552              	.LVL128:
+  28:include/ubtbr/msg.h **** }
+ 1553              		.loc 4 28 2 is_stmt 0 view .LVU491
+ 1554              	.LBE221:
+ 1555              	.LBE220:
+ 333:src/btphy/rx_task.c **** 		rx_task.rx_pkt = NULL;
+ 1556              		.loc 1 333 3 is_stmt 1 view .LVU492
+ 334:src/btphy/rx_task.c **** 		rx_task.rx_msg = NULL;
+ 1557              		.loc 1 334 3 view .LVU493
+ 1558              		.loc 1 334 18 is_stmt 0 view .LVU494
+ 1559 000c 0022     		movs	r2, #0
+ 1560 000e 0023     		movs	r3, #0
+ 1561 0010 C4E90223 		strd	r2, [r4, #8]
+ 1562              	.L99:
+ 335:src/btphy/rx_task.c **** 	}
+ 336:src/btphy/rx_task.c **** }
+ 1563              		.loc 1 336 1 view .LVU495
+ 1564 0014 10BD     		pop	{r4, pc}
+ 1565              	.L105:
+ 1566 0016 00BF     		.align	2
+ 1567              	.L104:
+ 1568 0018 00000000 		.word	.LANCHOR0
+ 1569              		.cfi_endproc
+ 1570              	.LFE46:
+ 1572              		.section	.rodata.str1.4
+ 1573              		.align	2
+ 1574              	.LC5:
+ 1575 0078 4449457C 		.ascii	"DIE|rx_schedule: rx_msg!=0\012\000"
+ 1575      72785F73 
+ 1575      63686564 
+ 1575      756C653A 
+ 1575      2072785F 
+ 1576              		.section	.text.rx_task_schedule,"ax",%progbits
+ 1577              		.align	1
+ 1578              		.p2align 2,,3
+ 1579              		.global	rx_task_schedule
+ 1580              		.syntax unified
+ 1581              		.thumb
+ 1582              		.thumb_func
+ 1583              		.fpu softvfp
+ 1585              	rx_task_schedule:
+ 1586              	.LVL129:
+ 1587              	.LFB47:
+ 337:src/btphy/rx_task.c **** 
+ 338:src/btphy/rx_task.c **** void rx_task_schedule(unsigned delay, rx_task_cb_t cb, void*cbarg, unsigned flags)
+ARM GAS  /tmp/cctHFqHy.s 			page 49
+
+
+ 339:src/btphy/rx_task.c **** {
+ 1588              		.loc 1 339 1 is_stmt 1 view -0
+ 1589              		.cfi_startproc
+ 1590              		@ args = 0, pretend = 0, frame = 0
+ 1591              		@ frame_needed = 0, uses_anonymous_args = 0
+ 1592              		.loc 1 339 1 is_stmt 0 view .LVU497
+ 1593 0000 70B5     		push	{r4, r5, r6, lr}
+ 1594              		.cfi_def_cfa_offset 16
+ 1595              		.cfi_offset 4, -16
+ 1596              		.cfi_offset 5, -12
+ 1597              		.cfi_offset 6, -8
+ 1598              		.cfi_offset 14, -4
+ 340:src/btphy/rx_task.c **** 	btctl_rx_pkt_t *pkt;
+ 1599              		.loc 1 340 2 is_stmt 1 view .LVU498
+ 341:src/btphy/rx_task.c **** 
+ 342:src/btphy/rx_task.c **** 	/* Sanity check */
+ 343:src/btphy/rx_task.c **** 	if (rx_task.rx_msg)
+ 1600              		.loc 1 343 2 view .LVU499
+ 1601              		.loc 1 343 13 is_stmt 0 view .LVU500
+ 1602 0002 0C4C     		ldr	r4, .L109
+ 339:src/btphy/rx_task.c **** 	btctl_rx_pkt_t *pkt;
+ 1603              		.loc 1 339 1 view .LVU501
+ 1604 0004 1546     		mov	r5, r2
+ 1605              		.loc 1 343 5 view .LVU502
+ 1606 0006 A668     		ldr	r6, [r4, #8]
+ 1607 0008 86B9     		cbnz	r6, .L108
+ 344:src/btphy/rx_task.c **** 		DIE("rx_schedule: rx_msg!=0");
+ 345:src/btphy/rx_task.c **** 
+ 346:src/btphy/rx_task.c **** 	/* user rx callback */
+ 347:src/btphy/rx_task.c **** 	rx_task.pkt_cb = cb;
+ 1608              		.loc 1 347 2 is_stmt 1 view .LVU503
+ 348:src/btphy/rx_task.c **** 	rx_task.cb_arg = cbarg;
+ 349:src/btphy/rx_task.c **** 	/* Does the packet have a payload ? (else it's an ID) */
+ 350:src/btphy/rx_task.c **** 	rx_task.do_rx_payload = flags & (1<<RX_F_PAYLOAD);
+ 351:src/btphy/rx_task.c **** 	/* Receive raw bursts for monitor state */
+ 352:src/btphy/rx_task.c **** 	rx_task.rx_raw = flags & (1<<RX_F_RAW);
+ 353:src/btphy/rx_task.c **** 
+ 354:src/btphy/rx_task.c **** 	tdma_schedule_set(delay, rx_sched_set, 0);
+ 1609              		.loc 1 354 2 is_stmt 0 view .LVU504
+ 1610 000a 3246     		mov	r2, r6
+ 1611              	.LVL130:
+ 350:src/btphy/rx_task.c **** 	/* Receive raw bursts for monitor state */
+ 1612              		.loc 1 350 32 view .LVU505
+ 1613 000c 03F00106 		and	r6, r3, #1
+ 352:src/btphy/rx_task.c **** 
+ 1614              		.loc 1 352 25 view .LVU506
+ 1615 0010 03F00203 		and	r3, r3, #2
+ 1616              	.LVL131:
+ 347:src/btphy/rx_task.c **** 	rx_task.cb_arg = cbarg;
+ 1617              		.loc 1 347 17 view .LVU507
+ 1618 0014 2160     		str	r1, [r4]
+ 348:src/btphy/rx_task.c **** 	/* Does the packet have a payload ? (else it's an ID) */
+ 1619              		.loc 1 348 2 is_stmt 1 view .LVU508
+ 348:src/btphy/rx_task.c **** 	/* Does the packet have a payload ? (else it's an ID) */
+ 1620              		.loc 1 348 17 is_stmt 0 view .LVU509
+ 1621 0016 6560     		str	r5, [r4, #4]
+ 350:src/btphy/rx_task.c **** 	/* Receive raw bursts for monitor state */
+ARM GAS  /tmp/cctHFqHy.s 			page 50
+
+
+ 1622              		.loc 1 350 2 is_stmt 1 view .LVU510
+ 350:src/btphy/rx_task.c **** 	/* Receive raw bursts for monitor state */
+ 1623              		.loc 1 350 24 is_stmt 0 view .LVU511
+ 1624 0018 84F83C60 		strb	r6, [r4, #60]
+ 352:src/btphy/rx_task.c **** 
+ 1625              		.loc 1 352 2 is_stmt 1 view .LVU512
+ 352:src/btphy/rx_task.c **** 
+ 1626              		.loc 1 352 17 is_stmt 0 view .LVU513
+ 1627 001c 84F85632 		strb	r3, [r4, #598]
+ 1628              		.loc 1 354 2 is_stmt 1 view .LVU514
+ 1629 0020 0549     		ldr	r1, .L109+4
+ 1630              	.LVL132:
+ 1631              		.loc 1 354 2 is_stmt 0 view .LVU515
+ 1632 0022 C0B2     		uxtb	r0, r0
+ 1633              	.LVL133:
+ 355:src/btphy/rx_task.c **** }
+ 1634              		.loc 1 355 1 view .LVU516
+ 1635 0024 BDE87040 		pop	{r4, r5, r6, lr}
+ 1636              		.cfi_remember_state
+ 1637              		.cfi_restore 14
+ 1638              		.cfi_restore 6
+ 1639              		.cfi_restore 5
+ 1640              		.cfi_restore 4
+ 1641              		.cfi_def_cfa_offset 0
+ 1642              	.LVL134:
+ 354:src/btphy/rx_task.c **** }
+ 1643              		.loc 1 354 2 view .LVU517
+ 1644 0028 FFF7FEBF 		b	tdma_schedule_set
+ 1645              	.LVL135:
+ 1646              	.L108:
+ 1647              		.cfi_restore_state
+ 344:src/btphy/rx_task.c **** 
+ 1648              		.loc 1 344 3 is_stmt 1 view .LVU518
+ 1649 002c 0348     		ldr	r0, .L109+8
+ 1650              	.LVL136:
+ 344:src/btphy/rx_task.c **** 
+ 1651              		.loc 1 344 3 is_stmt 0 view .LVU519
+ 1652 002e FFF7FEFF 		bl	die
+ 1653              	.LVL137:
+ 1654              	.L110:
+ 344:src/btphy/rx_task.c **** 
+ 1655              		.loc 1 344 3 view .LVU520
+ 1656 0032 00BF     		.align	2
+ 1657              	.L109:
+ 1658 0034 00000000 		.word	.LANCHOR0
+ 1659 0038 00000000 		.word	.LANCHOR1
+ 1660 003c 78000000 		.word	.LC5
+ 1661              		.cfi_endproc
+ 1662              	.LFE47:
+ 1664              		.global	rx_sched_set
+ 1665              		.section	.rodata
+ 1666              		.align	2
+ 1667              		.set	.LANCHOR1,. + 0
+ 1670              	rx_sched_set:
+ 1671 0000 00000000 		.word	rx_prepare
+ 1672 0004 00       		.byte	0
+ 1673 0005 00       		.byte	0
+ARM GAS  /tmp/cctHFqHy.s 			page 51
+
+
+ 1674 0006 0000     		.space	2
+ 1675 0008 0000     		.short	0
+ 1676 000a 0000     		.short	0
+ 1677 000c 00000000 		.word	0
+ 1678 0010 00       		.byte	0
+ 1679 0011 00       		.byte	0
+ 1680 0012 00000000 		.space	6
+ 1680      0000
+ 1681 0018 00000000 		.word	rx_execute
+ 1682 001c 00       		.byte	0
+ 1683 001d 00       		.byte	0
+ 1684 001e 0000     		.space	2
+ 1685 0020 FDFF     		.short	-3
+ 1686 0022 0000     		.short	0
+ 1687 0024 00000000 		.word	0
+ 1688 0028 00       		.byte	0
+ 1689 0029 00       		.byte	0
+ 1690 002a 00000000 		.space	6
+ 1690      0000
+ 1691 0030 00000000 		.word	tdma_end_set
+ 1692 0034 00       		.byte	0
+ 1693 0035 00       		.byte	0
+ 1694 0036 00000000 		.space	6
+ 1694      0000
+ 1695              		.bss
+ 1696              		.align	3
+ 1697              		.set	.LANCHOR0,. + 0
+ 1700              	rx_task:
+ 1701 0000 00000000 		.space	600
+ 1701      00000000 
+ 1701      00000000 
+ 1701      00000000 
+ 1701      00000000 
+ 1702              		.text
+ 1703              	.Letext0:
+ 1704              		.file 9 "/usr/lib/gcc/arm-none-eabi/9.2.1/include/stddef.h"
+ 1705              		.file 10 "/usr/include/newlib/sys/_types.h"
+ 1706              		.file 11 "/usr/include/newlib/sys/reent.h"
+ 1707              		.file 12 "/usr/include/newlib/sys/lock.h"
+ 1708              		.file 13 "/usr/lib/gcc/arm-none-eabi/9.2.1/include/stdint.h"
+ 1709              		.file 14 "../../host/libubertooth/src/ubertooth_interface.h"
+ 1710              		.file 15 "../common/ubertooth.h"
+ 1711              		.file 16 "include/ubtbr/queue.h"
+ 1712              		.file 17 "include/ubtbr/tdma_sched.h"
+ 1713              		.file 18 "include/ubtbr/rx_task.h"
+ 1714              		.file 19 "include/ubtbr/mem_pool.h"
+ 1715              		.file 20 "include/ubtbr/ubertooth_dma.h"
+ 1716              		.file 21 "include/ubtbr/debug.h"
+ARM GAS  /tmp/cctHFqHy.s 			page 52
+
+
+DEFINED SYMBOLS
+                            *ABS*:0000000000000000 rx_task.c
+     /tmp/cctHFqHy.s:16     .rodata.str1.4:0000000000000000 $d
+     /tmp/cctHFqHy.s:20     .text.rx_prepare:0000000000000000 $t
+     /tmp/cctHFqHy.s:28     .text.rx_prepare:0000000000000000 rx_prepare
+     /tmp/cctHFqHy.s:503    .text.rx_prepare:000000000000011c $d
+     /tmp/cctHFqHy.s:523    .text.rx_finalize:0000000000000000 $t
+     /tmp/cctHFqHy.s:530    .text.rx_finalize:0000000000000000 rx_finalize
+     /tmp/cctHFqHy.s:761    .text.rx_finalize:00000000000000c0 $d
+     /tmp/cctHFqHy.s:778    .text.rx_execute:0000000000000000 $t
+     /tmp/cctHFqHy.s:785    .text.rx_execute:0000000000000000 rx_execute
+     /tmp/cctHFqHy.s:1177   .text.rx_execute:0000000000000140 $d
+     /tmp/cctHFqHy.s:1199   .text.rx_decode:0000000000000000 rx_decode
+     /tmp/cctHFqHy.s:1192   .text.rx_decode:0000000000000000 $t
+     /tmp/cctHFqHy.s:1507   .text.rx_decode:00000000000000f8 $d
+     /tmp/cctHFqHy.s:1520   .text.rx_task_reset:0000000000000000 $t
+     /tmp/cctHFqHy.s:1528   .text.rx_task_reset:0000000000000000 rx_task_reset
+     /tmp/cctHFqHy.s:1568   .text.rx_task_reset:0000000000000018 $d
+     /tmp/cctHFqHy.s:1577   .text.rx_task_schedule:0000000000000000 $t
+     /tmp/cctHFqHy.s:1585   .text.rx_task_schedule:0000000000000000 rx_task_schedule
+     /tmp/cctHFqHy.s:1658   .text.rx_task_schedule:0000000000000034 $d
+     /tmp/cctHFqHy.s:1670   .rodata:0000000000000000 rx_sched_set
+     /tmp/cctHFqHy.s:1666   .rodata:0000000000000000 $d
+     /tmp/cctHFqHy.s:1696   .bss:0000000000000000 $d
+     /tmp/cctHFqHy.s:1700   .bss:0000000000000000 rx_task
+
+UNDEFINED SYMBOLS
+hop_channel
+btphy_rf_tune_chan
+cc2400_strobe
+cc2400_set
+mem_pool_alloc
+btphy_whiten_seed
+dma_init_rx_single
+dio_ssp_start_rx
+die
+rf_state
+rev8_map
+hop_state
+btphy
+dio_ssp_stop
+dma_get_rx_offset
+bbcodec_decode_finalize
+cc2400_get
+bbcodec_decode_header
+bbcodec_decode_chunk
+cprintf
+tdma_schedule
+mem_pool_free
+tdma_schedule_set
+tdma_end_set

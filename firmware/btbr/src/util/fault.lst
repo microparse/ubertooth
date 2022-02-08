@@ -1,0 +1,887 @@
+ARM GAS  /tmp/cc619fRA.s 			page 1
+
+
+   1              		.cpu cortex-m3
+   2              		.eabi_attribute 20, 1
+   3              		.eabi_attribute 21, 1
+   4              		.eabi_attribute 23, 3
+   5              		.eabi_attribute 24, 1
+   6              		.eabi_attribute 25, 1
+   7              		.eabi_attribute 26, 1
+   8              		.eabi_attribute 30, 2
+   9              		.eabi_attribute 34, 1
+  10              		.eabi_attribute 18, 4
+  11              		.file	"fault.c"
+  12              		.text
+  13              	.Ltext0:
+  14              		.cfi_sections	.debug_frame
+  15              		.section	.rodata.str1.4,"aMS",%progbits,1
+  16              		.align	2
+  17              	.LC0:
+  18 0000 43465352 		.ascii	"CFSR=%08x\012\000"
+  18      3D253038 
+  18      780A00
+  19 000b 00       		.align	2
+  20              	.LC1:
+  21 000c 48465352 		.ascii	"HFSR=%08x\012\000"
+  21      3D253038 
+  21      780A00
+  22 0017 00       		.align	2
+  23              	.LC2:
+  24 0018 4D4D5352 		.ascii	"MMSR=%08x\012\000"
+  24      3D253038 
+  24      780A00
+  25 0023 00       		.align	2
+  26              	.LC3:
+  27 0024 42465352 		.ascii	"BFSR=%08x\012\000"
+  27      3D253038 
+  27      780A00
+  28 002f 00       		.align	2
+  29              	.LC4:
+  30 0030 55465352 		.ascii	"UFSR=%08x\012\000"
+  30      3D253038 
+  30      780A00
+  31 003b 00       		.align	2
+  32              	.LC5:
+  33 003c 42464152 		.ascii	"BFAR=%08x\012\000"
+  33      3D253038 
+  33      780A00
+  34 0047 00       		.align	2
+  35              	.LC6:
+  36 0048 0A537461 		.ascii	"\012Stack dump (~%p):\012\000"
+  36      636B2064 
+  36      756D7020 
+  36      287E2570 
+  36      293A0A00 
+  37              		.align	2
+  38              	.LC7:
+  39 005c 25703A20 		.ascii	"%p: %08x %08x %08x %08x\012\000"
+  39      25303878 
+  39      20253038 
+ARM GAS  /tmp/cc619fRA.s 			page 2
+
+
+  39      78202530 
+  39      38782025 
+  40              		.section	.text.dump_debug_registers,"ax",%progbits
+  41              		.align	1
+  42              		.p2align 2,,3
+  43              		.arch armv7-m
+  44              		.syntax unified
+  45              		.thumb
+  46              		.thumb_func
+  47              		.fpu softvfp
+  49              	dump_debug_registers:
+  50              	.LFB4:
+  51              		.file 1 "src/util/fault.c"
+   1:src/util/fault.c **** /* Fault handlers
+   2:src/util/fault.c ****  *
+   3:src/util/fault.c ****  * Copyright 2019 Mike Ryan
+   4:src/util/fault.c ****  * Copyright 2020 Etienne Helluy-Lafont, Univ. Lille, CNRS.
+   5:src/util/fault.c ****  *
+   6:src/util/fault.c ****  * This file is part of Project Ubertooth.
+   7:src/util/fault.c ****  *
+   8:src/util/fault.c ****  * This program is free software; you can redistribute it and/or modify
+   9:src/util/fault.c ****  * it under the terms of the GNU General Public License as published by
+  10:src/util/fault.c ****  * the Free Software Foundation; either version 2, or (at your option)
+  11:src/util/fault.c ****  * any later version.
+  12:src/util/fault.c ****  *
+  13:src/util/fault.c ****  * This program is distributed in the hope that it will be useful,
+  14:src/util/fault.c ****  * but WITHOUT ANY WARRANTY; without even the implied warranty of
+  15:src/util/fault.c ****  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  16:src/util/fault.c ****  * GNU General Public License for more details.
+  17:src/util/fault.c ****  *
+  18:src/util/fault.c ****  * You should have received a copy of the GNU General Public License
+  19:src/util/fault.c ****  * along with this program; see the file COPYING.  If not, write to
+  20:src/util/fault.c ****  * the Free Software Foundation, Inc., 51 Franklin Street,
+  21:src/util/fault.c ****  * Boston, MA 02110-1301, USA.
+  22:src/util/fault.c ****  */
+  23:src/util/fault.c **** 
+  24:src/util/fault.c **** #include <stdarg.h>
+  25:src/util/fault.c **** #include <ubertooth.h>
+  26:src/util/fault.c **** #include <ubtbr/debug.h>
+  27:src/util/fault.c **** #include <ubtbr/ubertooth_usb.h>
+  28:src/util/fault.c **** #include <ubtbr/system.h>
+  29:src/util/fault.c **** #include "tinyprintf.h"
+  30:src/util/fault.c **** 
+  31:src/util/fault.c **** void __attribute__((noreturn)) die (char *fmt, ...)
+  32:src/util/fault.c **** {
+  33:src/util/fault.c **** 	int i;
+  34:src/util/fault.c **** 	char buf[64] = {0};
+  35:src/util/fault.c **** 	int len;
+  36:src/util/fault.c **** 	va_list ap;
+  37:src/util/fault.c **** 	void *ret;
+  38:src/util/fault.c **** 	irq_save_disable();
+  39:src/util/fault.c **** 
+  40:src/util/fault.c **** 	// This looks a bit like early_printf
+  41:src/util/fault.c **** 	buf[0] = BTUSB_EARLY_PRINT;
+  42:src/util/fault.c **** 	va_start(ap, fmt);
+  43:src/util/fault.c **** 	len = tfp_vsnprintf(buf+1, sizeof(buf)-1, fmt, ap);
+  44:src/util/fault.c **** 	va_end(ap);
+ARM GAS  /tmp/cc619fRA.s 			page 3
+
+
+  45:src/util/fault.c **** 	usb_send_sync((void*)buf, 1+len);
+  46:src/util/fault.c **** 
+  47:src/util/fault.c **** 	while (1)
+  48:src/util/fault.c **** 	{
+  49:src/util/fault.c **** 		flash_leds(5, 100);
+  50:src/util/fault.c **** 	}
+  51:src/util/fault.c **** }
+  52:src/util/fault.c **** 
+  53:src/util/fault.c **** static void dump_debug_registers(void)
+  54:src/util/fault.c **** {
+  52              		.loc 1 54 1 view -0
+  53              		.cfi_startproc
+  54              		@ args = 0, pretend = 0, frame = 8
+  55              		@ frame_needed = 0, uses_anonymous_args = 0
+  56 0000 F0B5     		push	{r4, r5, r6, r7, lr}
+  57              		.cfi_def_cfa_offset 20
+  58              		.cfi_offset 4, -20
+  59              		.cfi_offset 5, -16
+  60              		.cfi_offset 6, -12
+  61              		.cfi_offset 7, -8
+  62              		.cfi_offset 14, -4
+  63 0002 85B0     		sub	sp, sp, #20
+  64              		.cfi_def_cfa_offset 40
+  55:src/util/fault.c **** 	int i;
+  65              		.loc 1 55 2 view .LVU1
+  56:src/util/fault.c **** 	extern uint32_t _StackTop;
+  66              		.loc 1 56 2 view .LVU2
+  57:src/util/fault.c **** 	volatile uint32_t _stk[1] = {0xdeadbeef}, *stk;
+  67              		.loc 1 57 2 view .LVU3
+  68              		.loc 1 57 20 is_stmt 0 view .LVU4
+  69 0004 1C4B     		ldr	r3, .L6
+  58:src/util/fault.c **** 	early_printf("CFSR=%08x\n", SCB_CFSR);
+  70              		.loc 1 58 2 view .LVU5
+  71 0006 1D4C     		ldr	r4, .L6+4
+  57:src/util/fault.c **** 	volatile uint32_t _stk[1] = {0xdeadbeef}, *stk;
+  72              		.loc 1 57 20 view .LVU6
+  73 0008 0393     		str	r3, [sp, #12]
+  74              		.loc 1 58 2 is_stmt 1 view .LVU7
+  75 000a 2168     		ldr	r1, [r4]
+  76 000c 1C48     		ldr	r0, .L6+8
+  77 000e FFF7FEFF 		bl	early_printf
+  78              	.LVL0:
+  59:src/util/fault.c **** 	early_printf("HFSR=%08x\n", SCB_HFSR);
+  79              		.loc 1 59 2 view .LVU8
+  80 0012 1C4B     		ldr	r3, .L6+12
+  81 0014 1C48     		ldr	r0, .L6+16
+  82 0016 1968     		ldr	r1, [r3]
+  83 0018 FFF7FEFF 		bl	early_printf
+  84              	.LVL1:
+  60:src/util/fault.c **** 	early_printf("MMSR=%08x\n", SCB_MMSR);
+  85              		.loc 1 60 2 view .LVU9
+  86              		.loc 1 60 30 is_stmt 0 view .LVU10
+  87 001c 2178     		ldrb	r1, [r4]	@ zero_extendqisi2
+  88              		.loc 1 60 2 view .LVU11
+  89 001e 1B48     		ldr	r0, .L6+20
+  90 0020 FFF7FEFF 		bl	early_printf
+  91              	.LVL2:
+ARM GAS  /tmp/cc619fRA.s 			page 4
+
+
+  61:src/util/fault.c **** 	early_printf("BFSR=%08x\n", SCB_BFSR);
+  92              		.loc 1 61 2 is_stmt 1 view .LVU12
+  93              		.loc 1 61 30 is_stmt 0 view .LVU13
+  94 0024 1A4B     		ldr	r3, .L6+24
+  95              		.loc 1 61 2 view .LVU14
+  96 0026 1B48     		ldr	r0, .L6+28
+  97              		.loc 1 61 30 view .LVU15
+  98 0028 1978     		ldrb	r1, [r3]	@ zero_extendqisi2
+  99              		.loc 1 61 2 view .LVU16
+ 100 002a FFF7FEFF 		bl	early_printf
+ 101              	.LVL3:
+  62:src/util/fault.c **** 	early_printf("UFSR=%08x\n", SCB_UFSR);
+ 102              		.loc 1 62 2 is_stmt 1 view .LVU17
+ 103              		.loc 1 62 30 is_stmt 0 view .LVU18
+ 104 002e 1A4B     		ldr	r3, .L6+32
+ 105              		.loc 1 62 2 view .LVU19
+ 106 0030 1A48     		ldr	r0, .L6+36
+ 107              		.loc 1 62 30 view .LVU20
+ 108 0032 1988     		ldrh	r1, [r3]
+  63:src/util/fault.c **** 	early_printf("BFAR=%08x\n", SCB_BFAR);
+  64:src/util/fault.c **** 
+  65:src/util/fault.c **** 	early_printf("\nStack dump (~%p):\n", _stk);
+ 109              		.loc 1 65 2 view .LVU21
+ 110 0034 03AD     		add	r5, sp, #12
+  62:src/util/fault.c **** 	early_printf("UFSR=%08x\n", SCB_UFSR);
+ 111              		.loc 1 62 2 view .LVU22
+ 112 0036 89B2     		uxth	r1, r1
+ 113 0038 FFF7FEFF 		bl	early_printf
+ 114              	.LVL4:
+  63:src/util/fault.c **** 	early_printf("BFAR=%08x\n", SCB_BFAR);
+ 115              		.loc 1 63 2 is_stmt 1 view .LVU23
+ 116 003c 184B     		ldr	r3, .L6+40
+ 117 003e 1948     		ldr	r0, .L6+44
+ 118 0040 1968     		ldr	r1, [r3]
+  66:src/util/fault.c **** 	for (stk=(uint32_t*)((uint32_t)&_stk&~0xf);stk<&_StackTop;stk+=4)
+ 119              		.loc 1 66 2 is_stmt 0 view .LVU24
+ 120 0042 194E     		ldr	r6, .L6+48
+  63:src/util/fault.c **** 	early_printf("BFAR=%08x\n", SCB_BFAR);
+ 121              		.loc 1 63 2 view .LVU25
+ 122 0044 FFF7FEFF 		bl	early_printf
+ 123              	.LVL5:
+  65:src/util/fault.c **** 	for (stk=(uint32_t*)((uint32_t)&_stk&~0xf);stk<&_StackTop;stk+=4)
+ 124              		.loc 1 65 2 is_stmt 1 view .LVU26
+ 125              		.loc 1 66 38 is_stmt 0 view .LVU27
+ 126 0048 25F00F04 		bic	r4, r5, #15
+  65:src/util/fault.c **** 	for (stk=(uint32_t*)((uint32_t)&_stk&~0xf);stk<&_StackTop;stk+=4)
+ 127              		.loc 1 65 2 view .LVU28
+ 128 004c 2946     		mov	r1, r5
+ 129 004e 1748     		ldr	r0, .L6+52
+ 130 0050 FFF7FEFF 		bl	early_printf
+ 131              	.LVL6:
+ 132              		.loc 1 66 2 is_stmt 1 view .LVU29
+ 133              		.loc 1 66 45 view .LVU30
+ 134              		.loc 1 66 2 is_stmt 0 view .LVU31
+ 135 0054 B442     		cmp	r4, r6
+ 136 0056 0DD2     		bcs	.L1
+  67:src/util/fault.c **** 	{
+ARM GAS  /tmp/cc619fRA.s 			page 5
+
+
+  68:src/util/fault.c **** 		early_printf("%p: %08x %08x %08x %08x\n",
+ 137              		.loc 1 68 3 view .LVU32
+ 138 0058 154F     		ldr	r7, .L6+56
+ 139              	.L3:
+ 140              		.loc 1 68 3 is_stmt 1 discriminator 3 view .LVU33
+ 141 005a 2268     		ldr	r2, [r4]
+ 142 005c 6368     		ldr	r3, [r4, #4]
+ 143 005e A568     		ldr	r5, [r4, #8]
+ 144 0060 E168     		ldr	r1, [r4, #12]
+ 145 0062 3846     		mov	r0, r7
+ 146 0064 CDE90051 		strd	r5, r1, [sp]
+ 147 0068 2146     		mov	r1, r4
+  66:src/util/fault.c **** 	{
+ 148              		.loc 1 66 63 is_stmt 0 discriminator 3 view .LVU34
+ 149 006a 1034     		adds	r4, r4, #16
+ 150              	.LVL7:
+ 151              		.loc 1 68 3 discriminator 3 view .LVU35
+ 152 006c FFF7FEFF 		bl	early_printf
+ 153              	.LVL8:
+  66:src/util/fault.c **** 	{
+ 154              		.loc 1 66 60 is_stmt 1 discriminator 3 view .LVU36
+  66:src/util/fault.c **** 	{
+ 155              		.loc 1 66 45 discriminator 3 view .LVU37
+  66:src/util/fault.c **** 	{
+ 156              		.loc 1 66 2 is_stmt 0 discriminator 3 view .LVU38
+ 157 0070 B442     		cmp	r4, r6
+ 158 0072 F2D3     		bcc	.L3
+ 159              	.L1:
+  69:src/util/fault.c **** 			stk, stk[0], stk[1], stk[2], stk[3]);
+  70:src/util/fault.c **** 	}
+  71:src/util/fault.c **** }
+ 160              		.loc 1 71 1 view .LVU39
+ 161 0074 05B0     		add	sp, sp, #20
+ 162              		.cfi_def_cfa_offset 20
+ 163              		@ sp needed
+ 164 0076 F0BD     		pop	{r4, r5, r6, r7, pc}
+ 165              	.LVL9:
+ 166              	.L7:
+ 167              		.loc 1 71 1 view .LVU40
+ 168              		.align	2
+ 169              	.L6:
+ 170 0078 EFBEADDE 		.word	-559038737
+ 171 007c 28ED00E0 		.word	-536810200
+ 172 0080 00000000 		.word	.LC0
+ 173 0084 2CED00E0 		.word	-536810196
+ 174 0088 0C000000 		.word	.LC1
+ 175 008c 18000000 		.word	.LC2
+ 176 0090 29ED00E0 		.word	-536810199
+ 177 0094 24000000 		.word	.LC3
+ 178 0098 2AED00E0 		.word	-536810198
+ 179 009c 30000000 		.word	.LC4
+ 180 00a0 38ED00E0 		.word	-536810184
+ 181 00a4 3C000000 		.word	.LC5
+ 182 00a8 00000000 		.word	_StackTop
+ 183 00ac 48000000 		.word	.LC6
+ 184 00b0 5C000000 		.word	.LC7
+ 185              		.cfi_endproc
+ARM GAS  /tmp/cc619fRA.s 			page 6
+
+
+ 186              	.LFE4:
+ 188              		.section	.text.die,"ax",%progbits
+ 189              		.align	1
+ 190              		.p2align 2,,3
+ 191              		.global	die
+ 192              		.syntax unified
+ 193              		.thumb
+ 194              		.thumb_func
+ 195              		.fpu softvfp
+ 197              	die:
+ 198              	.LVL10:
+ 199              	.LFB3:
+  32:src/util/fault.c **** 	int i;
+ 200              		.loc 1 32 1 is_stmt 1 view -0
+ 201              		.cfi_startproc
+ 202              		@ Volatile: function does not return.
+ 203              		@ args = 4, pretend = 16, frame = 72
+ 204              		@ frame_needed = 0, uses_anonymous_args = 1
+  32:src/util/fault.c **** 	int i;
+ 205              		.loc 1 32 1 is_stmt 0 view .LVU42
+ 206 0000 0FB4     		push	{r0, r1, r2, r3}
+ 207              		.cfi_def_cfa_offset 16
+ 208              		.cfi_offset 0, -16
+ 209              		.cfi_offset 1, -12
+ 210              		.cfi_offset 2, -8
+ 211              		.cfi_offset 3, -4
+ 212 0002 00B5     		push	{lr}
+ 213              		.cfi_def_cfa_offset 20
+ 214              		.cfi_offset 14, -20
+ 215 0004 93B0     		sub	sp, sp, #76
+ 216              		.cfi_def_cfa_offset 96
+  33:src/util/fault.c **** 	char buf[64] = {0};
+ 217              		.loc 1 33 2 is_stmt 1 view .LVU43
+  34:src/util/fault.c **** 	int len;
+ 218              		.loc 1 34 2 view .LVU44
+  34:src/util/fault.c **** 	int len;
+ 219              		.loc 1 34 7 is_stmt 0 view .LVU45
+ 220 0006 0021     		movs	r1, #0
+ 221 0008 3C22     		movs	r2, #60
+  32:src/util/fault.c **** 	int i;
+ 222              		.loc 1 32 1 view .LVU46
+ 223 000a 14AC     		add	r4, sp, #80
+  34:src/util/fault.c **** 	int len;
+ 224              		.loc 1 34 7 view .LVU47
+ 225 000c 03A8     		add	r0, sp, #12
+  32:src/util/fault.c **** 	int i;
+ 226              		.loc 1 32 1 view .LVU48
+ 227 000e 54F8046B 		ldr	r6, [r4], #4
+  34:src/util/fault.c **** 	int len;
+ 228              		.loc 1 34 7 view .LVU49
+ 229 0012 0291     		str	r1, [sp, #8]
+ 230 0014 FFF7FEFF 		bl	memset
+ 231              	.LVL11:
+  35:src/util/fault.c **** 	va_list ap;
+ 232              		.loc 1 35 2 is_stmt 1 view .LVU50
+  36:src/util/fault.c **** 	void *ret;
+ 233              		.loc 1 36 2 view .LVU51
+ARM GAS  /tmp/cc619fRA.s 			page 7
+
+
+  37:src/util/fault.c **** 	irq_save_disable();
+ 234              		.loc 1 37 2 view .LVU52
+  38:src/util/fault.c **** 
+ 235              		.loc 1 38 2 view .LVU53
+ 236              	.LBB12:
+ 237              	.LBI12:
+ 238              		.file 2 "include/ubtbr/system.h"
+   1:include/ubtbr/system.h **** #ifndef __SYSTEM_H
+   2:include/ubtbr/system.h **** #define __SYSTEM_H
+   3:include/ubtbr/system.h **** #include <stdint.h>
+   4:include/ubtbr/system.h **** 
+   5:include/ubtbr/system.h **** static inline uint32_t irq_save_disable(void)
+ 239              		.loc 2 5 24 view .LVU54
+ 240              	.LBB13:
+   6:include/ubtbr/system.h **** {
+   7:include/ubtbr/system.h **** 	uint32_t primask;
+ 241              		.loc 2 7 2 view .LVU55
+   8:include/ubtbr/system.h **** 
+   9:include/ubtbr/system.h **** 	__asm__ __volatile__ (
+ 242              		.loc 2 9 2 view .LVU56
+ 243              		.syntax unified
+ 244              	@ 9 "include/ubtbr/system.h" 1
+ 245 0018 EFF31083 			mrs    r3, primask
+ 246 001c 72B6     		cpsid  i
+ 247              	
+ 248              	@ 0 "" 2
+ 249              	.LVL12:
+  10:include/ubtbr/system.h **** 	"\tmrs    %0, primask\n"
+  11:include/ubtbr/system.h **** 	"\tcpsid  i\n"
+  12:include/ubtbr/system.h **** 	: "=r" (primask)
+  13:include/ubtbr/system.h **** 	:
+  14:include/ubtbr/system.h **** 	: "memory");
+  15:include/ubtbr/system.h **** 
+  16:include/ubtbr/system.h **** 	return primask;
+ 250              		.loc 2 16 2 view .LVU57
+ 251              		.loc 2 16 2 is_stmt 0 view .LVU58
+ 252              		.thumb
+ 253              		.syntax unified
+ 254              	.LBE13:
+ 255              	.LBE12:
+  41:src/util/fault.c **** 	va_start(ap, fmt);
+ 256              		.loc 1 41 2 is_stmt 1 view .LVU59
+  41:src/util/fault.c **** 	va_start(ap, fmt);
+ 257              		.loc 1 41 9 is_stmt 0 view .LVU60
+ 258 001e 5025     		movs	r5, #80
+  43:src/util/fault.c **** 	va_end(ap);
+ 259              		.loc 1 43 8 view .LVU61
+ 260 0020 3F21     		movs	r1, #63
+ 261 0022 3246     		mov	r2, r6
+ 262 0024 2346     		mov	r3, r4
+ 263 0026 0DF10900 		add	r0, sp, #9
+  42:src/util/fault.c **** 	len = tfp_vsnprintf(buf+1, sizeof(buf)-1, fmt, ap);
+ 264              		.loc 1 42 2 view .LVU62
+ 265 002a 0194     		str	r4, [sp, #4]
+  41:src/util/fault.c **** 	va_start(ap, fmt);
+ 266              		.loc 1 41 9 view .LVU63
+ 267 002c 8DF80850 		strb	r5, [sp, #8]
+ARM GAS  /tmp/cc619fRA.s 			page 8
+
+
+  42:src/util/fault.c **** 	len = tfp_vsnprintf(buf+1, sizeof(buf)-1, fmt, ap);
+ 268              		.loc 1 42 2 is_stmt 1 view .LVU64
+  43:src/util/fault.c **** 	va_end(ap);
+ 269              		.loc 1 43 2 view .LVU65
+  43:src/util/fault.c **** 	va_end(ap);
+ 270              		.loc 1 43 8 is_stmt 0 view .LVU66
+ 271 0030 FFF7FEFF 		bl	tfp_vsnprintf
+ 272              	.LVL13:
+  44:src/util/fault.c **** 	usb_send_sync((void*)buf, 1+len);
+ 273              		.loc 1 44 2 is_stmt 1 view .LVU67
+  45:src/util/fault.c **** 
+ 274              		.loc 1 45 2 view .LVU68
+ 275 0034 411C     		adds	r1, r0, #1
+ 276 0036 02A8     		add	r0, sp, #8
+ 277              	.LVL14:
+  45:src/util/fault.c **** 
+ 278              		.loc 1 45 2 is_stmt 0 view .LVU69
+ 279 0038 FFF7FEFF 		bl	usb_send_sync
+ 280              	.LVL15:
+ 281              	.L9:
+  47:src/util/fault.c **** 	{
+ 282              		.loc 1 47 2 is_stmt 1 discriminator 1 view .LVU70
+  49:src/util/fault.c **** 	}
+ 283              		.loc 1 49 3 discriminator 1 view .LVU71
+ 284 003c 6421     		movs	r1, #100
+ 285 003e 0520     		movs	r0, #5
+ 286 0040 FFF7FEFF 		bl	flash_leds
+ 287              	.LVL16:
+  47:src/util/fault.c **** 	{
+ 288              		.loc 1 47 8 discriminator 1 view .LVU72
+ 289 0044 FAE7     		b	.L9
+ 290              		.cfi_endproc
+ 291              	.LFE3:
+ 293 0046 00BF     		.section	.rodata.str1.4
+ 294 0075 000000   		.align	2
+ 295              	.LC8:
+ 296 0078 48617264 		.ascii	"HardFault at 0x%x\012\000"
+ 296      4661756C 
+ 296      74206174 
+ 296      20307825 
+ 296      780A00
+ 297              		.section	.text.HardFault_Handler,"ax",%progbits
+ 298              		.align	1
+ 299              		.p2align 2,,3
+ 300              		.global	HardFault_Handler
+ 301              		.syntax unified
+ 302              		.thumb
+ 303              		.thumb_func
+ 304              		.fpu softvfp
+ 306              	HardFault_Handler:
+ 307              	.LFB5:
+  72:src/util/fault.c **** 
+  73:src/util/fault.c **** void HardFault_Handler(void)
+  74:src/util/fault.c **** {
+ 308              		.loc 1 74 1 view -0
+ 309              		.cfi_startproc
+ 310              		@ Volatile: function does not return.
+ARM GAS  /tmp/cc619fRA.s 			page 9
+
+
+ 311              		@ args = 0, pretend = 0, frame = 0
+ 312              		@ frame_needed = 0, uses_anonymous_args = 0
+ 313 0000 08B5     		push	{r3, lr}
+ 314              		.cfi_def_cfa_offset 8
+ 315              		.cfi_offset 3, -8
+ 316              		.cfi_offset 14, -4
+  75:src/util/fault.c **** 	early_printf("HardFault at 0x%x\n", get_lr());
+ 317              		.loc 1 75 2 view .LVU74
+ 318              	.LBB14:
+ 319              	.LBI14:
+ 320              		.file 3 "include/ubtbr/debug.h"
+   1:include/ubtbr/debug.h **** #ifndef __SC_DEBUG_H
+   2:include/ubtbr/debug.h **** #define __SC_DEBUG_H
+   3:include/ubtbr/debug.h **** #include "cfg.h"
+   4:include/ubtbr/debug.h **** #include "ubertooth_usb.h"
+   5:include/ubtbr/debug.h **** #include <ubtbr/console.h>
+   6:include/ubtbr/debug.h **** 
+   7:include/ubtbr/debug.h **** #define cputc console_putc
+   8:include/ubtbr/debug.h **** 
+   9:include/ubtbr/debug.h **** void flash_leds(int count, int delay);
+  10:include/ubtbr/debug.h **** void xUSB_ERROR(void);
+  11:include/ubtbr/debug.h **** void xTDMA_ERROR(void);
+  12:include/ubtbr/debug.h **** void xDMA_ERROR(void);
+  13:include/ubtbr/debug.h **** void xOTHER_ERROR(void);
+  14:include/ubtbr/debug.h **** void xWIN(void);
+  15:include/ubtbr/debug.h **** void cprintf(char *fmt, ...);
+  16:include/ubtbr/debug.h **** void early_printf(char *fmt, ...);
+  17:include/ubtbr/debug.h **** void print_hex(uint8_t *pkt, unsigned size);
+  18:include/ubtbr/debug.h **** 
+  19:include/ubtbr/debug.h **** static inline unsigned get_lr(void)
+ 321              		.loc 3 19 24 view .LVU75
+ 322              	.LBB15:
+  20:include/ubtbr/debug.h **** {
+  21:include/ubtbr/debug.h **** 	uint32_t lr;
+ 323              		.loc 3 21 2 view .LVU76
+  22:include/ubtbr/debug.h **** 
+  23:include/ubtbr/debug.h **** 	__asm__ __volatile__ (
+ 324              		.loc 3 23 2 view .LVU77
+ 325              		.syntax unified
+ 326              	@ 23 "include/ubtbr/debug.h" 1
+ 327 0002 7146     			cpy    r1, lr
+ 328              	
+ 329              	@ 0 "" 2
+ 330              	.LVL17:
+  24:include/ubtbr/debug.h **** 	"\tcpy    %0, lr\n"
+  25:include/ubtbr/debug.h **** 	: "=r" (lr));
+  26:include/ubtbr/debug.h **** 
+  27:include/ubtbr/debug.h **** 	return lr;
+ 331              		.loc 3 27 2 view .LVU78
+ 332              		.loc 3 27 2 is_stmt 0 view .LVU79
+ 333              		.thumb
+ 334              		.syntax unified
+ 335              	.LBE15:
+ 336              	.LBE14:
+ 337              		.loc 1 75 2 view .LVU80
+ 338 0004 0748     		ldr	r0, .L12
+ 339 0006 FFF7FEFF 		bl	early_printf
+ARM GAS  /tmp/cc619fRA.s 			page 10
+
+
+ 340              	.LVL18:
+  76:src/util/fault.c **** 	dump_debug_registers();
+ 341              		.loc 1 76 2 is_stmt 1 view .LVU81
+ 342 000a FFF7FEFF 		bl	dump_debug_registers
+ 343              	.LVL19:
+ 344              	.L11:
+  77:src/util/fault.c **** 	while (1) {
+ 345              		.loc 1 77 2 discriminator 1 view .LVU82
+  78:src/util/fault.c **** 		flash_leds(2,500);
+ 346              		.loc 1 78 3 discriminator 1 view .LVU83
+ 347 000e 4FF4FA71 		mov	r1, #500
+ 348 0012 0220     		movs	r0, #2
+ 349 0014 FFF7FEFF 		bl	flash_leds
+ 350              	.LVL20:
+  79:src/util/fault.c **** 		flash_leds(25,100);
+ 351              		.loc 1 79 3 discriminator 1 view .LVU84
+ 352 0018 6421     		movs	r1, #100
+ 353 001a 1920     		movs	r0, #25
+ 354 001c FFF7FEFF 		bl	flash_leds
+ 355              	.LVL21:
+  77:src/util/fault.c **** 	while (1) {
+ 356              		.loc 1 77 8 discriminator 1 view .LVU85
+ 357 0020 F5E7     		b	.L11
+ 358              	.L13:
+ 359 0022 00BF     		.align	2
+ 360              	.L12:
+ 361 0024 78000000 		.word	.LC8
+ 362              		.cfi_endproc
+ 363              	.LFE5:
+ 365              		.section	.rodata.str1.4
+ 366 008b 00       		.align	2
+ 367              	.LC9:
+ 368 008c 4D4D4661 		.ascii	"MMFault at 0x%x\012\000"
+ 368      756C7420 
+ 368      61742030 
+ 368      7825780A 
+ 368      00
+ 369              		.section	.text.MemManagement_Handler,"ax",%progbits
+ 370              		.align	1
+ 371              		.p2align 2,,3
+ 372              		.global	MemManagement_Handler
+ 373              		.syntax unified
+ 374              		.thumb
+ 375              		.thumb_func
+ 376              		.fpu softvfp
+ 378              	MemManagement_Handler:
+ 379              	.LFB6:
+  80:src/util/fault.c **** 	}
+  81:src/util/fault.c **** }
+  82:src/util/fault.c **** 
+  83:src/util/fault.c **** void MemManagement_Handler(void)
+  84:src/util/fault.c **** {
+ 380              		.loc 1 84 1 view -0
+ 381              		.cfi_startproc
+ 382              		@ Volatile: function does not return.
+ 383              		@ args = 0, pretend = 0, frame = 0
+ 384              		@ frame_needed = 0, uses_anonymous_args = 0
+ARM GAS  /tmp/cc619fRA.s 			page 11
+
+
+ 385 0000 08B5     		push	{r3, lr}
+ 386              		.cfi_def_cfa_offset 8
+ 387              		.cfi_offset 3, -8
+ 388              		.cfi_offset 14, -4
+  85:src/util/fault.c **** 	early_printf("MMFault at 0x%x\n", get_lr());
+ 389              		.loc 1 85 2 view .LVU87
+ 390              	.LBB16:
+ 391              	.LBI16:
+  19:include/ubtbr/debug.h **** {
+ 392              		.loc 3 19 24 view .LVU88
+ 393              	.LBB17:
+  21:include/ubtbr/debug.h **** 
+ 394              		.loc 3 21 2 view .LVU89
+  23:include/ubtbr/debug.h **** 	"\tcpy    %0, lr\n"
+ 395              		.loc 3 23 2 view .LVU90
+ 396              		.syntax unified
+ 397              	@ 23 "include/ubtbr/debug.h" 1
+ 398 0002 7146     			cpy    r1, lr
+ 399              	
+ 400              	@ 0 "" 2
+ 401              	.LVL22:
+ 402              		.loc 3 27 2 view .LVU91
+ 403              		.loc 3 27 2 is_stmt 0 view .LVU92
+ 404              		.thumb
+ 405              		.syntax unified
+ 406              	.LBE17:
+ 407              	.LBE16:
+ 408              		.loc 1 85 2 view .LVU93
+ 409 0004 0748     		ldr	r0, .L16
+ 410 0006 FFF7FEFF 		bl	early_printf
+ 411              	.LVL23:
+  86:src/util/fault.c **** 	dump_debug_registers();
+ 412              		.loc 1 86 2 is_stmt 1 view .LVU94
+ 413 000a FFF7FEFF 		bl	dump_debug_registers
+ 414              	.LVL24:
+ 415              	.L15:
+  87:src/util/fault.c **** 	while (1) {
+ 416              		.loc 1 87 2 discriminator 1 view .LVU95
+  88:src/util/fault.c **** 		flash_leds(4,500);
+ 417              		.loc 1 88 3 discriminator 1 view .LVU96
+ 418 000e 4FF4FA71 		mov	r1, #500
+ 419 0012 0420     		movs	r0, #4
+ 420 0014 FFF7FEFF 		bl	flash_leds
+ 421              	.LVL25:
+  89:src/util/fault.c **** 		flash_leds(12,100);
+ 422              		.loc 1 89 3 discriminator 1 view .LVU97
+ 423 0018 6421     		movs	r1, #100
+ 424 001a 0C20     		movs	r0, #12
+ 425 001c FFF7FEFF 		bl	flash_leds
+ 426              	.LVL26:
+  87:src/util/fault.c **** 	while (1) {
+ 427              		.loc 1 87 8 discriminator 1 view .LVU98
+ 428 0020 F5E7     		b	.L15
+ 429              	.L17:
+ 430 0022 00BF     		.align	2
+ 431              	.L16:
+ 432 0024 8C000000 		.word	.LC9
+ARM GAS  /tmp/cc619fRA.s 			page 12
+
+
+ 433              		.cfi_endproc
+ 434              	.LFE6:
+ 436              		.section	.rodata.str1.4
+ 437 009d 000000   		.align	2
+ 438              	.LC10:
+ 439 00a0 42757346 		.ascii	"BusFault at %x\012\000"
+ 439      61756C74 
+ 439      20617420 
+ 439      25780A00 
+ 440              		.section	.text.BusFault_Handler,"ax",%progbits
+ 441              		.align	1
+ 442              		.p2align 2,,3
+ 443              		.global	BusFault_Handler
+ 444              		.syntax unified
+ 445              		.thumb
+ 446              		.thumb_func
+ 447              		.fpu softvfp
+ 449              	BusFault_Handler:
+ 450              	.LFB7:
+  90:src/util/fault.c **** 	}
+  91:src/util/fault.c **** }
+  92:src/util/fault.c **** 
+  93:src/util/fault.c **** void BusFault_Handler(void)
+  94:src/util/fault.c **** {
+ 451              		.loc 1 94 1 view -0
+ 452              		.cfi_startproc
+ 453              		@ Volatile: function does not return.
+ 454              		@ args = 0, pretend = 0, frame = 0
+ 455              		@ frame_needed = 0, uses_anonymous_args = 0
+ 456 0000 08B5     		push	{r3, lr}
+ 457              		.cfi_def_cfa_offset 8
+ 458              		.cfi_offset 3, -8
+ 459              		.cfi_offset 14, -4
+  95:src/util/fault.c **** 	early_printf("BusFault at %x\n", get_lr());
+ 460              		.loc 1 95 2 view .LVU100
+ 461              	.LBB18:
+ 462              	.LBI18:
+  19:include/ubtbr/debug.h **** {
+ 463              		.loc 3 19 24 view .LVU101
+ 464              	.LBB19:
+  21:include/ubtbr/debug.h **** 
+ 465              		.loc 3 21 2 view .LVU102
+  23:include/ubtbr/debug.h **** 	"\tcpy    %0, lr\n"
+ 466              		.loc 3 23 2 view .LVU103
+ 467              		.syntax unified
+ 468              	@ 23 "include/ubtbr/debug.h" 1
+ 469 0002 7146     			cpy    r1, lr
+ 470              	
+ 471              	@ 0 "" 2
+ 472              	.LVL27:
+ 473              		.loc 3 27 2 view .LVU104
+ 474              		.loc 3 27 2 is_stmt 0 view .LVU105
+ 475              		.thumb
+ 476              		.syntax unified
+ 477              	.LBE19:
+ 478              	.LBE18:
+ 479              		.loc 1 95 2 view .LVU106
+ARM GAS  /tmp/cc619fRA.s 			page 13
+
+
+ 480 0004 0748     		ldr	r0, .L20
+ 481 0006 FFF7FEFF 		bl	early_printf
+ 482              	.LVL28:
+  96:src/util/fault.c **** 	dump_debug_registers();
+ 483              		.loc 1 96 2 is_stmt 1 view .LVU107
+ 484 000a FFF7FEFF 		bl	dump_debug_registers
+ 485              	.LVL29:
+ 486              	.L19:
+  97:src/util/fault.c **** 	while (1) {
+ 487              		.loc 1 97 2 discriminator 1 view .LVU108
+  98:src/util/fault.c **** 		flash_leds(8,500);
+ 488              		.loc 1 98 3 discriminator 1 view .LVU109
+ 489 000e 4FF4FA71 		mov	r1, #500
+ 490 0012 0820     		movs	r0, #8
+ 491 0014 FFF7FEFF 		bl	flash_leds
+ 492              	.LVL30:
+  99:src/util/fault.c **** 		flash_leds(6,100);
+ 493              		.loc 1 99 3 discriminator 1 view .LVU110
+ 494 0018 6421     		movs	r1, #100
+ 495 001a 0620     		movs	r0, #6
+ 496 001c FFF7FEFF 		bl	flash_leds
+ 497              	.LVL31:
+  97:src/util/fault.c **** 	while (1) {
+ 498              		.loc 1 97 8 discriminator 1 view .LVU111
+ 499 0020 F5E7     		b	.L19
+ 500              	.L21:
+ 501 0022 00BF     		.align	2
+ 502              	.L20:
+ 503 0024 A0000000 		.word	.LC10
+ 504              		.cfi_endproc
+ 505              	.LFE7:
+ 507              		.section	.rodata.str1.4
+ 508              		.align	2
+ 509              	.LC11:
+ 510 00b0 55736167 		.ascii	"UsageFault at %x\012\000"
+ 510      65466175 
+ 510      6C742061 
+ 510      74202578 
+ 510      0A00
+ 511              		.section	.text.UsageFault_Handler,"ax",%progbits
+ 512              		.align	1
+ 513              		.p2align 2,,3
+ 514              		.global	UsageFault_Handler
+ 515              		.syntax unified
+ 516              		.thumb
+ 517              		.thumb_func
+ 518              		.fpu softvfp
+ 520              	UsageFault_Handler:
+ 521              	.LFB8:
+ 100:src/util/fault.c **** 	}
+ 101:src/util/fault.c **** }
+ 102:src/util/fault.c **** 
+ 103:src/util/fault.c **** void UsageFault_Handler(void)
+ 104:src/util/fault.c **** {
+ 522              		.loc 1 104 1 view -0
+ 523              		.cfi_startproc
+ 524              		@ Volatile: function does not return.
+ARM GAS  /tmp/cc619fRA.s 			page 14
+
+
+ 525              		@ args = 0, pretend = 0, frame = 0
+ 526              		@ frame_needed = 0, uses_anonymous_args = 0
+ 527 0000 08B5     		push	{r3, lr}
+ 528              		.cfi_def_cfa_offset 8
+ 529              		.cfi_offset 3, -8
+ 530              		.cfi_offset 14, -4
+ 105:src/util/fault.c **** 	early_printf("UsageFault at %x\n", get_lr());
+ 531              		.loc 1 105 2 view .LVU113
+ 532              	.LBB20:
+ 533              	.LBI20:
+  19:include/ubtbr/debug.h **** {
+ 534              		.loc 3 19 24 view .LVU114
+ 535              	.LBB21:
+  21:include/ubtbr/debug.h **** 
+ 536              		.loc 3 21 2 view .LVU115
+  23:include/ubtbr/debug.h **** 	"\tcpy    %0, lr\n"
+ 537              		.loc 3 23 2 view .LVU116
+ 538              		.syntax unified
+ 539              	@ 23 "include/ubtbr/debug.h" 1
+ 540 0002 7146     			cpy    r1, lr
+ 541              	
+ 542              	@ 0 "" 2
+ 543              	.LVL32:
+ 544              		.loc 3 27 2 view .LVU117
+ 545              		.loc 3 27 2 is_stmt 0 view .LVU118
+ 546              		.thumb
+ 547              		.syntax unified
+ 548              	.LBE21:
+ 549              	.LBE20:
+ 550              		.loc 1 105 2 view .LVU119
+ 551 0004 0748     		ldr	r0, .L24
+ 552 0006 FFF7FEFF 		bl	early_printf
+ 553              	.LVL33:
+ 106:src/util/fault.c **** 	dump_debug_registers();
+ 554              		.loc 1 106 2 is_stmt 1 view .LVU120
+ 555 000a FFF7FEFF 		bl	dump_debug_registers
+ 556              	.LVL34:
+ 557              	.L23:
+ 107:src/util/fault.c **** 	while (1) {
+ 558              		.loc 1 107 2 discriminator 1 view .LVU121
+ 108:src/util/fault.c **** 		flash_leds(8,500);
+ 559              		.loc 1 108 3 discriminator 1 view .LVU122
+ 560 000e 4FF4FA71 		mov	r1, #500
+ 561 0012 0820     		movs	r0, #8
+ 562 0014 FFF7FEFF 		bl	flash_leds
+ 563              	.LVL35:
+ 109:src/util/fault.c **** 		flash_leds(6,100);
+ 564              		.loc 1 109 3 discriminator 1 view .LVU123
+ 565 0018 6421     		movs	r1, #100
+ 566 001a 0620     		movs	r0, #6
+ 567 001c FFF7FEFF 		bl	flash_leds
+ 568              	.LVL36:
+ 107:src/util/fault.c **** 	while (1) {
+ 569              		.loc 1 107 8 discriminator 1 view .LVU124
+ 570 0020 F5E7     		b	.L23
+ 571              	.L25:
+ 572 0022 00BF     		.align	2
+ARM GAS  /tmp/cc619fRA.s 			page 15
+
+
+ 573              	.L24:
+ 574 0024 B0000000 		.word	.LC11
+ 575              		.cfi_endproc
+ 576              	.LFE8:
+ 578              		.text
+ 579              	.Letext0:
+ 580              		.file 4 "/usr/lib/gcc/arm-none-eabi/9.2.1/include/stdarg.h"
+ 581              		.file 5 "/usr/lib/gcc/arm-none-eabi/9.2.1/include/stdint.h"
+ 582              		.file 6 "../common/ubertooth.h"
+ 583              		.file 7 "src/util/tinyprintf.h"
+ 584              		.file 8 "include/ubtbr/ubertooth_usb.h"
+ 585              		.file 9 "<built-in>"
+ 586              		.file 10 "../../host/libubertooth/src/ubertooth_interface.h"
+ARM GAS  /tmp/cc619fRA.s 			page 16
+
+
+DEFINED SYMBOLS
+                            *ABS*:0000000000000000 fault.c
+     /tmp/cc619fRA.s:16     .rodata.str1.4:0000000000000000 $d
+     /tmp/cc619fRA.s:41     .text.dump_debug_registers:0000000000000000 $t
+     /tmp/cc619fRA.s:49     .text.dump_debug_registers:0000000000000000 dump_debug_registers
+     /tmp/cc619fRA.s:170    .text.dump_debug_registers:0000000000000078 $d
+     /tmp/cc619fRA.s:189    .text.die:0000000000000000 $t
+     /tmp/cc619fRA.s:197    .text.die:0000000000000000 die
+     /tmp/cc619fRA.s:298    .text.HardFault_Handler:0000000000000000 $t
+     /tmp/cc619fRA.s:306    .text.HardFault_Handler:0000000000000000 HardFault_Handler
+     /tmp/cc619fRA.s:361    .text.HardFault_Handler:0000000000000024 $d
+     /tmp/cc619fRA.s:370    .text.MemManagement_Handler:0000000000000000 $t
+     /tmp/cc619fRA.s:378    .text.MemManagement_Handler:0000000000000000 MemManagement_Handler
+     /tmp/cc619fRA.s:432    .text.MemManagement_Handler:0000000000000024 $d
+     /tmp/cc619fRA.s:441    .text.BusFault_Handler:0000000000000000 $t
+     /tmp/cc619fRA.s:449    .text.BusFault_Handler:0000000000000000 BusFault_Handler
+     /tmp/cc619fRA.s:503    .text.BusFault_Handler:0000000000000024 $d
+     /tmp/cc619fRA.s:512    .text.UsageFault_Handler:0000000000000000 $t
+     /tmp/cc619fRA.s:520    .text.UsageFault_Handler:0000000000000000 UsageFault_Handler
+     /tmp/cc619fRA.s:574    .text.UsageFault_Handler:0000000000000024 $d
+
+UNDEFINED SYMBOLS
+early_printf
+_StackTop
+memset
+tfp_vsnprintf
+usb_send_sync
+flash_leds

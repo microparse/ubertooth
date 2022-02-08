@@ -1,0 +1,805 @@
+ARM GAS  /tmp/ccRX0xBX.s 			page 1
+
+
+   1              		.cpu cortex-m3
+   2              		.eabi_attribute 20, 1
+   3              		.eabi_attribute 21, 1
+   4              		.eabi_attribute 23, 3
+   5              		.eabi_attribute 24, 1
+   6              		.eabi_attribute 25, 1
+   7              		.eabi_attribute 26, 1
+   8              		.eabi_attribute 30, 2
+   9              		.eabi_attribute 34, 1
+  10              		.eabi_attribute 18, 4
+  11              		.file	"slave_state.c"
+  12              		.text
+  13              	.Ltext0:
+  14              		.cfi_sections	.debug_frame
+  15              		.section	.text.tx_done_cb,"ax",%progbits
+  16              		.align	1
+  17              		.p2align 2,,3
+  18              		.arch armv7-m
+  19              		.syntax unified
+  20              		.thumb
+  21              		.thumb_func
+  22              		.fpu softvfp
+  24              	tx_done_cb:
+  25              	.LVL0:
+  26              	.LFB33:
+  27              		.file 1 "src/btphy/slave_state.c"
+   1:src/btphy/slave_state.c **** /* Slave connection state
+   2:src/btphy/slave_state.c ****  *
+   3:src/btphy/slave_state.c ****  * Copyright 2020 Etienne Helluy-Lafont, Univ. Lille, CNRS.
+   4:src/btphy/slave_state.c ****  *
+   5:src/btphy/slave_state.c ****  * This file is part of Project Ubertooth.
+   6:src/btphy/slave_state.c ****  *
+   7:src/btphy/slave_state.c ****  * This program is free software; you can redistribute it and/or modify
+   8:src/btphy/slave_state.c ****  * it under the terms of the GNU General Public License as published by
+   9:src/btphy/slave_state.c ****  * the Free Software Foundation; either version 2, or (at your option)
+  10:src/btphy/slave_state.c ****  * any later version.
+  11:src/btphy/slave_state.c ****  *
+  12:src/btphy/slave_state.c ****  * This program is distributed in the hope that it will be useful,
+  13:src/btphy/slave_state.c ****  * but WITHOUT ANY WARRANTY; without even the implied warranty of
+  14:src/btphy/slave_state.c ****  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  15:src/btphy/slave_state.c ****  * GNU General Public License for more details.
+  16:src/btphy/slave_state.c ****  *
+  17:src/btphy/slave_state.c ****  * You should have received a copy of the GNU General Public License
+  18:src/btphy/slave_state.c ****  * along with this program; see the file COPYING.  If not, write to
+  19:src/btphy/slave_state.c ****  * the Free Software Foundation, Inc., 51 Franklin Street,
+  20:src/btphy/slave_state.c ****  * Boston, MA 02110-1301, USA.
+  21:src/btphy/slave_state.c ****  */
+  22:src/btphy/slave_state.c **** #include <string.h>
+  23:src/btphy/slave_state.c **** #include <ubtbr/cfg.h>
+  24:src/btphy/slave_state.c **** #include <ubtbr/btctl_intf.h>
+  25:src/btphy/slave_state.c **** #include <ubtbr/btphy.h>
+  26:src/btphy/slave_state.c **** #include <ubtbr/tdma_sched.h>
+  27:src/btphy/slave_state.c **** #include <ubtbr/bb.h>
+  28:src/btphy/slave_state.c **** #include <ubtbr/rx_task.h>
+  29:src/btphy/slave_state.c **** #include <ubtbr/tx_task.h>
+  30:src/btphy/slave_state.c **** #include <ubtbr/ll.h>
+  31:src/btphy/slave_state.c **** 
+ARM GAS  /tmp/ccRX0xBX.s 			page 2
+
+
+  32:src/btphy/slave_state.c **** #define TX_PREPARE_IDX	1  // We will transmit at clkn1_0 = 2
+  33:src/btphy/slave_state.c **** #define RX_PREPARE_IDX	3  //  We will receive at clkn1_0 = 0
+  34:src/btphy/slave_state.c **** 
+  35:src/btphy/slave_state.c **** static struct {
+  36:src/btphy/slave_state.c **** 	/* Parameters */
+  37:src/btphy/slave_state.c **** 	uint64_t master_bdaddr;
+  38:src/btphy/slave_state.c **** 	uint8_t lt_addr;
+  39:src/btphy/slave_state.c **** 	link_layer_t ll;
+  40:src/btphy/slave_state.c **** } slave_state;
+  41:src/btphy/slave_state.c **** 
+  42:src/btphy/slave_state.c **** static void slave_state_schedule_rx(unsigned skip_slots);
+  43:src/btphy/slave_state.c **** static void slave_state_schedule_tx(unsigned skip_slots);
+  44:src/btphy/slave_state.c **** 
+  45:src/btphy/slave_state.c **** static int slave_state_canceled(void)
+  46:src/btphy/slave_state.c **** {
+  47:src/btphy/slave_state.c **** 	return btctl_get_state() != BTCTL_STATE_CONNECTED;
+  48:src/btphy/slave_state.c **** }
+  49:src/btphy/slave_state.c **** 
+  50:src/btphy/slave_state.c **** static int slave_rx_cb(msg_t *msg, void *arg, int time_offset)
+  51:src/btphy/slave_state.c **** {
+  52:src/btphy/slave_state.c **** 	btctl_hdr_t *h = (btctl_hdr_t*)msg->data;
+  53:src/btphy/slave_state.c **** 	btctl_rx_pkt_t *pkt;
+  54:src/btphy/slave_state.c **** 	int rc;
+  55:src/btphy/slave_state.c **** 
+  56:src/btphy/slave_state.c **** 	if (slave_state_canceled())
+  57:src/btphy/slave_state.c **** 	{
+  58:src/btphy/slave_state.c **** 		ll_reset(&slave_state.ll);
+  59:src/btphy/slave_state.c **** 		msg_free(msg);
+  60:src/btphy/slave_state.c **** 		return 0;
+  61:src/btphy/slave_state.c **** 	}
+  62:src/btphy/slave_state.c **** 	/* Check if a packet was received, to adjust clock if needed */
+  63:src/btphy/slave_state.c **** 	pkt = (btctl_rx_pkt_t *)h->data;
+  64:src/btphy/slave_state.c **** 
+  65:src/btphy/slave_state.c **** 	if (BBPKT_HAS_PKT(pkt))
+  66:src/btphy/slave_state.c **** 	{
+  67:src/btphy/slave_state.c **** 		/* Resync to master */
+  68:src/btphy/slave_state.c **** 		btphy_adj_clkn_delay(time_offset);
+  69:src/btphy/slave_state.c **** 	}
+  70:src/btphy/slave_state.c **** 
+  71:src/btphy/slave_state.c **** 	/* Do link layer */
+  72:src/btphy/slave_state.c **** 	rc = ll_process_rx(&slave_state.ll, msg);
+  73:src/btphy/slave_state.c **** 	if (rc < 0)
+  74:src/btphy/slave_state.c **** 	{
+  75:src/btphy/slave_state.c **** 		ll_reset(&slave_state.ll);
+  76:src/btphy/slave_state.c **** 		btctl_set_state(BTCTL_STATE_STANDBY, -rc);
+  77:src/btphy/slave_state.c **** 	}
+  78:src/btphy/slave_state.c **** 	else if (rc == 1)
+  79:src/btphy/slave_state.c **** 	{
+  80:src/btphy/slave_state.c **** 		slave_state_schedule_tx(0);
+  81:src/btphy/slave_state.c **** 	}
+  82:src/btphy/slave_state.c **** 	else
+  83:src/btphy/slave_state.c **** 	{
+  84:src/btphy/slave_state.c **** 		slave_state_schedule_rx(0);
+  85:src/btphy/slave_state.c **** 	}
+  86:src/btphy/slave_state.c **** 	return 0;
+  87:src/btphy/slave_state.c **** }
+  88:src/btphy/slave_state.c **** 
+ARM GAS  /tmp/ccRX0xBX.s 			page 3
+
+
+  89:src/btphy/slave_state.c **** static void tx_done_cb(void* arg)
+  90:src/btphy/slave_state.c **** {
+  28              		.loc 1 90 1 view -0
+  29              		.cfi_startproc
+  30              		@ args = 0, pretend = 0, frame = 0
+  31              		@ frame_needed = 0, uses_anonymous_args = 0
+  32              		@ link register save eliminated.
+  33              		.loc 1 90 1 is_stmt 0 view .LVU1
+  91:src/btphy/slave_state.c **** 	slave_state_schedule_rx(0);
+  34              		.loc 1 91 2 is_stmt 1 view .LVU2
+  35              	.LVL1:
+  36              	.LBB24:
+  37              	.LBI24:
+  92:src/btphy/slave_state.c **** }
+  93:src/btphy/slave_state.c **** 
+  94:src/btphy/slave_state.c **** static void slave_state_schedule_tx(unsigned skip_slots)
+  95:src/btphy/slave_state.c **** {
+  96:src/btphy/slave_state.c **** 	/* Wait for next tx slot */
+  97:src/btphy/slave_state.c **** 	unsigned delay = 4*skip_slots+(3&(TX_PREPARE_IDX-CUR_SLAVE_SLOT_IDX()));
+  98:src/btphy/slave_state.c **** 	bbhdr_t *tx_hdr;
+  99:src/btphy/slave_state.c **** 	uint8_t *tx_data;
+ 100:src/btphy/slave_state.c **** 
+ 101:src/btphy/slave_state.c **** 	ll_prepare_tx(&slave_state.ll, &tx_hdr, &tx_data);
+ 102:src/btphy/slave_state.c **** 
+ 103:src/btphy/slave_state.c **** 	tx_task_schedule(delay,
+ 104:src/btphy/slave_state.c **** 		tx_done_cb, NULL,
+ 105:src/btphy/slave_state.c **** 		tx_hdr, tx_data);
+ 106:src/btphy/slave_state.c **** }
+ 107:src/btphy/slave_state.c **** 
+ 108:src/btphy/slave_state.c **** static void slave_state_schedule_rx(unsigned skip_slots)
+  38              		.loc 1 108 13 view .LVU3
+  39              	.LBB25:
+ 109:src/btphy/slave_state.c **** {
+ 110:src/btphy/slave_state.c **** 	/* Wait for next rx slot */
+ 111:src/btphy/slave_state.c **** 	unsigned delay = 4*skip_slots+(3&(RX_PREPARE_IDX-CUR_SLAVE_SLOT_IDX()));
+  40              		.loc 1 111 2 view .LVU4
+ 112:src/btphy/slave_state.c **** 
+ 113:src/btphy/slave_state.c **** 	/* Schedule rx: */
+ 114:src/btphy/slave_state.c **** 	rx_task_schedule(delay,
+  41              		.loc 1 114 2 view .LVU5
+ 111:src/btphy/slave_state.c **** 
+  42              		.loc 1 111 51 is_stmt 0 view .LVU6
+  43 0000 044A     		ldr	r2, .L3
+  44              		.loc 1 114 2 view .LVU7
+  45 0002 0123     		movs	r3, #1
+ 111:src/btphy/slave_state.c **** 
+  46              		.loc 1 111 50 view .LVU8
+  47 0004 9068     		ldr	r0, [r2, #8]
+  48              	.LVL2:
+  49              		.loc 1 114 2 view .LVU9
+  50 0006 0449     		ldr	r1, .L3+4
+ 111:src/btphy/slave_state.c **** 
+  51              		.loc 1 111 50 view .LVU10
+  52 0008 C043     		mvns	r0, r0
+  53              		.loc 1 114 2 view .LVU11
+  54 000a 0022     		movs	r2, #0
+  55 000c 00F00300 		and	r0, r0, #3
+ARM GAS  /tmp/ccRX0xBX.s 			page 4
+
+
+  56 0010 FFF7FEBF 		b	rx_task_schedule
+  57              	.LVL3:
+  58              	.L4:
+  59              		.loc 1 114 2 view .LVU12
+  60              		.align	2
+  61              	.L3:
+  62 0014 00000000 		.word	btphy
+  63 0018 00000000 		.word	slave_rx_cb
+  64              	.LBE25:
+  65              	.LBE24:
+  66              		.cfi_endproc
+  67              	.LFE33:
+  69              		.section	.text.slave_rx_cb,"ax",%progbits
+  70              		.align	1
+  71              		.p2align 2,,3
+  72              		.syntax unified
+  73              		.thumb
+  74              		.thumb_func
+  75              		.fpu softvfp
+  77              	slave_rx_cb:
+  78              	.LVL4:
+  79              	.LFB32:
+  51:src/btphy/slave_state.c **** 	btctl_hdr_t *h = (btctl_hdr_t*)msg->data;
+  80              		.loc 1 51 1 is_stmt 1 view -0
+  81              		.cfi_startproc
+  82              		@ args = 0, pretend = 0, frame = 8
+  83              		@ frame_needed = 0, uses_anonymous_args = 0
+  51:src/btphy/slave_state.c **** 	btctl_hdr_t *h = (btctl_hdr_t*)msg->data;
+  84              		.loc 1 51 1 is_stmt 0 view .LVU14
+  85 0000 10B5     		push	{r4, lr}
+  86              		.cfi_def_cfa_offset 8
+  87              		.cfi_offset 4, -8
+  88              		.cfi_offset 14, -4
+  89 0002 84B0     		sub	sp, sp, #16
+  90              		.cfi_def_cfa_offset 24
+  91              	.LBB43:
+  92              	.LBB44:
+  93              	.LBB45:
+  94              		.file 2 "include/ubtbr/btctl_intf.h"
+   1:include/ubtbr/btctl_intf.h **** #ifndef __BTCTL_INTF_H
+   2:include/ubtbr/btctl_intf.h **** #define __BTCTL_INTF_H
+   3:include/ubtbr/btctl_intf.h **** #include <ubtbr/bb_msg.h>
+   4:include/ubtbr/btctl_intf.h **** #include <ubtbr/queue.h>
+   5:include/ubtbr/btctl_intf.h **** #include <ubtbr/system.h>
+   6:include/ubtbr/btctl_intf.h **** #include <ubertooth_interface.h>
+   7:include/ubtbr/btctl_intf.h **** 
+   8:include/ubtbr/btctl_intf.h **** typedef struct btctl_s {
+   9:include/ubtbr/btctl_intf.h **** 	btctl_state_t state;
+  10:include/ubtbr/btctl_intf.h **** 	msg_queue_t rx_q;
+  11:include/ubtbr/btctl_intf.h **** 	msg_queue_t tx_q;
+  12:include/ubtbr/btctl_intf.h **** 	msg_queue_t acl_tx_q;
+  13:include/ubtbr/btctl_intf.h **** 	msg_t *eir_msg;
+  14:include/ubtbr/btctl_intf.h **** 	btctl_tx_pkt_t *eir_pkt;
+  15:include/ubtbr/btctl_intf.h **** } btctl_t;
+  16:include/ubtbr/btctl_intf.h **** 
+  17:include/ubtbr/btctl_intf.h **** extern btctl_t btctl;
+  18:include/ubtbr/btctl_intf.h **** 
+ARM GAS  /tmp/ccRX0xBX.s 			page 5
+
+
+  19:include/ubtbr/btctl_intf.h **** void btctl_init(void);
+  20:include/ubtbr/btctl_intf.h **** int btctl_work(void);
+  21:include/ubtbr/btctl_intf.h **** 
+  22:include/ubtbr/btctl_intf.h **** void btctl_set_state(btctl_state_t state, btctl_reason_t reason);
+  23:include/ubtbr/btctl_intf.h **** 
+  24:include/ubtbr/btctl_intf.h **** static inline btctl_state_t btctl_get_state(void)
+  25:include/ubtbr/btctl_intf.h **** {
+  26:include/ubtbr/btctl_intf.h **** 	return btctl.state;
+  95              		.loc 2 26 14 view .LVU15
+  96 0004 284B     		ldr	r3, .L18
+  97              	.LBE45:
+  98              	.LBE44:
+  99              	.LBE43:
+  51:src/btphy/slave_state.c **** 	btctl_hdr_t *h = (btctl_hdr_t*)msg->data;
+ 100              		.loc 1 51 1 view .LVU16
+ 101 0006 0446     		mov	r4, r0
+  52:src/btphy/slave_state.c **** 	btctl_rx_pkt_t *pkt;
+ 102              		.loc 1 52 2 is_stmt 1 view .LVU17
+ 103              	.LVL5:
+  53:src/btphy/slave_state.c **** 	int rc;
+ 104              		.loc 1 53 2 view .LVU18
+  54:src/btphy/slave_state.c **** 
+ 105              		.loc 1 54 2 view .LVU19
+  56:src/btphy/slave_state.c **** 	{
+ 106              		.loc 1 56 2 view .LVU20
+ 107              	.LBB48:
+ 108              	.LBI43:
+  45:src/btphy/slave_state.c **** {
+ 109              		.loc 1 45 12 view .LVU21
+ 110              	.LBE48:
+  47:src/btphy/slave_state.c **** }
+ 111              		.loc 1 47 2 view .LVU22
+ 112              	.LBB49:
+ 113              	.LBB47:
+ 114              	.LBI44:
+  24:include/ubtbr/btctl_intf.h **** {
+ 115              		.loc 2 24 29 view .LVU23
+ 116              	.LBB46:
+ 117              		.loc 2 26 2 view .LVU24
+ 118              	.LBE46:
+ 119              	.LBE47:
+ 120              	.LBE49:
+  56:src/btphy/slave_state.c **** 	{
+ 121              		.loc 1 56 5 is_stmt 0 view .LVU25
+ 122 0008 1B78     		ldrb	r3, [r3]	@ zero_extendqisi2
+ 123 000a 032B     		cmp	r3, #3
+ 124 000c 21D1     		bne	.L14
+  63:src/btphy/slave_state.c **** 
+ 125              		.loc 1 63 2 is_stmt 1 view .LVU26
+ 126              	.LVL6:
+  65:src/btphy/slave_state.c **** 	{
+ 127              		.loc 1 65 2 view .LVU27
+  65:src/btphy/slave_state.c **** 	{
+ 128              		.loc 1 65 5 is_stmt 0 view .LVU28
+ 129 000e 437D     		ldrb	r3, [r0, #21]	@ zero_extendqisi2
+ 130 0010 DB07     		lsls	r3, r3, #31
+ 131 0012 14D4     		bmi	.L15
+ARM GAS  /tmp/ccRX0xBX.s 			page 6
+
+
+  72:src/btphy/slave_state.c **** 	if (rc < 0)
+ 132              		.loc 1 72 2 is_stmt 1 view .LVU29
+  72:src/btphy/slave_state.c **** 	if (rc < 0)
+ 133              		.loc 1 72 7 is_stmt 0 view .LVU30
+ 134 0014 2146     		mov	r1, r4
+ 135              	.LVL7:
+  72:src/btphy/slave_state.c **** 	if (rc < 0)
+ 136              		.loc 1 72 7 view .LVU31
+ 137 0016 2548     		ldr	r0, .L18+4
+ 138              	.LVL8:
+  72:src/btphy/slave_state.c **** 	if (rc < 0)
+ 139              		.loc 1 72 7 view .LVU32
+ 140 0018 FFF7FEFF 		bl	ll_process_rx
+ 141              	.LVL9:
+  73:src/btphy/slave_state.c **** 	{
+ 142              		.loc 1 73 2 is_stmt 1 view .LVU33
+  73:src/btphy/slave_state.c **** 	{
+ 143              		.loc 1 73 5 is_stmt 0 view .LVU34
+ 144 001c 041E     		subs	r4, r0, #0
+ 145              	.LVL10:
+  73:src/btphy/slave_state.c **** 	{
+ 146              		.loc 1 73 5 view .LVU35
+ 147 001e 21DB     		blt	.L16
+ 148              	.L9:
+  78:src/btphy/slave_state.c **** 	{
+ 149              		.loc 1 78 7 is_stmt 1 view .LVU36
+  78:src/btphy/slave_state.c **** 	{
+ 150              		.loc 1 78 10 is_stmt 0 view .LVU37
+ 151 0020 012C     		cmp	r4, #1
+ 152 0022 2AD0     		beq	.L17
+ 153              	.LBB50:
+ 154              	.LBI50:
+  50:src/btphy/slave_state.c **** {
+ 155              		.loc 1 50 12 is_stmt 1 view .LVU38
+ 156              	.LVL11:
+ 157              	.LBB51:
+  84:src/btphy/slave_state.c **** 	}
+ 158              		.loc 1 84 3 view .LVU39
+ 159              	.LBB52:
+ 160              	.LBI52:
+ 108:src/btphy/slave_state.c **** {
+ 161              		.loc 1 108 13 view .LVU40
+ 162              	.LBB53:
+ 111:src/btphy/slave_state.c **** 
+ 163              		.loc 1 111 2 view .LVU41
+ 164              		.loc 1 114 2 view .LVU42
+ 111:src/btphy/slave_state.c **** 
+ 165              		.loc 1 111 51 is_stmt 0 view .LVU43
+ 166 0024 224A     		ldr	r2, .L18+8
+ 167              		.loc 1 114 2 view .LVU44
+ 168 0026 0123     		movs	r3, #1
+ 111:src/btphy/slave_state.c **** 
+ 169              		.loc 1 111 50 view .LVU45
+ 170 0028 9068     		ldr	r0, [r2, #8]
+ 171              	.LVL12:
+ 172              		.loc 1 114 2 view .LVU46
+ 173 002a 2249     		ldr	r1, .L18+12
+ARM GAS  /tmp/ccRX0xBX.s 			page 7
+
+
+ 111:src/btphy/slave_state.c **** 
+ 174              		.loc 1 111 50 view .LVU47
+ 175 002c C043     		mvns	r0, r0
+ 176              		.loc 1 114 2 view .LVU48
+ 177 002e 0022     		movs	r2, #0
+ 178 0030 00F00300 		and	r0, r0, #3
+ 179 0034 FFF7FEFF 		bl	rx_task_schedule
+ 180              	.LVL13:
+ 181              		.loc 1 114 2 view .LVU49
+ 182              	.LBE53:
+ 183              	.LBE52:
+ 184              	.LBE51:
+ 185              	.LBE50:
+  87:src/btphy/slave_state.c **** 
+ 186              		.loc 1 87 1 view .LVU50
+ 187 0038 0020     		movs	r0, #0
+ 188 003a 04B0     		add	sp, sp, #16
+ 189              		.cfi_remember_state
+ 190              		.cfi_def_cfa_offset 8
+ 191              		@ sp needed
+ 192 003c 10BD     		pop	{r4, pc}
+ 193              	.LVL14:
+ 194              	.L15:
+ 195              		.cfi_restore_state
+  68:src/btphy/slave_state.c **** 	}
+ 196              		.loc 1 68 3 is_stmt 1 view .LVU51
+ 197 003e 1046     		mov	r0, r2
+ 198              	.LVL15:
+  68:src/btphy/slave_state.c **** 	}
+ 199              		.loc 1 68 3 is_stmt 0 view .LVU52
+ 200 0040 FFF7FEFF 		bl	btphy_adj_clkn_delay
+ 201              	.LVL16:
+  72:src/btphy/slave_state.c **** 	if (rc < 0)
+ 202              		.loc 1 72 2 is_stmt 1 view .LVU53
+  72:src/btphy/slave_state.c **** 	if (rc < 0)
+ 203              		.loc 1 72 7 is_stmt 0 view .LVU54
+ 204 0044 2146     		mov	r1, r4
+ 205 0046 1948     		ldr	r0, .L18+4
+ 206 0048 FFF7FEFF 		bl	ll_process_rx
+ 207              	.LVL17:
+  73:src/btphy/slave_state.c **** 	{
+ 208              		.loc 1 73 2 is_stmt 1 view .LVU55
+  73:src/btphy/slave_state.c **** 	{
+ 209              		.loc 1 73 5 is_stmt 0 view .LVU56
+ 210 004c 041E     		subs	r4, r0, #0
+ 211              	.LVL18:
+  73:src/btphy/slave_state.c **** 	{
+ 212              		.loc 1 73 5 view .LVU57
+ 213 004e E7DA     		bge	.L9
+ 214 0050 08E0     		b	.L16
+ 215              	.LVL19:
+ 216              	.L14:
+  58:src/btphy/slave_state.c **** 		msg_free(msg);
+ 217              		.loc 1 58 3 is_stmt 1 view .LVU58
+ 218 0052 1648     		ldr	r0, .L18+4
+ 219              	.LVL20:
+  58:src/btphy/slave_state.c **** 		msg_free(msg);
+ARM GAS  /tmp/ccRX0xBX.s 			page 8
+
+
+ 220              		.loc 1 58 3 is_stmt 0 view .LVU59
+ 221 0054 FFF7FEFF 		bl	ll_reset
+ 222              	.LVL21:
+  59:src/btphy/slave_state.c **** 		return 0;
+ 223              		.loc 1 59 3 is_stmt 1 view .LVU60
+ 224              	.LBB54:
+ 225              	.LBI54:
+ 226              		.file 3 "include/ubtbr/msg.h"
+   1:include/ubtbr/msg.h **** #ifndef __DEF_MSG_H
+   2:include/ubtbr/msg.h **** #define __DEF_MSG_H
+   3:include/ubtbr/msg.h **** #include <stdint.h>
+   4:include/ubtbr/msg.h **** 
+   5:include/ubtbr/msg.h **** typedef struct msg_s {
+   6:include/ubtbr/msg.h **** 	uint16_t len;
+   7:include/ubtbr/msg.h **** 	uint16_t data_len;
+   8:include/ubtbr/msg.h **** 	uint8_t *read;
+   9:include/ubtbr/msg.h **** 	uint8_t *write;
+  10:include/ubtbr/msg.h **** 	/* never move head */
+  11:include/ubtbr/msg.h **** 	uint8_t data[0];
+  12:include/ubtbr/msg.h **** } msg_t;
+  13:include/ubtbr/msg.h **** 
+  14:include/ubtbr/msg.h **** /* Allocate a msg_t wigh given room*/
+  15:include/ubtbr/msg.h **** static inline msg_t *msg_alloc(unsigned size)
+  16:include/ubtbr/msg.h **** {
+  17:include/ubtbr/msg.h **** 	msg_t *msg = (msg_t*)btctl_mem_alloc(sizeof(msg_t)+size);
+  18:include/ubtbr/msg.h **** 
+  19:include/ubtbr/msg.h **** 	msg->write = msg->data;
+  20:include/ubtbr/msg.h **** 	msg->read = msg->data;
+  21:include/ubtbr/msg.h **** 	msg->data_len = size;
+  22:include/ubtbr/msg.h **** 
+  23:include/ubtbr/msg.h **** 	return msg;
+  24:include/ubtbr/msg.h **** }
+  25:include/ubtbr/msg.h **** 
+  26:include/ubtbr/msg.h **** static inline void msg_free(msg_t *msg)
+ 227              		.loc 3 26 20 view .LVU61
+ 228              	.LBB55:
+  27:include/ubtbr/msg.h **** {
+  28:include/ubtbr/msg.h **** 	btctl_mem_free(msg);
+ 229              		.loc 3 28 2 view .LVU62
+ 230 0058 2046     		mov	r0, r4
+ 231 005a FFF7FEFF 		bl	mem_pool_free
+ 232              	.LVL22:
+ 233              		.loc 3 28 2 is_stmt 0 view .LVU63
+ 234              	.LBE55:
+ 235              	.LBE54:
+  60:src/btphy/slave_state.c **** 	}
+ 236              		.loc 1 60 3 is_stmt 1 view .LVU64
+  87:src/btphy/slave_state.c **** 
+ 237              		.loc 1 87 1 is_stmt 0 view .LVU65
+ 238 005e 0020     		movs	r0, #0
+ 239 0060 04B0     		add	sp, sp, #16
+ 240              		.cfi_remember_state
+ 241              		.cfi_def_cfa_offset 8
+ 242              		@ sp needed
+ 243 0062 10BD     		pop	{r4, pc}
+ 244              	.LVL23:
+ 245              	.L16:
+ARM GAS  /tmp/ccRX0xBX.s 			page 9
+
+
+ 246              		.cfi_restore_state
+  75:src/btphy/slave_state.c **** 		btctl_set_state(BTCTL_STATE_STANDBY, -rc);
+ 247              		.loc 1 75 3 is_stmt 1 view .LVU66
+ 248 0064 1148     		ldr	r0, .L18+4
+ 249              	.LVL24:
+  75:src/btphy/slave_state.c **** 		btctl_set_state(BTCTL_STATE_STANDBY, -rc);
+ 250              		.loc 1 75 3 is_stmt 0 view .LVU67
+ 251 0066 FFF7FEFF 		bl	ll_reset
+ 252              	.LVL25:
+  76:src/btphy/slave_state.c **** 	}
+ 253              		.loc 1 76 3 is_stmt 1 view .LVU68
+ 254 006a 6142     		rsbs	r1, r4, #0
+ 255 006c 0020     		movs	r0, #0
+ 256 006e C9B2     		uxtb	r1, r1
+ 257 0070 FFF7FEFF 		bl	btctl_set_state
+ 258              	.LVL26:
+  87:src/btphy/slave_state.c **** 
+ 259              		.loc 1 87 1 is_stmt 0 view .LVU69
+ 260 0074 0020     		movs	r0, #0
+ 261 0076 04B0     		add	sp, sp, #16
+ 262              		.cfi_remember_state
+ 263              		.cfi_def_cfa_offset 8
+ 264              		@ sp needed
+ 265 0078 10BD     		pop	{r4, pc}
+ 266              	.LVL27:
+ 267              	.L17:
+ 268              		.cfi_restore_state
+  80:src/btphy/slave_state.c **** 	}
+ 269              		.loc 1 80 3 is_stmt 1 view .LVU70
+ 270              	.LBB56:
+ 271              	.LBI56:
+  94:src/btphy/slave_state.c **** {
+ 272              		.loc 1 94 13 view .LVU71
+ 273              	.LBB57:
+  97:src/btphy/slave_state.c **** 	bbhdr_t *tx_hdr;
+ 274              		.loc 1 97 2 view .LVU72
+  97:src/btphy/slave_state.c **** 	bbhdr_t *tx_hdr;
+ 275              		.loc 1 97 51 is_stmt 0 view .LVU73
+ 276 007a 0D4B     		ldr	r3, .L18+8
+ 101:src/btphy/slave_state.c **** 
+ 277              		.loc 1 101 2 view .LVU74
+ 278 007c 03AA     		add	r2, sp, #12
+  97:src/btphy/slave_state.c **** 	bbhdr_t *tx_hdr;
+ 279              		.loc 1 97 34 view .LVU75
+ 280 007e 9C68     		ldr	r4, [r3, #8]
+ 101:src/btphy/slave_state.c **** 
+ 281              		.loc 1 101 2 view .LVU76
+ 282 0080 02A9     		add	r1, sp, #8
+ 283 0082 0A48     		ldr	r0, .L18+4
+ 284              	.LVL28:
+ 101:src/btphy/slave_state.c **** 
+ 285              		.loc 1 101 2 view .LVU77
+ 286 0084 FFF7FEFF 		bl	ll_prepare_tx
+ 287              	.LVL29:
+  97:src/btphy/slave_state.c **** 	bbhdr_t *tx_hdr;
+ 288              		.loc 1 97 34 view .LVU78
+ 289 0088 C4F10104 		rsb	r4, r4, #1
+ARM GAS  /tmp/ccRX0xBX.s 			page 10
+
+
+ 103:src/btphy/slave_state.c **** 		tx_done_cb, NULL,
+ 290              		.loc 1 103 2 view .LVU79
+ 291 008c 039B     		ldr	r3, [sp, #12]
+  97:src/btphy/slave_state.c **** 	bbhdr_t *tx_hdr;
+ 292              		.loc 1 97 34 view .LVU80
+ 293 008e 04F00304 		and	r4, r4, #3
+ 294              	.LVL30:
+  98:src/btphy/slave_state.c **** 	uint8_t *tx_data;
+ 295              		.loc 1 98 2 is_stmt 1 view .LVU81
+  99:src/btphy/slave_state.c **** 
+ 296              		.loc 1 99 2 view .LVU82
+ 101:src/btphy/slave_state.c **** 
+ 297              		.loc 1 101 2 view .LVU83
+ 103:src/btphy/slave_state.c **** 		tx_done_cb, NULL,
+ 298              		.loc 1 103 2 view .LVU84
+ 299 0092 2046     		mov	r0, r4
+ 300 0094 0093     		str	r3, [sp]
+ 301 0096 0022     		movs	r2, #0
+ 302 0098 029B     		ldr	r3, [sp, #8]
+ 303 009a 0749     		ldr	r1, .L18+16
+ 304 009c FFF7FEFF 		bl	tx_task_schedule
+ 305              	.LVL31:
+ 103:src/btphy/slave_state.c **** 		tx_done_cb, NULL,
+ 306              		.loc 1 103 2 is_stmt 0 view .LVU85
+ 307              	.LBE57:
+ 308              	.LBE56:
+  87:src/btphy/slave_state.c **** 
+ 309              		.loc 1 87 1 view .LVU86
+ 310 00a0 0020     		movs	r0, #0
+ 311 00a2 04B0     		add	sp, sp, #16
+ 312              		.cfi_def_cfa_offset 8
+ 313              		@ sp needed
+ 314 00a4 10BD     		pop	{r4, pc}
+ 315              	.L19:
+ 316 00a6 00BF     		.align	2
+ 317              	.L18:
+ 318 00a8 00000000 		.word	btctl
+ 319 00ac 0C000000 		.word	.LANCHOR0+12
+ 320 00b0 00000000 		.word	btphy
+ 321 00b4 00000000 		.word	slave_rx_cb
+ 322 00b8 00000000 		.word	tx_done_cb
+ 323              		.cfi_endproc
+ 324              	.LFE32:
+ 326              		.section	.rodata.str1.4,"aMS",%progbits,1
+ 327              		.align	2
+ 328              	.LC0:
+ 329 0000 736C6176 		.ascii	"slave started\012\000"
+ 329      65207374 
+ 329      61727465 
+ 329      640A00
+ 330              		.section	.text.slave_state_init,"ax",%progbits
+ 331              		.align	1
+ 332              		.p2align 2,,3
+ 333              		.global	slave_state_init
+ 334              		.syntax unified
+ 335              		.thumb
+ 336              		.thumb_func
+ARM GAS  /tmp/ccRX0xBX.s 			page 11
+
+
+ 337              		.fpu softvfp
+ 339              	slave_state_init:
+ 340              	.LVL32:
+ 341              	.LFB36:
+ 115:src/btphy/slave_state.c **** 		slave_rx_cb, NULL,	// ID rx callback
+ 116:src/btphy/slave_state.c **** 		1<<RX_F_PAYLOAD		// wait for header
+ 117:src/btphy/slave_state.c **** 	);
+ 118:src/btphy/slave_state.c **** }
+ 119:src/btphy/slave_state.c **** 
+ 120:src/btphy/slave_state.c **** void slave_state_init(uint64_t master_bdaddr, uint8_t lt_addr)
+ 121:src/btphy/slave_state.c **** {
+ 342              		.loc 1 121 1 is_stmt 1 view -0
+ 343              		.cfi_startproc
+ 344              		@ args = 0, pretend = 0, frame = 0
+ 345              		@ frame_needed = 0, uses_anonymous_args = 0
+ 346              		.loc 1 121 1 is_stmt 0 view .LVU88
+ 347 0000 70B5     		push	{r4, r5, r6, lr}
+ 348              		.cfi_def_cfa_offset 16
+ 349              		.cfi_offset 4, -16
+ 350              		.cfi_offset 5, -12
+ 351              		.cfi_offset 6, -8
+ 352              		.cfi_offset 14, -4
+ 122:src/btphy/slave_state.c **** 	slave_state.master_bdaddr = master_bdaddr;
+ 353              		.loc 1 122 2 is_stmt 1 view .LVU89
+ 121:src/btphy/slave_state.c **** 	slave_state.master_bdaddr = master_bdaddr;
+ 354              		.loc 1 121 1 is_stmt 0 view .LVU90
+ 355 0002 0346     		mov	r3, r0
+ 356 0004 0846     		mov	r0, r1
+ 357              	.LVL33:
+ 121:src/btphy/slave_state.c **** 	slave_state.master_bdaddr = master_bdaddr;
+ 358              		.loc 1 121 1 view .LVU91
+ 359 0006 1546     		mov	r5, r2
+ 360              		.loc 1 122 28 view .LVU92
+ 361 0008 114C     		ldr	r4, .L21
+ 123:src/btphy/slave_state.c **** 	slave_state.lt_addr = lt_addr;
+ 124:src/btphy/slave_state.c **** 
+ 125:src/btphy/slave_state.c **** 	/* Initialize basic hopping from master's clock */
+ 126:src/btphy/slave_state.c **** 	btphy_set_mode(BT_MODE_SLAVE, master_bdaddr&0xffffff, 0xff & (master_bdaddr>>24));
+ 362              		.loc 1 126 2 view .LVU93
+ 363 000a 1A0E     		lsrs	r2, r3, #24
+ 364              	.LVL34:
+ 365              		.loc 1 126 2 view .LVU94
+ 366 000c 23F07F41 		bic	r1, r3, #-16777216
+ 122:src/btphy/slave_state.c **** 	slave_state.lt_addr = lt_addr;
+ 367              		.loc 1 122 28 view .LVU95
+ 368 0010 6060     		str	r0, [r4, #4]
+ 123:src/btphy/slave_state.c **** 	slave_state.lt_addr = lt_addr;
+ 369              		.loc 1 123 2 is_stmt 1 view .LVU96
+ 370              		.loc 1 126 2 is_stmt 0 view .LVU97
+ 371 0012 0520     		movs	r0, #5
+ 122:src/btphy/slave_state.c **** 	slave_state.lt_addr = lt_addr;
+ 372              		.loc 1 122 28 view .LVU98
+ 373 0014 2360     		str	r3, [r4]
+ 123:src/btphy/slave_state.c **** 	slave_state.lt_addr = lt_addr;
+ 374              		.loc 1 123 22 view .LVU99
+ 375 0016 2572     		strb	r5, [r4, #8]
+ 376              		.loc 1 126 2 is_stmt 1 view .LVU100
+ARM GAS  /tmp/ccRX0xBX.s 			page 12
+
+
+ 377 0018 FFF7FEFF 		bl	btphy_set_mode
+ 378              	.LVL35:
+ 127:src/btphy/slave_state.c **** 
+ 128:src/btphy/slave_state.c **** 	ll_init(&slave_state.ll, 0, lt_addr);
+ 379              		.loc 1 128 2 view .LVU101
+ 380 001c 2A46     		mov	r2, r5
+ 381 001e 0021     		movs	r1, #0
+ 382 0020 04F10C00 		add	r0, r4, #12
+ 383 0024 FFF7FEFF 		bl	ll_init
+ 384              	.LVL36:
+ 129:src/btphy/slave_state.c **** 
+ 130:src/btphy/slave_state.c **** 	cprintf("slave started\n");
+ 385              		.loc 1 130 2 view .LVU102
+ 386 0028 0A48     		ldr	r0, .L21+4
+ 387 002a FFF7FEFF 		bl	cprintf
+ 388              	.LVL37:
+ 131:src/btphy/slave_state.c **** 	btctl_set_state(BTCTL_STATE_CONNECTED, BTCTL_REASON_PAGED);
+ 389              		.loc 1 131 2 view .LVU103
+ 390 002e 0221     		movs	r1, #2
+ 391 0030 0320     		movs	r0, #3
+ 392 0032 FFF7FEFF 		bl	btctl_set_state
+ 393              	.LVL38:
+ 132:src/btphy/slave_state.c **** 	slave_state_schedule_rx(1);
+ 394              		.loc 1 132 2 view .LVU104
+ 395              	.LBB58:
+ 396              	.LBI58:
+ 108:src/btphy/slave_state.c **** {
+ 397              		.loc 1 108 13 view .LVU105
+ 398              	.LBB59:
+ 111:src/btphy/slave_state.c **** 
+ 399              		.loc 1 111 2 view .LVU106
+ 114:src/btphy/slave_state.c **** 		slave_rx_cb, NULL,	// ID rx callback
+ 400              		.loc 1 114 2 view .LVU107
+ 401              	.LBE59:
+ 402              	.LBE58:
+ 133:src/btphy/slave_state.c **** }
+ 403              		.loc 1 133 1 is_stmt 0 view .LVU108
+ 404 0036 BDE87040 		pop	{r4, r5, r6, lr}
+ 405              		.cfi_restore 14
+ 406              		.cfi_restore 6
+ 407              		.cfi_restore 5
+ 408              		.cfi_restore 4
+ 409              		.cfi_def_cfa_offset 0
+ 410              	.LBB61:
+ 411              	.LBB60:
+ 111:src/btphy/slave_state.c **** 
+ 412              		.loc 1 111 51 view .LVU109
+ 413 003a 074A     		ldr	r2, .L21+8
+ 114:src/btphy/slave_state.c **** 		slave_rx_cb, NULL,	// ID rx callback
+ 414              		.loc 1 114 2 view .LVU110
+ 415 003c 0123     		movs	r3, #1
+ 111:src/btphy/slave_state.c **** 
+ 416              		.loc 1 111 50 view .LVU111
+ 417 003e 9068     		ldr	r0, [r2, #8]
+ 114:src/btphy/slave_state.c **** 		slave_rx_cb, NULL,	// ID rx callback
+ 418              		.loc 1 114 2 view .LVU112
+ 419 0040 0649     		ldr	r1, .L21+12
+ARM GAS  /tmp/ccRX0xBX.s 			page 13
+
+
+ 111:src/btphy/slave_state.c **** 
+ 420              		.loc 1 111 50 view .LVU113
+ 421 0042 C043     		mvns	r0, r0
+ 111:src/btphy/slave_state.c **** 
+ 422              		.loc 1 111 34 view .LVU114
+ 423 0044 00F00300 		and	r0, r0, #3
+ 114:src/btphy/slave_state.c **** 		slave_rx_cb, NULL,	// ID rx callback
+ 424              		.loc 1 114 2 view .LVU115
+ 425 0048 0022     		movs	r2, #0
+ 426 004a 0430     		adds	r0, r0, #4
+ 427 004c FFF7FEBF 		b	rx_task_schedule
+ 428              	.LVL39:
+ 429              	.L22:
+ 114:src/btphy/slave_state.c **** 		slave_rx_cb, NULL,	// ID rx callback
+ 430              		.loc 1 114 2 view .LVU116
+ 431              		.align	2
+ 432              	.L21:
+ 433 0050 00000000 		.word	.LANCHOR0
+ 434 0054 00000000 		.word	.LC0
+ 435 0058 00000000 		.word	btphy
+ 436 005c 00000000 		.word	slave_rx_cb
+ 437              	.LBE60:
+ 438              	.LBE61:
+ 439              		.cfi_endproc
+ 440              	.LFE36:
+ 442              		.bss
+ 443              		.align	3
+ 444              		.set	.LANCHOR0,. + 0
+ 447              	slave_state:
+ 448 0000 00000000 		.space	48
+ 448      00000000 
+ 448      00000000 
+ 448      00000000 
+ 448      00000000 
+ 449              		.text
+ 450              	.Letext0:
+ 451              		.file 4 "/usr/lib/gcc/arm-none-eabi/9.2.1/include/stddef.h"
+ 452              		.file 5 "/usr/include/newlib/sys/_types.h"
+ 453              		.file 6 "/usr/include/newlib/sys/reent.h"
+ 454              		.file 7 "/usr/include/newlib/sys/lock.h"
+ 455              		.file 8 "/usr/lib/gcc/arm-none-eabi/9.2.1/include/stdint.h"
+ 456              		.file 9 "../../host/libubertooth/src/ubertooth_interface.h"
+ 457              		.file 10 "../common/ubertooth.h"
+ 458              		.file 11 "include/ubtbr/queue.h"
+ 459              		.file 12 "include/ubtbr/btphy.h"
+ 460              		.file 13 "include/ubtbr/ll.h"
+ 461              		.file 14 "include/ubtbr/rx_task.h"
+ 462              		.file 15 "include/ubtbr/debug.h"
+ 463              		.file 16 "include/ubtbr/mem_pool.h"
+ 464              		.file 17 "include/ubtbr/tx_task.h"
+ARM GAS  /tmp/ccRX0xBX.s 			page 14
+
+
+DEFINED SYMBOLS
+                            *ABS*:0000000000000000 slave_state.c
+     /tmp/ccRX0xBX.s:16     .text.tx_done_cb:0000000000000000 $t
+     /tmp/ccRX0xBX.s:24     .text.tx_done_cb:0000000000000000 tx_done_cb
+     /tmp/ccRX0xBX.s:62     .text.tx_done_cb:0000000000000014 $d
+     /tmp/ccRX0xBX.s:77     .text.slave_rx_cb:0000000000000000 slave_rx_cb
+     /tmp/ccRX0xBX.s:70     .text.slave_rx_cb:0000000000000000 $t
+     /tmp/ccRX0xBX.s:318    .text.slave_rx_cb:00000000000000a8 $d
+     /tmp/ccRX0xBX.s:327    .rodata.str1.4:0000000000000000 $d
+     /tmp/ccRX0xBX.s:331    .text.slave_state_init:0000000000000000 $t
+     /tmp/ccRX0xBX.s:339    .text.slave_state_init:0000000000000000 slave_state_init
+     /tmp/ccRX0xBX.s:433    .text.slave_state_init:0000000000000050 $d
+     /tmp/ccRX0xBX.s:443    .bss:0000000000000000 $d
+     /tmp/ccRX0xBX.s:447    .bss:0000000000000000 slave_state
+
+UNDEFINED SYMBOLS
+rx_task_schedule
+btphy
+ll_process_rx
+btphy_adj_clkn_delay
+ll_reset
+mem_pool_free
+btctl_set_state
+ll_prepare_tx
+tx_task_schedule
+btctl
+btphy_set_mode
+ll_init
+cprintf

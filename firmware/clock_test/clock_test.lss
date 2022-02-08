@@ -1,0 +1,960 @@
+
+clock_test.elf:     file format elf32-littlearm
+
+Sections:
+Idx Name          Size      VMA       LMA       File off  Algn
+  0 .text         00000628  00004000  00004000  00004000  2**2
+                  CONTENTS, ALLOC, LOAD, READONLY, CODE
+  1 .persistent   00000020  10000000  10000000  00020000  2**0
+                  ALLOC
+  2 .data         00000430  10000020  00004628  00010020  2**3
+                  CONTENTS, ALLOC, LOAD, DATA
+  3 .bss          00000024  10000450  00004a58  00010450  2**2
+                  ALLOC
+  4 .ARM.attributes 00000029  00000000  00000000  00010450  2**0
+                  CONTENTS, READONLY
+  5 .comment      000000a7  00000000  00000000  00010479  2**0
+                  CONTENTS, READONLY
+  6 .debug_info   00003757  00000000  00000000  00010520  2**0
+                  CONTENTS, READONLY, DEBUGGING, OCTETS
+  7 .debug_abbrev 00001007  00000000  00000000  00013c77  2**0
+                  CONTENTS, READONLY, DEBUGGING, OCTETS
+  8 .debug_loc    00000be3  00000000  00000000  00014c7e  2**0
+                  CONTENTS, READONLY, DEBUGGING, OCTETS
+  9 .debug_aranges 00000220  00000000  00000000  00015861  2**0
+                  CONTENTS, READONLY, DEBUGGING, OCTETS
+ 10 .debug_line   0000161d  00000000  00000000  00015a81  2**0
+                  CONTENTS, READONLY, DEBUGGING, OCTETS
+ 11 .debug_str    00000d2b  00000000  00000000  0001709e  2**0
+                  CONTENTS, READONLY, DEBUGGING, OCTETS
+ 12 .debug_frame  00000438  00000000  00000000  00017dcc  2**2
+                  CONTENTS, READONLY, DEBUGGING, OCTETS
+ 13 .debug_ranges 00000198  00000000  00000000  00018204  2**0
+                  CONTENTS, READONLY, DEBUGGING, OCTETS
+
+Disassembly of section .text:
+
+00004000 <_NVIC_Handler_Functions>:
+    4000:	e0 3f 00 10 8d 42 00 00 e1 42 00 00 e1 42 00 00     .?...B...B...B..
+    4010:	e1 42 00 00 e1 42 00 00 e1 42 00 00 00 00 00 00     .B...B...B......
+    4020:	00 00 00 00 00 00 00 00 00 00 00 00 e1 42 00 00     .............B..
+    4030:	e1 42 00 00 00 00 00 00 e1 42 00 00 e1 42 00 00     .B.......B...B..
+    4040:	e1 42 00 00 e1 42 00 00 e1 42 00 00 e1 42 00 00     .B...B...B...B..
+    4050:	e1 42 00 00 e1 42 00 00 e1 42 00 00 e1 42 00 00     .B...B...B...B..
+    4060:	e1 42 00 00 e1 42 00 00 e1 42 00 00 e1 42 00 00     .B...B...B...B..
+    4070:	e1 42 00 00 e1 42 00 00 e1 42 00 00 e1 42 00 00     .B...B...B...B..
+    4080:	e1 42 00 00 e1 42 00 00 e1 42 00 00 e1 42 00 00     .B...B...B...B..
+    4090:	e1 42 00 00 e1 42 00 00 e1 42 00 00 e1 42 00 00     .B...B...B...B..
+    40a0:	e1 42 00 00 e1 42 00 00 e1 42 00 00 e1 42 00 00     .B...B...B...B..
+    40b0:	e1 42 00 00 e1 42 00 00 e1 42 00 00 e1 42 00 00     .B...B...B...B..
+    40c0:	e1 42 00 00 e1 42 00 00 e1 42 00 00                 .B...B...B..
+
+000040cc <deregister_tm_clones>:
+    40cc:	4803      	ldr	r0, [pc, #12]	; (40dc <deregister_tm_clones+0x10>)
+    40ce:	4b04      	ldr	r3, [pc, #16]	; (40e0 <deregister_tm_clones+0x14>)
+    40d0:	4283      	cmp	r3, r0
+    40d2:	d002      	beq.n	40da <deregister_tm_clones+0xe>
+    40d4:	4b03      	ldr	r3, [pc, #12]	; (40e4 <deregister_tm_clones+0x18>)
+    40d6:	b103      	cbz	r3, 40da <deregister_tm_clones+0xe>
+    40d8:	4718      	bx	r3
+    40da:	4770      	bx	lr
+    40dc:	10000450 	.word	0x10000450
+    40e0:	10000450 	.word	0x10000450
+    40e4:	00000000 	.word	0x00000000
+
+000040e8 <register_tm_clones>:
+    40e8:	4805      	ldr	r0, [pc, #20]	; (4100 <register_tm_clones+0x18>)
+    40ea:	4906      	ldr	r1, [pc, #24]	; (4104 <register_tm_clones+0x1c>)
+    40ec:	1a0b      	subs	r3, r1, r0
+    40ee:	0fd9      	lsrs	r1, r3, #31
+    40f0:	eb01 01a3 	add.w	r1, r1, r3, asr #2
+    40f4:	1049      	asrs	r1, r1, #1
+    40f6:	d002      	beq.n	40fe <register_tm_clones+0x16>
+    40f8:	4b03      	ldr	r3, [pc, #12]	; (4108 <register_tm_clones+0x20>)
+    40fa:	b103      	cbz	r3, 40fe <register_tm_clones+0x16>
+    40fc:	4718      	bx	r3
+    40fe:	4770      	bx	lr
+    4100:	10000450 	.word	0x10000450
+    4104:	10000450 	.word	0x10000450
+    4108:	00000000 	.word	0x00000000
+
+0000410c <__do_global_dtors_aux>:
+    410c:	b510      	push	{r4, lr}
+    410e:	4c06      	ldr	r4, [pc, #24]	; (4128 <__do_global_dtors_aux+0x1c>)
+    4110:	7823      	ldrb	r3, [r4, #0]
+    4112:	b943      	cbnz	r3, 4126 <__do_global_dtors_aux+0x1a>
+    4114:	f7ff ffda 	bl	40cc <deregister_tm_clones>
+    4118:	4b04      	ldr	r3, [pc, #16]	; (412c <__do_global_dtors_aux+0x20>)
+    411a:	b113      	cbz	r3, 4122 <__do_global_dtors_aux+0x16>
+    411c:	4804      	ldr	r0, [pc, #16]	; (4130 <__do_global_dtors_aux+0x24>)
+    411e:	f3af 8000 	nop.w
+    4122:	2301      	movs	r3, #1
+    4124:	7023      	strb	r3, [r4, #0]
+    4126:	bd10      	pop	{r4, pc}
+    4128:	10000450 	.word	0x10000450
+    412c:	00000000 	.word	0x00000000
+    4130:	00004604 	.word	0x00004604
+
+00004134 <frame_dummy>:
+    4134:	b508      	push	{r3, lr}
+    4136:	4b04      	ldr	r3, [pc, #16]	; (4148 <frame_dummy+0x14>)
+    4138:	b11b      	cbz	r3, 4142 <frame_dummy+0xe>
+    413a:	4904      	ldr	r1, [pc, #16]	; (414c <frame_dummy+0x18>)
+    413c:	4804      	ldr	r0, [pc, #16]	; (4150 <frame_dummy+0x1c>)
+    413e:	f3af 8000 	nop.w
+    4142:	e8bd 4008 	ldmia.w	sp!, {r3, lr}
+    4146:	e7cf      	b.n	40e8 <register_tm_clones>
+    4148:	00000000 	.word	0x00000000
+    414c:	10000454 	.word	0x10000454
+    4150:	00004604 	.word	0x00004604
+
+00004154 <atexit>:
+    4154:	2300      	movs	r3, #0
+    4156:	4601      	mov	r1, r0
+    4158:	461a      	mov	r2, r3
+    415a:	4618      	mov	r0, r3
+    415c:	f000 b83e 	b.w	41dc <__register_exitproc>
+
+00004160 <__libc_fini_array>:
+    4160:	b538      	push	{r3, r4, r5, lr}
+    4162:	4c0a      	ldr	r4, [pc, #40]	; (418c <__libc_fini_array+0x2c>)
+    4164:	4d0a      	ldr	r5, [pc, #40]	; (4190 <__libc_fini_array+0x30>)
+    4166:	1b64      	subs	r4, r4, r5
+    4168:	10a4      	asrs	r4, r4, #2
+    416a:	d00a      	beq.n	4182 <__libc_fini_array+0x22>
+    416c:	f104 4380 	add.w	r3, r4, #1073741824	; 0x40000000
+    4170:	3b01      	subs	r3, #1
+    4172:	eb05 0583 	add.w	r5, r5, r3, lsl #2
+    4176:	3c01      	subs	r4, #1
+    4178:	f855 3904 	ldr.w	r3, [r5], #-4
+    417c:	4798      	blx	r3
+    417e:	2c00      	cmp	r4, #0
+    4180:	d1f9      	bne.n	4176 <__libc_fini_array+0x16>
+    4182:	e8bd 4038 	ldmia.w	sp!, {r3, r4, r5, lr}
+    4186:	f000 ba47 	b.w	4618 <_fini>
+    418a:	bf00      	nop
+    418c:	00004628 	.word	0x00004628
+    4190:	00004624 	.word	0x00004624
+
+00004194 <__libc_init_array>:
+    4194:	b570      	push	{r4, r5, r6, lr}
+    4196:	4e0d      	ldr	r6, [pc, #52]	; (41cc <__libc_init_array+0x38>)
+    4198:	4d0d      	ldr	r5, [pc, #52]	; (41d0 <__libc_init_array+0x3c>)
+    419a:	1b76      	subs	r6, r6, r5
+    419c:	10b6      	asrs	r6, r6, #2
+    419e:	d006      	beq.n	41ae <__libc_init_array+0x1a>
+    41a0:	2400      	movs	r4, #0
+    41a2:	3401      	adds	r4, #1
+    41a4:	f855 3b04 	ldr.w	r3, [r5], #4
+    41a8:	4798      	blx	r3
+    41aa:	42a6      	cmp	r6, r4
+    41ac:	d1f9      	bne.n	41a2 <__libc_init_array+0xe>
+    41ae:	4e09      	ldr	r6, [pc, #36]	; (41d4 <__libc_init_array+0x40>)
+    41b0:	4d09      	ldr	r5, [pc, #36]	; (41d8 <__libc_init_array+0x44>)
+    41b2:	f000 fa27 	bl	4604 <_init>
+    41b6:	1b76      	subs	r6, r6, r5
+    41b8:	10b6      	asrs	r6, r6, #2
+    41ba:	d006      	beq.n	41ca <__libc_init_array+0x36>
+    41bc:	2400      	movs	r4, #0
+    41be:	3401      	adds	r4, #1
+    41c0:	f855 3b04 	ldr.w	r3, [r5], #4
+    41c4:	4798      	blx	r3
+    41c6:	42a6      	cmp	r6, r4
+    41c8:	d1f9      	bne.n	41be <__libc_init_array+0x2a>
+    41ca:	bd70      	pop	{r4, r5, r6, pc}
+    41cc:	00004610 	.word	0x00004610
+    41d0:	00004610 	.word	0x00004610
+    41d4:	00004618 	.word	0x00004618
+    41d8:	00004610 	.word	0x00004610
+
+000041dc <__register_exitproc>:
+    41dc:	b4f0      	push	{r4, r5, r6, r7}
+    41de:	4c17      	ldr	r4, [pc, #92]	; (423c <__register_exitproc+0x60>)
+    41e0:	6825      	ldr	r5, [r4, #0]
+    41e2:	f8d5 4148 	ldr.w	r4, [r5, #328]	; 0x148
+    41e6:	b30c      	cbz	r4, 422c <__register_exitproc+0x50>
+    41e8:	6865      	ldr	r5, [r4, #4]
+    41ea:	2d1f      	cmp	r5, #31
+    41ec:	dc23      	bgt.n	4236 <__register_exitproc+0x5a>
+    41ee:	b938      	cbnz	r0, 4200 <__register_exitproc+0x24>
+    41f0:	2000      	movs	r0, #0
+    41f2:	1c6b      	adds	r3, r5, #1
+    41f4:	3502      	adds	r5, #2
+    41f6:	6063      	str	r3, [r4, #4]
+    41f8:	f844 1025 	str.w	r1, [r4, r5, lsl #2]
+    41fc:	bcf0      	pop	{r4, r5, r6, r7}
+    41fe:	4770      	bx	lr
+    4200:	2601      	movs	r6, #1
+    4202:	eb04 0c85 	add.w	ip, r4, r5, lsl #2
+    4206:	f8cc 2088 	str.w	r2, [ip, #136]	; 0x88
+    420a:	f8d4 7188 	ldr.w	r7, [r4, #392]	; 0x188
+    420e:	fa06 f205 	lsl.w	r2, r6, r5
+    4212:	4317      	orrs	r7, r2
+    4214:	2802      	cmp	r0, #2
+    4216:	f8c4 7188 	str.w	r7, [r4, #392]	; 0x188
+    421a:	f8cc 3108 	str.w	r3, [ip, #264]	; 0x108
+    421e:	d1e7      	bne.n	41f0 <__register_exitproc+0x14>
+    4220:	f8d4 318c 	ldr.w	r3, [r4, #396]	; 0x18c
+    4224:	431a      	orrs	r2, r3
+    4226:	f8c4 218c 	str.w	r2, [r4, #396]	; 0x18c
+    422a:	e7e1      	b.n	41f0 <__register_exitproc+0x14>
+    422c:	f505 74a6 	add.w	r4, r5, #332	; 0x14c
+    4230:	f8c5 4148 	str.w	r4, [r5, #328]	; 0x148
+    4234:	e7d8      	b.n	41e8 <__register_exitproc+0xc>
+    4236:	f04f 30ff 	mov.w	r0, #4294967295	; 0xffffffff
+    423a:	e7df      	b.n	41fc <__register_exitproc+0x20>
+    423c:	00004600 	.word	0x00004600
+
+00004240 <register_fini>:
+    4240:	4b02      	ldr	r3, [pc, #8]	; (424c <register_fini+0xc>)
+    4242:	b113      	cbz	r3, 424a <register_fini+0xa>
+    4244:	4802      	ldr	r0, [pc, #8]	; (4250 <register_fini+0x10>)
+    4246:	f7ff bf85 	b.w	4154 <atexit>
+    424a:	4770      	bx	lr
+    424c:	00000000 	.word	0x00000000
+    4250:	00004161 	.word	0x00004161
+
+00004254 <main>:
+ */
+
+#include "ubertooth.h"
+
+int main()
+{
+    4254:	b508      	push	{r3, lr}
+	gpio_init();
+    4256:	f000 f88b 	bl	4370 <gpio_init>
+	TXLED_SET;
+    425a:	f44f 7380 	mov.w	r3, #256	; 0x100
+    425e:	4c09      	ldr	r4, [pc, #36]	; (4284 <main+0x30>)
+	cc2400_init();
+	RXLED_SET;
+
+	clock_start();
+	while (1) {
+		USRLED_SET;
+    4260:	2502      	movs	r5, #2
+	TXLED_SET;
+    4262:	6023      	str	r3, [r4, #0]
+	cc2400_init();
+    4264:	f000 f8e0 	bl	4428 <cc2400_init>
+	RXLED_SET;
+    4268:	2310      	movs	r3, #16
+    426a:	6023      	str	r3, [r4, #0]
+	clock_start();
+    426c:	f000 f926 	bl	44bc <clock_start>
+		wait(2);
+		USRLED_CLR;
+    4270:	4e05      	ldr	r6, [pc, #20]	; (4288 <main+0x34>)
+		wait(2);
+    4272:	2002      	movs	r0, #2
+		USRLED_SET;
+    4274:	6025      	str	r5, [r4, #0]
+		wait(2);
+    4276:	f000 f84b 	bl	4310 <wait>
+		wait(2);
+    427a:	2002      	movs	r0, #2
+		USRLED_CLR;
+    427c:	6035      	str	r5, [r6, #0]
+		wait(2);
+    427e:	f000 f847 	bl	4310 <wait>
+	while (1) {
+    4282:	e7f6      	b.n	4272 <main+0x1e>
+    4284:	2009c038 	.word	0x2009c038
+    4288:	2009c03c 	.word	0x2009c03c
+
+0000428c <Reset_Handler>:
+extern void __libc_init_array(void);
+extern int main(void);
+
+/* Reset Handler */
+void Reset_Handler(void)
+{
+    428c:	b508      	push	{r3, lr}
+	unsigned long *src, *dest;
+
+	// Copy the data segment initializers from flash to SRAM
+	src = &_etext;
+	for(dest = &_data; dest < &_edata; )
+    428e:	4b0d      	ldr	r3, [pc, #52]	; (42c4 <Reset_Handler+0x38>)
+	src = &_etext;
+    4290:	4a0d      	ldr	r2, [pc, #52]	; (42c8 <Reset_Handler+0x3c>)
+	for(dest = &_data; dest < &_edata; )
+    4292:	490e      	ldr	r1, [pc, #56]	; (42cc <Reset_Handler+0x40>)
+    4294:	428b      	cmp	r3, r1
+    4296:	d30c      	bcc.n	42b2 <Reset_Handler+0x26>
+
+	// Initialize the .bss segment of memory to zeros
+	src = &_bss;
+	while (src < &_ebss)
+	{
+		*src++ = 0;
+    4298:	2100      	movs	r1, #0
+	src = &_bss;
+    429a:	4b0d      	ldr	r3, [pc, #52]	; (42d0 <Reset_Handler+0x44>)
+	while (src < &_ebss)
+    429c:	4a0d      	ldr	r2, [pc, #52]	; (42d4 <Reset_Handler+0x48>)
+    429e:	4293      	cmp	r3, r2
+    42a0:	d30c      	bcc.n	42bc <Reset_Handler+0x30>
+	}
+
+	__libc_init_array();
+    42a2:	f7ff ff77 	bl	4194 <__libc_init_array>
+
+	// Set the vector table location.
+	SCB_VTOR = (uint32_t)&_interrupt_vector_table;
+    42a6:	4a0c      	ldr	r2, [pc, #48]	; (42d8 <Reset_Handler+0x4c>)
+    42a8:	4b0c      	ldr	r3, [pc, #48]	; (42dc <Reset_Handler+0x50>)
+    42aa:	601a      	str	r2, [r3, #0]
+
+	main();
+    42ac:	f7ff ffd2 	bl	4254 <main>
+
+	// In case main() fails, have something to breakpoint
+	while (1) {;}
+    42b0:	e7fe      	b.n	42b0 <Reset_Handler+0x24>
+		*dest++ = *src++;
+    42b2:	f852 0b04 	ldr.w	r0, [r2], #4
+    42b6:	f843 0b04 	str.w	r0, [r3], #4
+    42ba:	e7eb      	b.n	4294 <Reset_Handler+0x8>
+		*src++ = 0;
+    42bc:	f843 1b04 	str.w	r1, [r3], #4
+    42c0:	e7ed      	b.n	429e <Reset_Handler+0x12>
+    42c2:	bf00      	nop
+    42c4:	10000020 	.word	0x10000020
+    42c8:	00004628 	.word	0x00004628
+    42cc:	10000450 	.word	0x10000450
+    42d0:	10000450 	.word	0x10000450
+    42d4:	10000474 	.word	0x10000474
+    42d8:	00004000 	.word	0x00004000
+    42dc:	e000ed08 	.word	0xe000ed08
+
+000042e0 <ADC_IRQHandler>:
+extern unsigned long _StackTop;
+
+extern void Reset_Handler(void);
+
+/* Default interrupt handler */
+static void Default_Handler(void) { while(1) {;} }
+    42e0:	e7fe      	b.n	42e0 <ADC_IRQHandler>
+    42e2:	0000      	movs	r0, r0
+
+000042e4 <wait_us>:
+	/* This is binary multiply by ~0.3999, i.e, multiply by
+	   0.011011011b. The loop also contains 6 instructions at -Os, so
+	   why this factor works is not at all related to the comment
+	   above ;-) */
+	wait_us_counter =
+		(us>>2) + (us>>3) + (us>>6) + (us>>7) + (us>>10) + (us>>11);
+    42e4:	08c3      	lsrs	r3, r0, #3
+    42e6:	eb03 0390 	add.w	r3, r3, r0, lsr #2
+    42ea:	eb03 1390 	add.w	r3, r3, r0, lsr #6
+    42ee:	eb03 13d0 	add.w	r3, r3, r0, lsr #7
+    42f2:	eb03 2390 	add.w	r3, r3, r0, lsr #10
+    42f6:	eb03 20d0 	add.w	r0, r3, r0, lsr #11
+	wait_us_counter =
+    42fa:	4b04      	ldr	r3, [pc, #16]	; (430c <wait_us+0x28>)
+    42fc:	6058      	str	r0, [r3, #4]
+	while(--wait_us_counter);
+    42fe:	685a      	ldr	r2, [r3, #4]
+    4300:	3a01      	subs	r2, #1
+    4302:	605a      	str	r2, [r3, #4]
+    4304:	2a00      	cmp	r2, #0
+    4306:	d1fa      	bne.n	42fe <wait_us+0x1a>
+}
+    4308:	4770      	bx	lr
+    430a:	bf00      	nop
+    430c:	1000046c 	.word	0x1000046c
+
+00004310 <wait>:
+	wait_us(seconds * 1000000);
+    4310:	4b01      	ldr	r3, [pc, #4]	; (4318 <wait+0x8>)
+    4312:	4358      	muls	r0, r3
+    4314:	f7ff bfe6 	b.w	42e4 <wait_us>
+    4318:	000f4240 	.word	0x000f4240
+
+0000431c <all_pins_off>:
+}
+
+void all_pins_off(void)
+{
+	/* configure all pins for GPIO */
+	PINSEL0 = 0;
+    431c:	2300      	movs	r3, #0
+    431e:	4a10      	ldr	r2, [pc, #64]	; (4360 <all_pins_off+0x44>)
+    4320:	6013      	str	r3, [r2, #0]
+	PINSEL1 = 0;
+    4322:	6053      	str	r3, [r2, #4]
+	PINSEL2 = 0;
+    4324:	6093      	str	r3, [r2, #8]
+	PINSEL3 = 0;
+    4326:	60d3      	str	r3, [r2, #12]
+	PINSEL4 = 0;
+    4328:	6113      	str	r3, [r2, #16]
+	PINSEL7 = 0;
+    432a:	61d3      	str	r3, [r2, #28]
+	PINSEL9 = 0;
+    432c:	6253      	str	r3, [r2, #36]	; 0x24
+	PINSEL10 = 0;
+    432e:	6293      	str	r3, [r2, #40]	; 0x28
+
+	/* configure all pins as inputs */
+	FIO0DIR = 0;
+    4330:	4a0c      	ldr	r2, [pc, #48]	; (4364 <all_pins_off+0x48>)
+    4332:	6013      	str	r3, [r2, #0]
+	FIO1DIR = 0;
+    4334:	6213      	str	r3, [r2, #32]
+	FIO2DIR = 0;
+    4336:	6413      	str	r3, [r2, #64]	; 0x40
+	FIO3DIR = 0;
+    4338:	6613      	str	r3, [r2, #96]	; 0x60
+	FIO4DIR = 0;
+    433a:	f8c2 3080 	str.w	r3, [r2, #128]	; 0x80
+
+	/* pull-up on every pin */
+	PINMODE0 = 0;
+    433e:	4a0a      	ldr	r2, [pc, #40]	; (4368 <all_pins_off+0x4c>)
+    4340:	6013      	str	r3, [r2, #0]
+	PINMODE1 = 0;
+    4342:	6053      	str	r3, [r2, #4]
+	PINMODE2 = 0;
+    4344:	6093      	str	r3, [r2, #8]
+	PINMODE3 = 0;
+    4346:	60d3      	str	r3, [r2, #12]
+	PINMODE4 = 0;
+    4348:	6113      	str	r3, [r2, #16]
+	PINMODE7 = 0;
+    434a:	61d3      	str	r3, [r2, #28]
+	PINMODE9 = 0;
+    434c:	6253      	str	r3, [r2, #36]	; 0x24
+
+	/* set all outputs low */
+	FIO0PIN = 0;
+    434e:	4a07      	ldr	r2, [pc, #28]	; (436c <all_pins_off+0x50>)
+    4350:	6013      	str	r3, [r2, #0]
+	FIO1PIN = 0;
+    4352:	6213      	str	r3, [r2, #32]
+	FIO2PIN = 0;
+    4354:	6413      	str	r3, [r2, #64]	; 0x40
+	FIO3PIN = 0;
+    4356:	6613      	str	r3, [r2, #96]	; 0x60
+	FIO4PIN = 0;
+    4358:	f8c2 3080 	str.w	r3, [r2, #128]	; 0x80
+}
+    435c:	4770      	bx	lr
+    435e:	bf00      	nop
+    4360:	4002c000 	.word	0x4002c000
+    4364:	2009c000 	.word	0x2009c000
+    4368:	4002c040 	.word	0x4002c040
+    436c:	2009c014 	.word	0x2009c014
+
+00004370 <gpio_init>:
+{
+    4370:	b508      	push	{r3, lr}
+	all_pins_off();
+    4372:	f7ff ffd3 	bl	431c <all_pins_off>
+	FIO0DIR = 0;
+    4376:	2300      	movs	r3, #0
+	FIO1DIR = (PIN_USRLED | PIN_RXLED | PIN_TXLED | PIN_CC3V3 |
+    4378:	f24c 7112 	movw	r1, #50962	; 0xc712
+	FIO0DIR = 0;
+    437c:	4a08      	ldr	r2, [pc, #32]	; (43a0 <gpio_init+0x30>)
+    437e:	6013      	str	r3, [r2, #0]
+	FIO1DIR = (PIN_USRLED | PIN_RXLED | PIN_TXLED | PIN_CC3V3 |
+    4380:	6211      	str	r1, [r2, #32]
+	FIO2DIR = (PIN_CSN | PIN_SCLK | PIN_MOSI | PIN_PAEN | PIN_HGM);
+    4382:	f240 11b1 	movw	r1, #433	; 0x1b1
+    4386:	6411      	str	r1, [r2, #64]	; 0x40
+	FIO4DIR = (PIN_TX | PIN_SSEL1);
+    4388:	f04f 5140 	mov.w	r1, #805306368	; 0x30000000
+	FIO3DIR = 0;
+    438c:	6613      	str	r3, [r2, #96]	; 0x60
+	FIO4DIR = (PIN_TX | PIN_SSEL1);
+    438e:	f8c2 1080 	str.w	r1, [r2, #128]	; 0x80
+	FIO0PIN = 0;
+    4392:	6153      	str	r3, [r2, #20]
+	FIO1PIN = 0;
+    4394:	6353      	str	r3, [r2, #52]	; 0x34
+	FIO2PIN = 0;
+    4396:	6553      	str	r3, [r2, #84]	; 0x54
+	FIO3PIN = 0;
+    4398:	6753      	str	r3, [r2, #116]	; 0x74
+	FIO4PIN = 0;
+    439a:	f8c2 3094 	str.w	r3, [r2, #148]	; 0x94
+}
+    439e:	bd08      	pop	{r3, pc}
+    43a0:	2009c000 	.word	0x2009c000
+
+000043a4 <atest_init>:
+	 * ADC can optionally be configured for ATEST1 and ATEST2, but for now we
+	 * set them as floating inputs.
+	 */
+
+	/* P0.25 is ATEST1, P0.26 is ATEST2 */
+	PINSEL1 &= ~((0x3 << 20) | (0x3 << 18)); // set as GPIO
+    43a4:	4a09      	ldr	r2, [pc, #36]	; (43cc <atest_init+0x28>)
+    43a6:	6813      	ldr	r3, [r2, #0]
+    43a8:	f423 1370 	bic.w	r3, r3, #3932160	; 0x3c0000
+    43ac:	6013      	str	r3, [r2, #0]
+	FIO0DIR &= ~(0x3 << 25); // set as input
+    43ae:	4a08      	ldr	r2, [pc, #32]	; (43d0 <atest_init+0x2c>)
+    43b0:	6813      	ldr	r3, [r2, #0]
+    43b2:	f023 63c0 	bic.w	r3, r3, #100663296	; 0x6000000
+    43b6:	6013      	str	r3, [r2, #0]
+	PINMODE1 |= (0x5 << 19); // no pull-up/pull-down
+    43b8:	4b06      	ldr	r3, [pc, #24]	; (43d4 <atest_init+0x30>)
+    43ba:	681a      	ldr	r2, [r3, #0]
+    43bc:	f442 1220 	orr.w	r2, r2, #2621440	; 0x280000
+    43c0:	601a      	str	r2, [r3, #0]
+	PINMODE1 &= ~(0x5 << 18); // no pull-up/pull-down
+    43c2:	681a      	ldr	r2, [r3, #0]
+    43c4:	f422 12a0 	bic.w	r2, r2, #1310720	; 0x140000
+    43c8:	601a      	str	r2, [r3, #0]
+}
+    43ca:	4770      	bx	lr
+    43cc:	4002c004 	.word	0x4002c004
+    43d0:	2009c000 	.word	0x2009c000
+    43d4:	4002c044 	.word	0x4002c044
+
+000043d8 <cc2400_spi>:
+ * 2. We're saving the second SPI peripheral for an expansion port.
+ * 3. The CC2400 needs CSN held low for the entire transaction which the
+ *    LPC17xx SPI peripheral won't do without some workaround anyway.
+ */
+u32 cc2400_spi(u8 len, u32 data)
+{
+    43d8:	b5f0      	push	{r4, r5, r6, r7, lr}
+	u32 msb = 1 << (len - 1);
+    43da:	1e45      	subs	r5, r0, #1
+{
+    43dc:	4603      	mov	r3, r0
+
+	/* start transaction by dropping CSN */
+	CSN_CLR;
+    43de:	2020      	movs	r0, #32
+	u32 msb = 1 << (len - 1);
+    43e0:	2401      	movs	r4, #1
+			MOSI_SET;
+		else
+			MOSI_CLR;
+		data <<= 1;
+
+		SCLK_SET;
+    43e2:	2710      	movs	r7, #16
+	CSN_CLR;
+    43e4:	4a0d      	ldr	r2, [pc, #52]	; (441c <cc2400_spi+0x44>)
+		/* Save a few cycles by avoiding the compare/branch */
+		data |= !!MISO;
+    43e6:	f8df c03c 	ldr.w	ip, [pc, #60]	; 4424 <cc2400_spi+0x4c>
+	CSN_CLR;
+    43ea:	6010      	str	r0, [r2, #0]
+	while (len--) {
+    43ec:	4608      	mov	r0, r1
+    43ee:	490c      	ldr	r1, [pc, #48]	; (4420 <cc2400_spi+0x48>)
+	u32 msb = 1 << (len - 1);
+    43f0:	fa04 f505 	lsl.w	r5, r4, r5
+	while (len--) {
+    43f4:	3b01      	subs	r3, #1
+    43f6:	b2db      	uxtb	r3, r3
+    43f8:	2bff      	cmp	r3, #255	; 0xff
+    43fa:	d102      	bne.n	4402 <cc2400_spi+0x2a>
+		SCLK_CLR;
+	}
+
+	/* end transaction by raising CSN */
+	CSN_SET;
+    43fc:	2320      	movs	r3, #32
+    43fe:	600b      	str	r3, [r1, #0]
+
+	return data;
+}
+    4400:	bdf0      	pop	{r4, r5, r6, r7, pc}
+		if (data & msb)
+    4402:	4228      	tst	r0, r5
+			MOSI_SET;
+    4404:	bf14      	ite	ne
+    4406:	600c      	strne	r4, [r1, #0]
+			MOSI_CLR;
+    4408:	6014      	streq	r4, [r2, #0]
+		SCLK_SET;
+    440a:	600f      	str	r7, [r1, #0]
+		data |= !!MISO;
+    440c:	f8dc 6000 	ldr.w	r6, [ip]
+		SCLK_CLR;
+    4410:	6017      	str	r7, [r2, #0]
+		data |= !!MISO;
+    4412:	f3c6 0640 	ubfx	r6, r6, #1, #1
+    4416:	ea46 0040 	orr.w	r0, r6, r0, lsl #1
+		SCLK_CLR;
+    441a:	e7eb      	b.n	43f4 <cc2400_spi+0x1c>
+    441c:	2009c05c 	.word	0x2009c05c
+    4420:	2009c058 	.word	0x2009c058
+    4424:	2009c054 	.word	0x2009c054
+
+00004428 <cc2400_init>:
+{
+    4428:	b508      	push	{r3, lr}
+	atest_init();
+    442a:	f7ff ffbb 	bl	43a4 <atest_init>
+	CC1V8_SET;
+    442e:	f44f 7300 	mov.w	r3, #512	; 0x200
+    4432:	4908      	ldr	r1, [pc, #32]	; (4454 <cc2400_init+0x2c>)
+	wait_us(50);
+    4434:	2032      	movs	r0, #50	; 0x32
+	CC1V8_SET;
+    4436:	600b      	str	r3, [r1, #0]
+	wait_us(50);
+    4438:	f7ff ff54 	bl	42e4 <wait_us>
+	CSN_SET;
+    443c:	2220      	movs	r2, #32
+    443e:	4b06      	ldr	r3, [pc, #24]	; (4458 <cc2400_init+0x30>)
+
+/* write 16 bit value to a register */
+void cc2400_set(u8 reg, u16 val)
+{
+	u32 out = (reg << 16) | val;
+	cc2400_spi(24, out);
+    4440:	2018      	movs	r0, #24
+	CSN_SET;
+    4442:	601a      	str	r2, [r3, #0]
+	CC3V3_SET;
+    4444:	f44f 4380 	mov.w	r3, #16384	; 0x4000
+    4448:	600b      	str	r3, [r1, #0]
+	cc2400_spi(24, out);
+    444a:	4904      	ldr	r1, [pc, #16]	; (445c <cc2400_init+0x34>)
+}
+    444c:	e8bd 4008 	ldmia.w	sp!, {r3, lr}
+	cc2400_spi(24, out);
+    4450:	f7ff bfc2 	b.w	43d8 <cc2400_spi>
+    4454:	2009c038 	.word	0x2009c038
+    4458:	2009c058 	.word	0x2009c058
+    445c:	000d7fff 	.word	0x000d7fff
+
+00004460 <cc2400_get>:
+{
+    4460:	b508      	push	{r3, lr}
+	u32 out = (reg | 0x80) << 16;
+    4462:	f040 0180 	orr.w	r1, r0, #128	; 0x80
+	in = cc2400_spi(24, out);
+    4466:	0409      	lsls	r1, r1, #16
+    4468:	2018      	movs	r0, #24
+    446a:	f7ff ffb5 	bl	43d8 <cc2400_spi>
+}
+    446e:	b280      	uxth	r0, r0
+    4470:	bd08      	pop	{r3, pc}
+
+00004472 <cc2400_status>:
+	CSN_SET;
+}
+
+/* get the status */
+u8 cc2400_status()
+{
+    4472:	b508      	push	{r3, lr}
+	return cc2400_spi(8, 0);
+    4474:	2100      	movs	r1, #0
+    4476:	2008      	movs	r0, #8
+    4478:	f7ff ffae 	bl	43d8 <cc2400_spi>
+}
+    447c:	b2c0      	uxtb	r0, r0
+    447e:	bd08      	pop	{r3, pc}
+
+00004480 <cc2400_strobe>:
+
+/* strobe register, return status */
+u8 cc2400_strobe(u8 reg)
+{
+    4480:	b508      	push	{r3, lr}
+    4482:	4601      	mov	r1, r0
+	return cc2400_spi(8, reg);
+    4484:	2008      	movs	r0, #8
+    4486:	f7ff ffa7 	bl	43d8 <cc2400_spi>
+}
+    448a:	b2c0      	uxtb	r0, r0
+    448c:	bd08      	pop	{r3, pc}
+
+0000448e <cc2400_reset>:
+/*
+ * Warning: This should only be called when running on the internal oscillator.
+ * Otherwise use clock_start().
+ */
+void cc2400_reset()
+{
+    448e:	b508      	push	{r3, lr}
+	cc2400_spi(24, out);
+    4490:	2100      	movs	r1, #0
+    4492:	2018      	movs	r0, #24
+    4494:	f7ff ffa0 	bl	43d8 <cc2400_spi>
+	cc2400_set(MAIN, 0x0000);
+	while (cc2400_get(MAIN) != 0x0000);
+    4498:	2000      	movs	r0, #0
+    449a:	f7ff ffe1 	bl	4460 <cc2400_get>
+    449e:	2800      	cmp	r0, #0
+    44a0:	d1fa      	bne.n	4498 <cc2400_reset+0xa>
+	cc2400_spi(24, out);
+    44a2:	f44f 4100 	mov.w	r1, #32768	; 0x8000
+    44a6:	2018      	movs	r0, #24
+    44a8:	f7ff ff96 	bl	43d8 <cc2400_spi>
+	cc2400_set(MAIN, 0x8000);
+	while (cc2400_get(MAIN) != 0x8000);
+    44ac:	2000      	movs	r0, #0
+    44ae:	f7ff ffd7 	bl	4460 <cc2400_get>
+    44b2:	f5b0 4f00 	cmp.w	r0, #32768	; 0x8000
+    44b6:	d1f9      	bne.n	44ac <cc2400_reset+0x1e>
+}
+    44b8:	bd08      	pop	{r3, pc}
+    44ba:	0000      	movs	r0, r0
+
+000044bc <clock_start>:
+
+/* activate the CC2400's 16 MHz oscillator and sync LPC175x to it */
+void clock_start()
+{
+    44bc:	e92d 41f0 	stmdb	sp!, {r4, r5, r6, r7, r8, lr}
+	/* configure flash accelerator for higher clock rate */
+	FLASHCFG = (0x03A | (FLASHTIM << 12));
+    44c0:	f244 023a 	movw	r2, #16442	; 0x403a
+    44c4:	4b40      	ldr	r3, [pc, #256]	; (45c8 <clock_start+0x10c>)
+
+	/* switch to the internal oscillator if necessary */
+	CLKSRCSEL = 0;
+    44c6:	4e41      	ldr	r6, [pc, #260]	; (45cc <clock_start+0x110>)
+	FLASHCFG = (0x03A | (FLASHTIM << 12));
+    44c8:	601a      	str	r2, [r3, #0]
+	CLKSRCSEL = 0;
+    44ca:	2300      	movs	r3, #0
+
+	/* disconnect PLL0 */
+	PLL0CON &= ~PLL0CON_PLLC0;
+    44cc:	4d40      	ldr	r5, [pc, #256]	; (45d0 <clock_start+0x114>)
+	CLKSRCSEL = 0;
+    44ce:	6033      	str	r3, [r6, #0]
+	PLL0CON &= ~PLL0CON_PLLC0;
+    44d0:	682b      	ldr	r3, [r5, #0]
+	PLL0FEED_SEQUENCE;
+    44d2:	4c40      	ldr	r4, [pc, #256]	; (45d4 <clock_start+0x118>)
+	PLL0CON &= ~PLL0CON_PLLC0;
+    44d4:	f023 0302 	bic.w	r3, r3, #2
+    44d8:	602b      	str	r3, [r5, #0]
+	PLL0FEED_SEQUENCE;
+    44da:	23aa      	movs	r3, #170	; 0xaa
+    44dc:	6023      	str	r3, [r4, #0]
+    44de:	2355      	movs	r3, #85	; 0x55
+    44e0:	6023      	str	r3, [r4, #0]
+	while (PLL0STAT & PLL0STAT_PLLC0_STAT);
+    44e2:	4b3d      	ldr	r3, [pc, #244]	; (45d8 <clock_start+0x11c>)
+    44e4:	461f      	mov	r7, r3
+    44e6:	681a      	ldr	r2, [r3, #0]
+    44e8:	0190      	lsls	r0, r2, #6
+    44ea:	d4fc      	bmi.n	44e6 <clock_start+0x2a>
+
+	/* turn off PLL0 */
+	PLL0CON &= ~PLL0CON_PLLE0;
+    44ec:	682b      	ldr	r3, [r5, #0]
+    44ee:	f023 0301 	bic.w	r3, r3, #1
+    44f2:	602b      	str	r3, [r5, #0]
+	PLL0FEED_SEQUENCE;
+    44f4:	23aa      	movs	r3, #170	; 0xaa
+    44f6:	6023      	str	r3, [r4, #0]
+    44f8:	2355      	movs	r3, #85	; 0x55
+    44fa:	6023      	str	r3, [r4, #0]
+	while (PLL0STAT & PLL0STAT_PLLE0_STAT);
+    44fc:	683b      	ldr	r3, [r7, #0]
+    44fe:	f013 7380 	ands.w	r3, r3, #16777216	; 0x1000000
+    4502:	d1fb      	bne.n	44fc <clock_start+0x40>
+
+	/* temporarily set CPU clock divider to 1 */
+	CCLKCFG = 0;
+    4504:	f8df 80f4 	ldr.w	r8, [pc, #244]	; 45fc <clock_start+0x140>
+    4508:	f8c8 3000 	str.w	r3, [r8]
+
+	/* configure CC2400 oscillator, output carrier sense on GIO6 */
+	cc2400_reset();
+    450c:	f7ff ffbf 	bl	448e <cc2400_reset>
+	cc2400_spi(24, out);
+    4510:	2018      	movs	r0, #24
+    4512:	4932      	ldr	r1, [pc, #200]	; (45dc <clock_start+0x120>)
+    4514:	f7ff ff60 	bl	43d8 <cc2400_spi>
+	cc2400_set(IOCFG, (GIO_CARRIER_SENSE_N << 9) | (GIO_CLK_16M << 3));
+	cc2400_strobe(SXOSCON);
+    4518:	2060      	movs	r0, #96	; 0x60
+    451a:	f7ff ffb1 	bl	4480 <cc2400_strobe>
+	while (!(cc2400_status() & XOSC16M_STABLE));
+    451e:	f7ff ffa8 	bl	4472 <cc2400_status>
+    4522:	0641      	lsls	r1, r0, #25
+    4524:	d5fb      	bpl.n	451e <clock_start+0x62>
+
+	/* activate main oscillator */
+	SCS = SCS_OSCEN;
+    4526:	2220      	movs	r2, #32
+    4528:	4b2d      	ldr	r3, [pc, #180]	; (45e0 <clock_start+0x124>)
+    452a:	601a      	str	r2, [r3, #0]
+	while (!(SCS & SCS_OSCSTAT));
+    452c:	681a      	ldr	r2, [r3, #0]
+    452e:	0652      	lsls	r2, r2, #25
+    4530:	d5fc      	bpl.n	452c <clock_start+0x70>
+#ifdef TC13BADGE
+	PCLKSEL0  = (1 << 2); /* TIMER0 at cclk (30 MHz) */
+	PCLKSEL1  = 0;
+#else
+        // XXX here
+	PCLKSEL0  = (2 << 2) | (2 << 4); /* TIMER0 and TIMER1 at cclk/2 (50 MHz) */
+    4532:	2228      	movs	r2, #40	; 0x28
+    4534:	4b2b      	ldr	r3, [pc, #172]	; (45e4 <clock_start+0x128>)
+	/* switch to main oscillator */
+	CLKSRCSEL = 1;
+
+	/* configure PLL0 */
+	PLL0CFG = (MSEL0 << 0) | (NSEL0 << 16);
+	PLL0FEED_SEQUENCE;
+    4536:	21aa      	movs	r1, #170	; 0xaa
+	PCLKSEL0  = (2 << 2) | (2 << 4); /* TIMER0 and TIMER1 at cclk/2 (50 MHz) */
+    4538:	601a      	str	r2, [r3, #0]
+	PCLKSEL1  = (2 << 12); /* TIMER2 at cclk/2 (50 MHz) */
+    453a:	f44f 5200 	mov.w	r2, #8192	; 0x2000
+    453e:	605a      	str	r2, [r3, #4]
+	CLKSRCSEL = 1;
+    4540:	2301      	movs	r3, #1
+	PLL0CFG = (MSEL0 << 0) | (NSEL0 << 16);
+    4542:	4a29      	ldr	r2, [pc, #164]	; (45e8 <clock_start+0x12c>)
+	CLKSRCSEL = 1;
+    4544:	6033      	str	r3, [r6, #0]
+	PLL0CFG = (MSEL0 << 0) | (NSEL0 << 16);
+    4546:	4b29      	ldr	r3, [pc, #164]	; (45ec <clock_start+0x130>)
+    4548:	601a      	str	r2, [r3, #0]
+	PLL0FEED_SEQUENCE;
+    454a:	2255      	movs	r2, #85	; 0x55
+    454c:	6021      	str	r1, [r4, #0]
+    454e:	6022      	str	r2, [r4, #0]
+
+	/* turn on PLL0 */
+	PLL0CON |= PLL0CON_PLLE0;
+    4550:	682b      	ldr	r3, [r5, #0]
+    4552:	f043 0301 	orr.w	r3, r3, #1
+    4556:	602b      	str	r3, [r5, #0]
+	PLL0FEED_SEQUENCE;
+    4558:	6021      	str	r1, [r4, #0]
+    455a:	6022      	str	r2, [r4, #0]
+	while (!(PLL0STAT & PLL0STAT_PLLE0_STAT));
+    455c:	683b      	ldr	r3, [r7, #0]
+    455e:	01de      	lsls	r6, r3, #7
+    4560:	d5fc      	bpl.n	455c <clock_start+0xa0>
+
+	/* set CPU clock divider */
+	CCLKCFG = CCLKSEL;
+    4562:	2303      	movs	r3, #3
+    4564:	f8c8 3000 	str.w	r3, [r8]
+
+	/* connect PLL0 */
+	PLL0CON |= PLL0CON_PLLC0;
+    4568:	682b      	ldr	r3, [r5, #0]
+    456a:	f043 0302 	orr.w	r3, r3, #2
+    456e:	602b      	str	r3, [r5, #0]
+	PLL0FEED_SEQUENCE;
+    4570:	23aa      	movs	r3, #170	; 0xaa
+    4572:	6023      	str	r3, [r4, #0]
+    4574:	2355      	movs	r3, #85	; 0x55
+    4576:	6023      	str	r3, [r4, #0]
+	while (!(PLL0STAT & PLL0STAT_PLLC0_STAT));
+    4578:	683b      	ldr	r3, [r7, #0]
+    457a:	019d      	lsls	r5, r3, #6
+    457c:	d5fc      	bpl.n	4578 <clock_start+0xbc>
+
+	/* configure PLL1 */
+	PLL1CFG = (MSEL1 << 0) | (PSEL1 << 5);
+    457e:	2222      	movs	r2, #34	; 0x22
+	PLL1FEED_SEQUENCE;
+    4580:	2055      	movs	r0, #85	; 0x55
+    4582:	24aa      	movs	r4, #170	; 0xaa
+	PLL1CFG = (MSEL1 << 0) | (PSEL1 << 5);
+    4584:	4b1a      	ldr	r3, [pc, #104]	; (45f0 <clock_start+0x134>)
+    4586:	601a      	str	r2, [r3, #0]
+
+	/* turn on PLL1 */
+	PLL1CON |= PLL1CON_PLLE1;
+    4588:	4a1a      	ldr	r2, [pc, #104]	; (45f4 <clock_start+0x138>)
+	PLL1FEED_SEQUENCE;
+    458a:	609c      	str	r4, [r3, #8]
+    458c:	6098      	str	r0, [r3, #8]
+	PLL1CON |= PLL1CON_PLLE1;
+    458e:	6811      	ldr	r1, [r2, #0]
+	PLL1FEED_SEQUENCE;
+    4590:	3308      	adds	r3, #8
+	PLL1CON |= PLL1CON_PLLE1;
+    4592:	f041 0101 	orr.w	r1, r1, #1
+    4596:	6011      	str	r1, [r2, #0]
+	PLL1FEED_SEQUENCE;
+	while (!(PLL1STAT & PLL1STAT_PLLE1_STAT));
+    4598:	4917      	ldr	r1, [pc, #92]	; (45f8 <clock_start+0x13c>)
+	PLL1FEED_SEQUENCE;
+    459a:	601c      	str	r4, [r3, #0]
+    459c:	6018      	str	r0, [r3, #0]
+	while (!(PLL1STAT & PLL1STAT_PLLE1_STAT));
+    459e:	4608      	mov	r0, r1
+    45a0:	680c      	ldr	r4, [r1, #0]
+    45a2:	05e4      	lsls	r4, r4, #23
+    45a4:	d5fc      	bpl.n	45a0 <clock_start+0xe4>
+	while (!(PLL1STAT & PLL1STAT_PLOCK1));
+    45a6:	6801      	ldr	r1, [r0, #0]
+    45a8:	0549      	lsls	r1, r1, #21
+    45aa:	d5fc      	bpl.n	45a6 <clock_start+0xea>
+
+	/* connect PLL1 */
+	PLL1CON |= PLL1CON_PLLC1;
+    45ac:	6811      	ldr	r1, [r2, #0]
+    45ae:	f041 0102 	orr.w	r1, r1, #2
+    45b2:	6011      	str	r1, [r2, #0]
+	PLL1FEED_SEQUENCE;
+    45b4:	22aa      	movs	r2, #170	; 0xaa
+    45b6:	601a      	str	r2, [r3, #0]
+    45b8:	2255      	movs	r2, #85	; 0x55
+    45ba:	601a      	str	r2, [r3, #0]
+	while (!(PLL1STAT & PLL1STAT_PLLC1_STAT));
+    45bc:	6803      	ldr	r3, [r0, #0]
+    45be:	059b      	lsls	r3, r3, #22
+    45c0:	d5fc      	bpl.n	45bc <clock_start+0x100>
+}
+    45c2:	e8bd 81f0 	ldmia.w	sp!, {r4, r5, r6, r7, r8, pc}
+    45c6:	bf00      	nop
+    45c8:	400fc000 	.word	0x400fc000
+    45cc:	400fc10c 	.word	0x400fc10c
+    45d0:	400fc080 	.word	0x400fc080
+    45d4:	400fc08c 	.word	0x400fc08c
+    45d8:	400fc088 	.word	0x400fc088
+    45dc:	00081570 	.word	0x00081570
+    45e0:	400fc1a0 	.word	0x400fc1a0
+    45e4:	400fc1a8 	.word	0x400fc1a8
+    45e8:	00010018 	.word	0x00010018
+    45ec:	400fc084 	.word	0x400fc084
+    45f0:	400fc0a4 	.word	0x400fc0a4
+    45f4:	400fc0a0 	.word	0x400fc0a0
+    45f8:	400fc0a8 	.word	0x400fc0a8
+    45fc:	400fc104 	.word	0x400fc104
+
+00004600 <_global_impure_ptr>:
+    4600:	10000028                                (...
+
+00004604 <_init>:
+    4604:	b5f8      	push	{r3, r4, r5, r6, r7, lr}
+    4606:	bf00      	nop
+    4608:	bcf8      	pop	{r3, r4, r5, r6, r7}
+    460a:	bc08      	pop	{r3}
+    460c:	469e      	mov	lr, r3
+    460e:	4770      	bx	lr
+
+00004610 <__init_array_start>:
+    4610:	00004241 	.word	0x00004241
+
+00004614 <__frame_dummy_init_array_entry>:
+    4614:	00004135                                5A..
+
+00004618 <_fini>:
+    4618:	b5f8      	push	{r3, r4, r5, r6, r7, lr}
+    461a:	bf00      	nop
+    461c:	bcf8      	pop	{r3, r4, r5, r6, r7}
+    461e:	bc08      	pop	{r3}
+    4620:	469e      	mov	lr, r3
+    4622:	4770      	bx	lr
+
+00004624 <__do_global_dtors_aux_fini_array_entry>:
+    4624:	410d 0000                                   .A..

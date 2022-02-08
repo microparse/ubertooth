@@ -1,0 +1,986 @@
+ARM GAS  /tmp/ccuyhgK1.s 			page 1
+
+
+   1              		.cpu cortex-m3
+   2              		.eabi_attribute 20, 1
+   3              		.eabi_attribute 21, 1
+   4              		.eabi_attribute 23, 3
+   5              		.eabi_attribute 24, 1
+   6              		.eabi_attribute 25, 1
+   7              		.eabi_attribute 26, 1
+   8              		.eabi_attribute 30, 2
+   9              		.eabi_attribute 34, 1
+  10              		.eabi_attribute 18, 4
+  11              		.file	"console.c"
+  12              		.text
+  13              	.Ltext0:
+  14              		.cfi_sections	.debug_frame
+  15              		.section	.rodata.str1.4,"aMS",%progbits,1
+  16              		.align	2
+  17              	.LC0:
+  18 0000 4449457C 		.ascii	"DIE|msg_put: short buf\012\012\000"
+  18      6D73675F 
+  18      7075743A 
+  18      2073686F 
+  18      72742062 
+  19 0019 000000   		.align	2
+  20              	.LC1:
+  21 001c 4449457C 		.ascii	"DIE|txq full in console\012\012\000"
+  21      74787120 
+  21      66756C6C 
+  21      20696E20 
+  21      636F6E73 
+  22              		.section	.text.console_flush,"ax",%progbits
+  23              		.align	1
+  24              		.p2align 2,,3
+  25              		.global	console_flush
+  26              		.arch armv7-m
+  27              		.syntax unified
+  28              		.thumb
+  29              		.thumb_func
+  30              		.fpu softvfp
+  32              	console_flush:
+  33              	.LFB24:
+  34              		.file 1 "src/util/console.c"
+   1:src/util/console.c **** /* Console
+   2:src/util/console.c ****  *
+   3:src/util/console.c ****  * Copyright 2020 Etienne Helluy-Lafont, Univ. Lille, CNRS.
+   4:src/util/console.c ****  *
+   5:src/util/console.c ****  * This file is part of Project Ubertooth.
+   6:src/util/console.c ****  *
+   7:src/util/console.c ****  * This program is free software; you can redistribute it and/or modify
+   8:src/util/console.c ****  * it under the terms of the GNU General Public License as published by
+   9:src/util/console.c ****  * the Free Software Foundation; either version 2, or (at your option)
+  10:src/util/console.c ****  * any later version.
+  11:src/util/console.c ****  *
+  12:src/util/console.c ****  * This program is distributed in the hope that it will be useful,
+  13:src/util/console.c ****  * but WITHOUT ANY WARRANTY; without even the implied warranty of
+  14:src/util/console.c ****  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  15:src/util/console.c ****  * GNU General Public License for more details.
+  16:src/util/console.c ****  *
+ARM GAS  /tmp/ccuyhgK1.s 			page 2
+
+
+  17:src/util/console.c ****  * You should have received a copy of the GNU General Public License
+  18:src/util/console.c ****  * along with this program; see the file COPYING.  If not, write to
+  19:src/util/console.c ****  * the Free Software Foundation, Inc., 51 Franklin Street,
+  20:src/util/console.c ****  * Boston, MA 02110-1301, USA.
+  21:src/util/console.c ****  */
+  22:src/util/console.c **** #include <stdlib.h>
+  23:src/util/console.c **** #include <ubtbr/cfg.h>
+  24:src/util/console.c **** #include <ubtbr/btctl_intf.h>
+  25:src/util/console.c **** #include <ubtbr/queue.h>
+  26:src/util/console.c **** #include <ubtbr/system.h>
+  27:src/util/console.c **** 
+  28:src/util/console.c **** static msg_t *cur_msg = NULL;
+  29:src/util/console.c **** 
+  30:src/util/console.c **** void console_flush(void)
+  31:src/util/console.c **** {
+  35              		.loc 1 31 1 view -0
+  36              		.cfi_startproc
+  37              		@ args = 0, pretend = 0, frame = 0
+  38              		@ frame_needed = 0, uses_anonymous_args = 0
+  39 0000 70B5     		push	{r4, r5, r6, lr}
+  40              		.cfi_def_cfa_offset 16
+  41              		.cfi_offset 4, -16
+  42              		.cfi_offset 5, -12
+  43              		.cfi_offset 6, -8
+  44              		.cfi_offset 14, -4
+  32:src/util/console.c **** #ifdef USE_CONSOLE
+  33:src/util/console.c **** 	uint32_t flags = irq_save_disable();
+  45              		.loc 1 33 2 view .LVU1
+  46              	.LBB64:
+  47              	.LBI64:
+  48              		.file 2 "include/ubtbr/system.h"
+   1:include/ubtbr/system.h **** #ifndef __SYSTEM_H
+   2:include/ubtbr/system.h **** #define __SYSTEM_H
+   3:include/ubtbr/system.h **** #include <stdint.h>
+   4:include/ubtbr/system.h **** 
+   5:include/ubtbr/system.h **** static inline uint32_t irq_save_disable(void)
+  49              		.loc 2 5 24 view .LVU2
+  50              	.LBB65:
+   6:include/ubtbr/system.h **** {
+   7:include/ubtbr/system.h **** 	uint32_t primask;
+  51              		.loc 2 7 2 view .LVU3
+   8:include/ubtbr/system.h **** 
+   9:include/ubtbr/system.h **** 	__asm__ __volatile__ (
+  52              		.loc 2 9 2 view .LVU4
+  53              		.syntax unified
+  54              	@ 9 "include/ubtbr/system.h" 1
+  55 0002 EFF31085 			mrs    r5, primask
+  56 0006 72B6     		cpsid  i
+  57              	
+  58              	@ 0 "" 2
+  59              	.LVL0:
+  10:include/ubtbr/system.h **** 	"\tmrs    %0, primask\n"
+  11:include/ubtbr/system.h **** 	"\tcpsid  i\n"
+  12:include/ubtbr/system.h **** 	: "=r" (primask)
+  13:include/ubtbr/system.h **** 	:
+  14:include/ubtbr/system.h **** 	: "memory");
+  15:include/ubtbr/system.h **** 
+ARM GAS  /tmp/ccuyhgK1.s 			page 3
+
+
+  16:include/ubtbr/system.h **** 	return primask;
+  60              		.loc 2 16 2 view .LVU5
+  61              		.loc 2 16 2 is_stmt 0 view .LVU6
+  62              		.thumb
+  63              		.syntax unified
+  64              	.LBE65:
+  65              	.LBE64:
+  34:src/util/console.c **** 	char *p;
+  66              		.loc 1 34 2 is_stmt 1 view .LVU7
+  35:src/util/console.c **** 	if (!cur_msg)
+  67              		.loc 1 35 2 view .LVU8
+  68              		.loc 1 35 6 is_stmt 0 view .LVU9
+  69 0008 104C     		ldr	r4, .L11
+  70 000a 2168     		ldr	r1, [r4]
+  71              		.loc 1 35 5 view .LVU10
+  72 000c A9B1     		cbz	r1, .L2
+  36:src/util/console.c **** 		goto end;
+  37:src/util/console.c **** 	p = (char*)msg_put(cur_msg, 1);
+  73              		.loc 1 37 2 is_stmt 1 view .LVU11
+  74              	.LVL1:
+  75              	.LBB66:
+  76              	.LBI66:
+  77              		.file 3 "include/ubtbr/msg.h"
+   1:include/ubtbr/msg.h **** #ifndef __DEF_MSG_H
+   2:include/ubtbr/msg.h **** #define __DEF_MSG_H
+   3:include/ubtbr/msg.h **** #include <stdint.h>
+   4:include/ubtbr/msg.h **** 
+   5:include/ubtbr/msg.h **** typedef struct msg_s {
+   6:include/ubtbr/msg.h **** 	uint16_t len;
+   7:include/ubtbr/msg.h **** 	uint16_t data_len;
+   8:include/ubtbr/msg.h **** 	uint8_t *read;
+   9:include/ubtbr/msg.h **** 	uint8_t *write;
+  10:include/ubtbr/msg.h **** 	/* never move head */
+  11:include/ubtbr/msg.h **** 	uint8_t data[0];
+  12:include/ubtbr/msg.h **** } msg_t;
+  13:include/ubtbr/msg.h **** 
+  14:include/ubtbr/msg.h **** /* Allocate a msg_t wigh given room*/
+  15:include/ubtbr/msg.h **** static inline msg_t *msg_alloc(unsigned size)
+  16:include/ubtbr/msg.h **** {
+  17:include/ubtbr/msg.h **** 	msg_t *msg = (msg_t*)btctl_mem_alloc(sizeof(msg_t)+size);
+  18:include/ubtbr/msg.h **** 
+  19:include/ubtbr/msg.h **** 	msg->write = msg->data;
+  20:include/ubtbr/msg.h **** 	msg->read = msg->data;
+  21:include/ubtbr/msg.h **** 	msg->data_len = size;
+  22:include/ubtbr/msg.h **** 
+  23:include/ubtbr/msg.h **** 	return msg;
+  24:include/ubtbr/msg.h **** }
+  25:include/ubtbr/msg.h **** 
+  26:include/ubtbr/msg.h **** static inline void msg_free(msg_t *msg)
+  27:include/ubtbr/msg.h **** {
+  28:include/ubtbr/msg.h **** 	btctl_mem_free(msg);
+  29:include/ubtbr/msg.h **** }
+  30:include/ubtbr/msg.h **** 
+  31:include/ubtbr/msg.h **** /* Return number of bytes written in the data buffer. */
+  32:include/ubtbr/msg.h **** static inline int msg_write_len(const msg_t *msg)
+  33:include/ubtbr/msg.h **** {
+  34:include/ubtbr/msg.h **** 	return (int)(msg->write - msg->data);
+ARM GAS  /tmp/ccuyhgK1.s 			page 4
+
+
+  35:include/ubtbr/msg.h **** }
+  36:include/ubtbr/msg.h **** 
+  37:include/ubtbr/msg.h **** /* Return number of bytes we can pull between
+  38:include/ubtbr/msg.h ****  * the data pointer and the end of the buffer. */
+  39:include/ubtbr/msg.h **** static inline int msg_read_avail(const msg_t *msg)
+  40:include/ubtbr/msg.h **** {
+  41:include/ubtbr/msg.h **** 	return (int)(msg->write - msg->read);
+  42:include/ubtbr/msg.h **** }
+  43:include/ubtbr/msg.h **** 
+  44:include/ubtbr/msg.h **** /* Return number of bytes we can put between
+  45:include/ubtbr/msg.h ****  * the tail pointer and the end of the buffer. */
+  46:include/ubtbr/msg.h **** static inline int msg_write_avail(const msg_t *msg)
+  47:include/ubtbr/msg.h **** {
+  48:include/ubtbr/msg.h ****         return msg->data_len - msg_write_len(msg);
+  49:include/ubtbr/msg.h **** }
+  50:include/ubtbr/msg.h **** 
+  51:include/ubtbr/msg.h **** /* Set write pointer.
+  52:include/ubtbr/msg.h ****  * Meant to trim the msg to the end of data written. */
+  53:include/ubtbr/msg.h **** static inline int msg_set_write(msg_t *msg, uint8_t *write)
+  54:include/ubtbr/msg.h **** {
+  55:include/ubtbr/msg.h **** 	if (write < msg->data || write > (msg->data + msg->data_len))
+  56:include/ubtbr/msg.h ****                 return -1;
+  57:include/ubtbr/msg.h ****         msg->write = write;
+  58:include/ubtbr/msg.h **** 
+  59:include/ubtbr/msg.h ****         return 0;
+  60:include/ubtbr/msg.h **** }
+  61:include/ubtbr/msg.h **** 
+  62:include/ubtbr/msg.h **** static inline uint8_t *msg_put(msg_t *msg, unsigned int len)
+  78              		.loc 3 62 24 view .LVU12
+  79              	.LBB67:
+  63:include/ubtbr/msg.h **** {
+  64:include/ubtbr/msg.h ****         uint8_t *tmp = msg->write;
+  80              		.loc 3 64 9 view .LVU13
+  81              		.loc 3 64 18 is_stmt 0 view .LVU14
+  82 000e 8868     		ldr	r0, [r1, #8]
+  83              	.LVL2:
+  65:include/ubtbr/msg.h **** 
+  66:include/ubtbr/msg.h ****         if (msg_write_avail(msg) < (int) len)
+  84              		.loc 3 66 9 is_stmt 1 view .LVU15
+  85              	.LBB68:
+  86              	.LBI68:
+  46:include/ubtbr/msg.h **** {
+  87              		.loc 3 46 19 view .LVU16
+  88              	.LBB69:
+  48:include/ubtbr/msg.h **** }
+  89              		.loc 3 48 9 view .LVU17
+  90              	.LBB70:
+  91              	.LBI70:
+  32:include/ubtbr/msg.h **** {
+  92              		.loc 3 32 19 view .LVU18
+  93              	.LBB71:
+  34:include/ubtbr/msg.h **** }
+  94              		.loc 3 34 2 view .LVU19
+  34:include/ubtbr/msg.h **** }
+  95              		.loc 3 34 2 is_stmt 0 view .LVU20
+  96              	.LBE71:
+  97              	.LBE70:
+ARM GAS  /tmp/ccuyhgK1.s 			page 5
+
+
+  48:include/ubtbr/msg.h **** }
+  98              		.loc 3 48 19 view .LVU21
+  99 0010 4A88     		ldrh	r2, [r1, #2]
+ 100              	.LBB73:
+ 101              	.LBB72:
+  34:include/ubtbr/msg.h **** }
+ 102              		.loc 3 34 26 view .LVU22
+ 103 0012 01F10C03 		add	r3, r1, #12
+  34:include/ubtbr/msg.h **** }
+ 104              		.loc 3 34 9 view .LVU23
+ 105 0016 C31A     		subs	r3, r0, r3
+ 106              	.LBE72:
+ 107              	.LBE73:
+  48:include/ubtbr/msg.h **** }
+ 108              		.loc 3 48 30 view .LVU24
+ 109 0018 D31A     		subs	r3, r2, r3
+ 110              	.LBE69:
+ 111              	.LBE68:
+ 112              		.loc 3 66 12 view .LVU25
+ 113 001a 002B     		cmp	r3, #0
+ 114 001c 10DD     		ble	.L9
+  67:include/ubtbr/msg.h **** 		DIE("msg_put: short buf\n");
+  68:include/ubtbr/msg.h ****         msg->write += len;
+ 115              		.loc 3 68 9 is_stmt 1 view .LVU26
+ 116              	.LBE67:
+ 117              	.LBE66:
+  38:src/util/console.c **** 	*p = 0;
+ 118              		.loc 1 38 5 is_stmt 0 view .LVU27
+ 119 001e 0023     		movs	r3, #0
+ 120              	.LBB76:
+ 121              	.LBB74:
+ 122              		.loc 3 68 20 view .LVU28
+ 123 0020 421C     		adds	r2, r0, #1
+ 124 0022 8A60     		str	r2, [r1, #8]
+  69:include/ubtbr/msg.h **** 
+  70:include/ubtbr/msg.h ****         return tmp;
+ 125              		.loc 3 70 9 is_stmt 1 view .LVU29
+ 126              	.LVL3:
+ 127              		.loc 3 70 9 is_stmt 0 view .LVU30
+ 128              	.LBE74:
+ 129              	.LBE76:
+ 130              		.loc 1 38 2 is_stmt 1 view .LVU31
+ 131              		.loc 1 38 5 is_stmt 0 view .LVU32
+ 132 0024 0370     		strb	r3, [r0]
+  39:src/util/console.c **** 	if (btctl_tx_enqueue(cur_msg))
+ 133              		.loc 1 39 2 is_stmt 1 view .LVU33
+ 134              	.LVL4:
+ 135              	.LBB77:
+ 136              	.LBI77:
+ 137              		.file 4 "include/ubtbr/btctl_intf.h"
+   1:include/ubtbr/btctl_intf.h **** #ifndef __BTCTL_INTF_H
+   2:include/ubtbr/btctl_intf.h **** #define __BTCTL_INTF_H
+   3:include/ubtbr/btctl_intf.h **** #include <ubtbr/bb_msg.h>
+   4:include/ubtbr/btctl_intf.h **** #include <ubtbr/queue.h>
+   5:include/ubtbr/btctl_intf.h **** #include <ubtbr/system.h>
+   6:include/ubtbr/btctl_intf.h **** #include <ubertooth_interface.h>
+   7:include/ubtbr/btctl_intf.h **** 
+ARM GAS  /tmp/ccuyhgK1.s 			page 6
+
+
+   8:include/ubtbr/btctl_intf.h **** typedef struct btctl_s {
+   9:include/ubtbr/btctl_intf.h **** 	btctl_state_t state;
+  10:include/ubtbr/btctl_intf.h **** 	msg_queue_t rx_q;
+  11:include/ubtbr/btctl_intf.h **** 	msg_queue_t tx_q;
+  12:include/ubtbr/btctl_intf.h **** 	msg_queue_t acl_tx_q;
+  13:include/ubtbr/btctl_intf.h **** 	msg_t *eir_msg;
+  14:include/ubtbr/btctl_intf.h **** 	btctl_tx_pkt_t *eir_pkt;
+  15:include/ubtbr/btctl_intf.h **** } btctl_t;
+  16:include/ubtbr/btctl_intf.h **** 
+  17:include/ubtbr/btctl_intf.h **** extern btctl_t btctl;
+  18:include/ubtbr/btctl_intf.h **** 
+  19:include/ubtbr/btctl_intf.h **** void btctl_init(void);
+  20:include/ubtbr/btctl_intf.h **** int btctl_work(void);
+  21:include/ubtbr/btctl_intf.h **** 
+  22:include/ubtbr/btctl_intf.h **** void btctl_set_state(btctl_state_t state, btctl_reason_t reason);
+  23:include/ubtbr/btctl_intf.h **** 
+  24:include/ubtbr/btctl_intf.h **** static inline btctl_state_t btctl_get_state(void)
+  25:include/ubtbr/btctl_intf.h **** {
+  26:include/ubtbr/btctl_intf.h **** 	return btctl.state;
+  27:include/ubtbr/btctl_intf.h **** }
+  28:include/ubtbr/btctl_intf.h **** 
+  29:include/ubtbr/btctl_intf.h **** static inline btctl_tx_pkt_t *btctl_get_eir(void)
+  30:include/ubtbr/btctl_intf.h **** {
+  31:include/ubtbr/btctl_intf.h **** 	return btctl.eir_pkt;
+  32:include/ubtbr/btctl_intf.h **** }
+  33:include/ubtbr/btctl_intf.h **** 
+  34:include/ubtbr/btctl_intf.h **** static inline msg_t *btctl_msg_alloc(unsigned type)
+  35:include/ubtbr/btctl_intf.h **** {
+  36:include/ubtbr/btctl_intf.h **** 	msg_t *msg;
+  37:include/ubtbr/btctl_intf.h **** 	btctl_hdr_t *hdr;
+  38:include/ubtbr/btctl_intf.h **** 
+  39:include/ubtbr/btctl_intf.h **** 	/* maximum size ?*/
+  40:include/ubtbr/btctl_intf.h **** 	msg = msg_alloc(sizeof(btctl_hdr_t)+sizeof(btctl_rx_pkt_t)+MAX_ACL_PACKET_SIZE);
+  41:include/ubtbr/btctl_intf.h **** 	hdr = (btctl_hdr_t*) msg_put(msg, sizeof(*hdr));
+  42:include/ubtbr/btctl_intf.h **** 	hdr->type = type;
+  43:include/ubtbr/btctl_intf.h **** 
+  44:include/ubtbr/btctl_intf.h **** 	return msg;
+  45:include/ubtbr/btctl_intf.h **** }
+  46:include/ubtbr/btctl_intf.h **** 
+  47:include/ubtbr/btctl_intf.h **** static inline msg_t *safe_dequeue(msg_queue_t* q)
+  48:include/ubtbr/btctl_intf.h **** {
+  49:include/ubtbr/btctl_intf.h **** 	uint32_t flags = irq_save_disable();
+  50:include/ubtbr/btctl_intf.h **** 	msg_t *msg;
+  51:include/ubtbr/btctl_intf.h **** 
+  52:include/ubtbr/btctl_intf.h **** 	msg = msg_dequeue(q);
+  53:include/ubtbr/btctl_intf.h **** 	irq_restore(flags);
+  54:include/ubtbr/btctl_intf.h **** 
+  55:include/ubtbr/btctl_intf.h **** 	return msg;
+  56:include/ubtbr/btctl_intf.h **** }
+  57:include/ubtbr/btctl_intf.h **** 
+  58:include/ubtbr/btctl_intf.h **** static inline int safe_enqueue(msg_queue_t *q, msg_t *msg)
+  59:include/ubtbr/btctl_intf.h **** {
+  60:include/ubtbr/btctl_intf.h **** 	uint32_t flags = irq_save_disable();
+  61:include/ubtbr/btctl_intf.h **** 	int rc;
+  62:include/ubtbr/btctl_intf.h **** 
+  63:include/ubtbr/btctl_intf.h **** 	rc = msg_enqueue(q, msg);
+  64:include/ubtbr/btctl_intf.h **** 	irq_restore(flags);
+ARM GAS  /tmp/ccuyhgK1.s 			page 7
+
+
+  65:include/ubtbr/btctl_intf.h **** 
+  66:include/ubtbr/btctl_intf.h **** 	return rc;
+  67:include/ubtbr/btctl_intf.h **** }
+  68:include/ubtbr/btctl_intf.h **** 
+  69:include/ubtbr/btctl_intf.h **** /* Called by usb driver to retreive next message to send to host */
+  70:include/ubtbr/btctl_intf.h **** static inline msg_t *btctl_tx_dequeue(void)
+  71:include/ubtbr/btctl_intf.h **** {
+  72:include/ubtbr/btctl_intf.h **** 	return safe_dequeue(&btctl.tx_q);
+  73:include/ubtbr/btctl_intf.h **** }
+  74:include/ubtbr/btctl_intf.h **** 
+  75:include/ubtbr/btctl_intf.h **** /* Enqueue a message for host */
+  76:include/ubtbr/btctl_intf.h **** static inline int btctl_tx_enqueue(msg_t *msg)
+ 138              		.loc 4 76 19 view .LVU34
+ 139              	.LBB78:
+  77:include/ubtbr/btctl_intf.h **** {
+  78:include/ubtbr/btctl_intf.h **** 	return safe_enqueue(&btctl.tx_q, msg);
+ 140              		.loc 4 78 2 view .LVU35
+ 141              	.LBB79:
+ 142              	.LBI79:
+  58:include/ubtbr/btctl_intf.h **** {
+ 143              		.loc 4 58 19 view .LVU36
+ 144              	.LBB80:
+  60:include/ubtbr/btctl_intf.h **** 	int rc;
+ 145              		.loc 4 60 2 view .LVU37
+ 146              	.LBB81:
+ 147              	.LBI81:
+   5:include/ubtbr/system.h **** {
+ 148              		.loc 2 5 24 view .LVU38
+ 149              	.LBB82:
+   7:include/ubtbr/system.h **** 
+ 150              		.loc 2 7 2 view .LVU39
+   9:include/ubtbr/system.h **** 	"\tmrs    %0, primask\n"
+ 151              		.loc 2 9 2 view .LVU40
+ 152              		.syntax unified
+ 153              	@ 9 "include/ubtbr/system.h" 1
+ 154 0026 EFF31086 			mrs    r6, primask
+ 155 002a 72B6     		cpsid  i
+ 156              	
+ 157              	@ 0 "" 2
+ 158              	.LVL5:
+ 159              		.loc 2 16 2 view .LVU41
+ 160              		.loc 2 16 2 is_stmt 0 view .LVU42
+ 161              		.thumb
+ 162              		.syntax unified
+ 163              	.LBE82:
+ 164              	.LBE81:
+  61:include/ubtbr/btctl_intf.h **** 
+ 165              		.loc 4 61 2 is_stmt 1 view .LVU43
+  63:include/ubtbr/btctl_intf.h **** 	irq_restore(flags);
+ 166              		.loc 4 63 2 view .LVU44
+  63:include/ubtbr/btctl_intf.h **** 	irq_restore(flags);
+ 167              		.loc 4 63 7 is_stmt 0 view .LVU45
+ 168 002c 0848     		ldr	r0, .L11+4
+ 169              	.LVL6:
+  63:include/ubtbr/btctl_intf.h **** 	irq_restore(flags);
+ 170              		.loc 4 63 7 view .LVU46
+ 171 002e FFF7FEFF 		bl	msg_enqueue
+ARM GAS  /tmp/ccuyhgK1.s 			page 8
+
+
+ 172              	.LVL7:
+  64:include/ubtbr/btctl_intf.h **** 
+ 173              		.loc 4 64 2 is_stmt 1 view .LVU47
+ 174              	.LBB83:
+ 175              	.LBI83:
+  17:include/ubtbr/system.h **** }
+  18:include/ubtbr/system.h **** 
+  19:include/ubtbr/system.h **** static inline void irq_restore(uint32_t primask)
+ 176              		.loc 2 19 20 view .LVU48
+ 177              	.LBB84:
+  20:include/ubtbr/system.h **** {
+  21:include/ubtbr/system.h **** 	__asm__ __volatile__ (
+ 178              		.loc 2 21 2 view .LVU49
+ 179              		.syntax unified
+ 180              	@ 21 "include/ubtbr/system.h" 1
+ 181 0032 86F31088 		msr primask, r6
+ 182              	@ 0 "" 2
+ 183              	.LVL8:
+ 184              		.loc 2 21 2 is_stmt 0 view .LVU50
+ 185              		.thumb
+ 186              		.syntax unified
+ 187              	.LBE84:
+ 188              	.LBE83:
+  66:include/ubtbr/btctl_intf.h **** }
+ 189              		.loc 4 66 2 is_stmt 1 view .LVU51
+  66:include/ubtbr/btctl_intf.h **** }
+ 190              		.loc 4 66 2 is_stmt 0 view .LVU52
+ 191              	.LBE80:
+ 192              	.LBE79:
+ 193              	.LBE78:
+ 194              	.LBE77:
+ 195              		.loc 1 39 5 view .LVU53
+ 196 0036 30B9     		cbnz	r0, .L10
+  40:src/util/console.c **** 	{
+  41:src/util/console.c **** 		DIE("txq full in console\n");
+  42:src/util/console.c **** 	}
+  43:src/util/console.c **** 	cur_msg = NULL;
+ 197              		.loc 1 43 2 is_stmt 1 view .LVU54
+ 198              		.loc 1 43 10 is_stmt 0 view .LVU55
+ 199 0038 2060     		str	r0, [r4]
+ 200              	.LVL9:
+ 201              	.L2:
+  44:src/util/console.c **** end:
+  45:src/util/console.c **** 	irq_restore(flags);
+ 202              		.loc 1 45 2 is_stmt 1 view .LVU56
+ 203              	.LBB85:
+ 204              	.LBI85:
+  19:include/ubtbr/system.h **** {
+ 205              		.loc 2 19 20 view .LVU57
+ 206              	.LBB86:
+ 207              		.loc 2 21 2 view .LVU58
+ 208              		.syntax unified
+ 209              	@ 21 "include/ubtbr/system.h" 1
+ 210 003a 85F31088 		msr primask, r5
+ 211              	@ 0 "" 2
+ 212              	.LVL10:
+ 213              		.loc 2 21 2 is_stmt 0 view .LVU59
+ARM GAS  /tmp/ccuyhgK1.s 			page 9
+
+
+ 214              		.thumb
+ 215              		.syntax unified
+ 216              	.LBE86:
+ 217              	.LBE85:
+  46:src/util/console.c **** #endif
+  47:src/util/console.c **** }
+ 218              		.loc 1 47 1 view .LVU60
+ 219 003e 70BD     		pop	{r4, r5, r6, pc}
+ 220              	.LVL11:
+ 221              	.L9:
+ 222              	.LBB87:
+ 223              	.LBB75:
+  67:include/ubtbr/msg.h ****         msg->write += len;
+ 224              		.loc 3 67 3 is_stmt 1 view .LVU61
+ 225 0040 0448     		ldr	r0, .L11+8
+ 226              	.LVL12:
+  67:include/ubtbr/msg.h ****         msg->write += len;
+ 227              		.loc 3 67 3 is_stmt 0 view .LVU62
+ 228 0042 FFF7FEFF 		bl	die
+ 229              	.LVL13:
+ 230              	.L10:
+  67:include/ubtbr/msg.h ****         msg->write += len;
+ 231              		.loc 3 67 3 view .LVU63
+ 232              	.LBE75:
+ 233              	.LBE87:
+  41:src/util/console.c **** 	}
+ 234              		.loc 1 41 3 is_stmt 1 view .LVU64
+ 235 0046 0448     		ldr	r0, .L11+12
+ 236 0048 FFF7FEFF 		bl	die
+ 237              	.LVL14:
+ 238              	.L12:
+ 239              		.align	2
+ 240              	.L11:
+ 241 004c 00000000 		.word	.LANCHOR0
+ 242 0050 2C000000 		.word	btctl+44
+ 243 0054 00000000 		.word	.LC0
+ 244 0058 1C000000 		.word	.LC1
+ 245              		.cfi_endproc
+ 246              	.LFE24:
+ 248              		.section	.text.console_putc,"ax",%progbits
+ 249              		.align	1
+ 250              		.p2align 2,,3
+ 251              		.global	console_putc
+ 252              		.syntax unified
+ 253              		.thumb
+ 254              		.thumb_func
+ 255              		.fpu softvfp
+ 257              	console_putc:
+ 258              	.LVL15:
+ 259              	.LFB25:
+  48:src/util/console.c **** 
+  49:src/util/console.c **** void console_putc(char c)
+  50:src/util/console.c **** {
+ 260              		.loc 1 50 1 view -0
+ 261              		.cfi_startproc
+ 262              		@ args = 0, pretend = 0, frame = 0
+ 263              		@ frame_needed = 0, uses_anonymous_args = 0
+ARM GAS  /tmp/ccuyhgK1.s 			page 10
+
+
+ 264              		.loc 1 50 1 is_stmt 0 view .LVU66
+ 265 0000 F8B5     		push	{r3, r4, r5, r6, r7, lr}
+ 266              		.cfi_def_cfa_offset 24
+ 267              		.cfi_offset 3, -24
+ 268              		.cfi_offset 4, -20
+ 269              		.cfi_offset 5, -16
+ 270              		.cfi_offset 6, -12
+ 271              		.cfi_offset 7, -8
+ 272              		.cfi_offset 14, -4
+  51:src/util/console.c **** #ifdef USE_CONSOLE
+  52:src/util/console.c **** 	uint32_t flags = irq_save_disable();
+ 273              		.loc 1 52 2 is_stmt 1 view .LVU67
+ 274              	.LBB88:
+ 275              	.LBI88:
+   5:include/ubtbr/system.h **** {
+ 276              		.loc 2 5 24 view .LVU68
+ 277              	.LBB89:
+   7:include/ubtbr/system.h **** 
+ 278              		.loc 2 7 2 view .LVU69
+   9:include/ubtbr/system.h **** 	"\tmrs    %0, primask\n"
+ 279              		.loc 2 9 2 view .LVU70
+ 280              	.LBE89:
+ 281              	.LBE88:
+  50:src/util/console.c **** #ifdef USE_CONSOLE
+ 282              		.loc 1 50 1 is_stmt 0 view .LVU71
+ 283 0002 0446     		mov	r4, r0
+ 284              	.LBB91:
+ 285              	.LBB90:
+   9:include/ubtbr/system.h **** 	"\tmrs    %0, primask\n"
+ 286              		.loc 2 9 2 view .LVU72
+ 287              		.syntax unified
+ 288              	@ 9 "include/ubtbr/system.h" 1
+ 289 0004 EFF31085 			mrs    r5, primask
+ 290 0008 72B6     		cpsid  i
+ 291              	
+ 292              	@ 0 "" 2
+ 293              	.LVL16:
+  16:include/ubtbr/system.h **** }
+ 294              		.loc 2 16 2 is_stmt 1 view .LVU73
+  16:include/ubtbr/system.h **** }
+ 295              		.loc 2 16 2 is_stmt 0 view .LVU74
+ 296              		.thumb
+ 297              		.syntax unified
+ 298              	.LBE90:
+ 299              	.LBE91:
+  53:src/util/console.c **** 	char *p;
+ 300              		.loc 1 53 2 is_stmt 1 view .LVU75
+  54:src/util/console.c **** 
+  55:src/util/console.c **** 	if (cur_msg == NULL)
+ 301              		.loc 1 55 2 view .LVU76
+ 302              		.loc 1 55 14 is_stmt 0 view .LVU77
+ 303 000a 194E     		ldr	r6, .L23
+ 304 000c 3368     		ldr	r3, [r6]
+ 305              		.loc 1 55 5 view .LVU78
+ 306 000e D3B1     		cbz	r3, .L14
+ 307 0010 9A68     		ldr	r2, [r3, #8]
+ 308 0012 5988     		ldrh	r1, [r3, #2]
+ARM GAS  /tmp/ccuyhgK1.s 			page 11
+
+
+ 309 0014 03F10C00 		add	r0, r3, #12
+ 310              	.LVL17:
+ 311              	.L15:
+  56:src/util/console.c **** 	{
+  57:src/util/console.c **** 		cur_msg = btctl_msg_alloc(BTCTL_DEBUG);
+  58:src/util/console.c **** 	}
+  59:src/util/console.c **** 	p = (char*)msg_put(cur_msg, 1);
+ 312              		.loc 1 59 2 is_stmt 1 view .LVU79
+ 313              	.LBB92:
+ 314              	.LBI92:
+  62:include/ubtbr/msg.h **** {
+ 315              		.loc 3 62 24 view .LVU80
+ 316              	.LBB93:
+  64:include/ubtbr/msg.h **** 
+ 317              		.loc 3 64 9 view .LVU81
+  66:include/ubtbr/msg.h **** 		DIE("msg_put: short buf\n");
+ 318              		.loc 3 66 9 view .LVU82
+ 319              	.LBB94:
+ 320              	.LBI94:
+  46:include/ubtbr/msg.h **** {
+ 321              		.loc 3 46 19 view .LVU83
+ 322              	.LBB95:
+  48:include/ubtbr/msg.h **** }
+ 323              		.loc 3 48 9 view .LVU84
+ 324              	.LBB96:
+ 325              	.LBI96:
+  32:include/ubtbr/msg.h **** {
+ 326              		.loc 3 32 19 view .LVU85
+ 327              	.LBB97:
+  34:include/ubtbr/msg.h **** }
+ 328              		.loc 3 34 2 view .LVU86
+  34:include/ubtbr/msg.h **** }
+ 329              		.loc 3 34 9 is_stmt 0 view .LVU87
+ 330 0018 161A     		subs	r6, r2, r0
+ 331              	.LBE97:
+ 332              	.LBE96:
+  48:include/ubtbr/msg.h **** }
+ 333              		.loc 3 48 30 view .LVU88
+ 334 001a 891B     		subs	r1, r1, r6
+ 335              	.LBE95:
+ 336              	.LBE94:
+  66:include/ubtbr/msg.h **** 		DIE("msg_put: short buf\n");
+ 337              		.loc 3 66 12 view .LVU89
+ 338 001c 0029     		cmp	r1, #0
+ 339 001e 24DD     		ble	.L22
+  68:include/ubtbr/msg.h **** 
+ 340              		.loc 3 68 9 is_stmt 1 view .LVU90
+  68:include/ubtbr/msg.h **** 
+ 341              		.loc 3 68 20 is_stmt 0 view .LVU91
+ 342 0020 511C     		adds	r1, r2, #1
+ 343              	.LBE93:
+ 344              	.LBE92:
+  60:src/util/console.c **** 	*p = c;
+  61:src/util/console.c **** 
+  62:src/util/console.c **** 	if (c == '\n' || msg_write_avail(cur_msg) == 1)
+ 345              		.loc 1 62 5 view .LVU92
+ 346 0022 0A2C     		cmp	r4, #10
+ARM GAS  /tmp/ccuyhgK1.s 			page 12
+
+
+ 347              	.LBB100:
+ 348              	.LBB98:
+  68:include/ubtbr/msg.h **** 
+ 349              		.loc 3 68 20 view .LVU93
+ 350 0024 9960     		str	r1, [r3, #8]
+ 351              	.LVL18:
+ 352              		.loc 3 70 9 is_stmt 1 view .LVU94
+ 353              		.loc 3 70 9 is_stmt 0 view .LVU95
+ 354              	.LBE98:
+ 355              	.LBE100:
+  60:src/util/console.c **** 	*p = c;
+ 356              		.loc 1 60 2 is_stmt 1 view .LVU96
+  60:src/util/console.c **** 	*p = c;
+ 357              		.loc 1 60 5 is_stmt 0 view .LVU97
+ 358 0026 1470     		strb	r4, [r2]
+ 359              		.loc 1 62 2 is_stmt 1 view .LVU98
+ 360              		.loc 1 62 5 is_stmt 0 view .LVU99
+ 361 0028 08D0     		beq	.L17
+ 362              	.LVL19:
+ 363              	.LBB101:
+ 364              	.LBI101:
+  46:include/ubtbr/msg.h **** {
+ 365              		.loc 3 46 19 is_stmt 1 discriminator 1 view .LVU100
+ 366              	.LBB102:
+  48:include/ubtbr/msg.h **** }
+ 367              		.loc 3 48 9 discriminator 1 view .LVU101
+ 368              	.LBB103:
+ 369              	.LBI103:
+  32:include/ubtbr/msg.h **** {
+ 370              		.loc 3 32 19 discriminator 1 view .LVU102
+ 371              	.LBB104:
+  34:include/ubtbr/msg.h **** }
+ 372              		.loc 3 34 2 discriminator 1 view .LVU103
+  34:include/ubtbr/msg.h **** }
+ 373              		.loc 3 34 9 is_stmt 0 discriminator 1 view .LVU104
+ 374 002a 9A68     		ldr	r2, [r3, #8]
+ 375              	.LBE104:
+ 376              	.LBE103:
+  48:include/ubtbr/msg.h **** }
+ 377              		.loc 3 48 19 discriminator 1 view .LVU105
+ 378 002c 5B88     		ldrh	r3, [r3, #2]
+ 379              	.LBB106:
+ 380              	.LBB105:
+  34:include/ubtbr/msg.h **** }
+ 381              		.loc 3 34 9 discriminator 1 view .LVU106
+ 382 002e 121A     		subs	r2, r2, r0
+ 383              	.LBE105:
+ 384              	.LBE106:
+  48:include/ubtbr/msg.h **** }
+ 385              		.loc 3 48 30 discriminator 1 view .LVU107
+ 386 0030 9B1A     		subs	r3, r3, r2
+ 387              	.LBE102:
+ 388              	.LBE101:
+ 389              		.loc 1 62 16 discriminator 1 view .LVU108
+ 390 0032 012B     		cmp	r3, #1
+ 391 0034 02D0     		beq	.L17
+  63:src/util/console.c **** 	{
+ARM GAS  /tmp/ccuyhgK1.s 			page 13
+
+
+  64:src/util/console.c **** 		console_flush();
+  65:src/util/console.c **** 	}
+  66:src/util/console.c **** 	irq_restore(flags);
+ 392              		.loc 1 66 2 is_stmt 1 view .LVU109
+ 393              	.LVL20:
+ 394              	.LBB107:
+ 395              	.LBI107:
+  19:include/ubtbr/system.h **** {
+ 396              		.loc 2 19 20 view .LVU110
+ 397              	.LBB108:
+ 398              		.loc 2 21 2 view .LVU111
+ 399              		.syntax unified
+ 400              	@ 21 "include/ubtbr/system.h" 1
+ 401 0036 85F31088 		msr primask, r5
+ 402              	@ 0 "" 2
+ 403              	.LVL21:
+ 404              		.loc 2 21 2 is_stmt 0 view .LVU112
+ 405              		.thumb
+ 406              		.syntax unified
+ 407              	.LBE108:
+ 408              	.LBE107:
+  67:src/util/console.c **** #endif
+  68:src/util/console.c **** }
+ 409              		.loc 1 68 1 view .LVU113
+ 410 003a F8BD     		pop	{r3, r4, r5, r6, r7, pc}
+ 411              	.LVL22:
+ 412              	.L17:
+  64:src/util/console.c **** 	}
+ 413              		.loc 1 64 3 is_stmt 1 view .LVU114
+ 414 003c FFF7FEFF 		bl	console_flush
+ 415              	.LVL23:
+  66:src/util/console.c **** #endif
+ 416              		.loc 1 66 2 view .LVU115
+ 417              	.LBB110:
+  19:include/ubtbr/system.h **** {
+ 418              		.loc 2 19 20 view .LVU116
+ 419              	.LBB109:
+ 420              		.loc 2 21 2 view .LVU117
+ 421              		.syntax unified
+ 422              	@ 21 "include/ubtbr/system.h" 1
+ 423 0040 85F31088 		msr primask, r5
+ 424              	@ 0 "" 2
+ 425              	.LVL24:
+ 426              		.loc 2 21 2 is_stmt 0 view .LVU118
+ 427              		.thumb
+ 428              		.syntax unified
+ 429              	.LBE109:
+ 430              	.LBE110:
+ 431              		.loc 1 68 1 view .LVU119
+ 432 0044 F8BD     		pop	{r3, r4, r5, r6, r7, pc}
+ 433              	.LVL25:
+ 434              	.L14:
+  57:src/util/console.c **** 	}
+ 435              		.loc 1 57 3 is_stmt 1 view .LVU120
+ 436              	.LBB111:
+ 437              	.LBI111:
+  34:include/ubtbr/btctl_intf.h **** {
+ARM GAS  /tmp/ccuyhgK1.s 			page 14
+
+
+ 438              		.loc 4 34 22 view .LVU121
+ 439              	.LBB112:
+  36:include/ubtbr/btctl_intf.h **** 	btctl_hdr_t *hdr;
+ 440              		.loc 4 36 2 view .LVU122
+  37:include/ubtbr/btctl_intf.h **** 
+ 441              		.loc 4 37 2 view .LVU123
+  40:include/ubtbr/btctl_intf.h **** 	hdr = (btctl_hdr_t*) msg_put(msg, sizeof(*hdr));
+ 442              		.loc 4 40 2 view .LVU124
+ 443              	.LBB113:
+ 444              	.LBI113:
+  15:include/ubtbr/msg.h **** {
+ 445              		.loc 3 15 22 view .LVU125
+ 446              	.LBB114:
+  17:include/ubtbr/msg.h **** 
+ 447              		.loc 3 17 2 view .LVU126
+  17:include/ubtbr/msg.h **** 
+ 448              		.loc 3 17 23 is_stmt 0 view .LVU127
+ 449 0046 4FF4BA70 		mov	r0, #372
+ 450              	.LVL26:
+  17:include/ubtbr/msg.h **** 
+ 451              		.loc 3 17 23 view .LVU128
+ 452 004a FFF7FEFF 		bl	mem_pool_alloc
+ 453              	.LVL27:
+ 454              	.LBE114:
+ 455              	.LBE113:
+  42:include/ubtbr/btctl_intf.h **** 
+ 456              		.loc 4 42 12 view .LVU129
+ 457 004e 0022     		movs	r2, #0
+ 458              	.LBB118:
+ 459              	.LBB115:
+  17:include/ubtbr/msg.h **** 
+ 460              		.loc 3 17 23 view .LVU130
+ 461 0050 0346     		mov	r3, r0
+ 462              	.LVL28:
+  19:include/ubtbr/msg.h **** 	msg->read = msg->data;
+ 463              		.loc 3 19 2 is_stmt 1 view .LVU131
+  21:include/ubtbr/msg.h **** 
+ 464              		.loc 3 21 16 is_stmt 0 view .LVU132
+ 465 0052 4FF4B477 		mov	r7, #360
+ 466              	.LBE115:
+ 467              	.LBE118:
+ 468              	.LBE112:
+ 469              	.LBE111:
+  57:src/util/console.c **** 	}
+ 470              		.loc 1 57 11 view .LVU133
+ 471 0056 3060     		str	r0, [r6]
+ 472              	.LBB132:
+ 473              	.LBB129:
+  42:include/ubtbr/btctl_intf.h **** 
+ 474              		.loc 4 42 12 view .LVU134
+ 475 0058 1A73     		strb	r2, [r3, #12]
+ 476              	.LBB119:
+ 477              	.LBB116:
+  19:include/ubtbr/msg.h **** 	msg->read = msg->data;
+ 478              		.loc 3 19 15 view .LVU135
+ 479 005a 0C30     		adds	r0, r0, #12
+ 480              	.LVL29:
+ARM GAS  /tmp/ccuyhgK1.s 			page 15
+
+
+  20:include/ubtbr/msg.h **** 	msg->data_len = size;
+ 481              		.loc 3 20 2 is_stmt 1 view .LVU136
+ 482              	.LBE116:
+ 483              	.LBE119:
+ 484              	.LBB120:
+ 485              	.LBB121:
+  68:include/ubtbr/msg.h **** 
+ 486              		.loc 3 68 20 is_stmt 0 view .LVU137
+ 487 005c 03F11002 		add	r2, r3, #16
+ 488              	.LBE121:
+ 489              	.LBE120:
+ 490              	.LBE129:
+ 491              	.LBE132:
+  57:src/util/console.c **** 	}
+ 492              		.loc 1 57 11 view .LVU138
+ 493 0060 3946     		mov	r1, r7
+ 494              	.LBB133:
+ 495              	.LBB130:
+ 496              	.LBB125:
+ 497              	.LBB122:
+  68:include/ubtbr/msg.h **** 
+ 498              		.loc 3 68 20 view .LVU139
+ 499 0062 C3E90102 		strd	r0, r2, [r3, #4]
+ 500              	.LBE122:
+ 501              	.LBE125:
+ 502              	.LBB126:
+ 503              	.LBB117:
+  21:include/ubtbr/msg.h **** 
+ 504              		.loc 3 21 16 view .LVU140
+ 505 0066 5F80     		strh	r7, [r3, #2]	@ movhi
+  23:include/ubtbr/msg.h **** }
+ 506              		.loc 3 23 2 is_stmt 1 view .LVU141
+ 507              	.LVL30:
+  23:include/ubtbr/msg.h **** }
+ 508              		.loc 3 23 2 is_stmt 0 view .LVU142
+ 509              	.LBE117:
+ 510              	.LBE126:
+  41:include/ubtbr/btctl_intf.h **** 	hdr->type = type;
+ 511              		.loc 4 41 2 is_stmt 1 view .LVU143
+ 512              	.LBB127:
+ 513              	.LBI120:
+  62:include/ubtbr/msg.h **** {
+ 514              		.loc 3 62 24 view .LVU144
+ 515              	.LBB123:
+  64:include/ubtbr/msg.h **** 
+ 516              		.loc 3 64 9 view .LVU145
+  66:include/ubtbr/msg.h **** 		DIE("msg_put: short buf\n");
+ 517              		.loc 3 66 9 view .LVU146
+  66:include/ubtbr/msg.h **** 		DIE("msg_put: short buf\n");
+ 518              		.loc 3 66 9 is_stmt 0 view .LVU147
+ 519              	.LBE123:
+ 520              	.LBE127:
+ 521              	.LBE130:
+ 522              	.LBE133:
+  48:include/ubtbr/msg.h **** }
+ 523              		.loc 3 48 9 is_stmt 1 view .LVU148
+  34:include/ubtbr/msg.h **** }
+ARM GAS  /tmp/ccuyhgK1.s 			page 16
+
+
+ 524              		.loc 3 34 2 view .LVU149
+ 525              	.LBB134:
+ 526              	.LBB131:
+ 527              	.LBB128:
+ 528              	.LBB124:
+  68:include/ubtbr/msg.h **** 
+ 529              		.loc 3 68 9 view .LVU150
+ 530              		.loc 3 70 9 view .LVU151
+ 531              		.loc 3 70 9 is_stmt 0 view .LVU152
+ 532              	.LBE124:
+ 533              	.LBE128:
+  42:include/ubtbr/btctl_intf.h **** 
+ 534              		.loc 4 42 2 is_stmt 1 view .LVU153
+  44:include/ubtbr/btctl_intf.h **** }
+ 535              		.loc 4 44 2 view .LVU154
+  44:include/ubtbr/btctl_intf.h **** }
+ 536              		.loc 4 44 2 is_stmt 0 view .LVU155
+ 537 0068 D6E7     		b	.L15
+ 538              	.LVL31:
+ 539              	.L22:
+  44:include/ubtbr/btctl_intf.h **** }
+ 540              		.loc 4 44 2 view .LVU156
+ 541              	.LBE131:
+ 542              	.LBE134:
+ 543              	.LBB135:
+ 544              	.LBB99:
+  67:include/ubtbr/msg.h ****         msg->write += len;
+ 545              		.loc 3 67 3 is_stmt 1 view .LVU157
+ 546 006a 0248     		ldr	r0, .L23+4
+ 547 006c FFF7FEFF 		bl	die
+ 548              	.LVL32:
+ 549              	.L24:
+  67:include/ubtbr/msg.h ****         msg->write += len;
+ 550              		.loc 3 67 3 is_stmt 0 view .LVU158
+ 551              		.align	2
+ 552              	.L23:
+ 553 0070 00000000 		.word	.LANCHOR0
+ 554 0074 00000000 		.word	.LC0
+ 555              	.LBE99:
+ 556              	.LBE135:
+ 557              		.cfi_endproc
+ 558              	.LFE25:
+ 560              		.bss
+ 561              		.align	2
+ 562              		.set	.LANCHOR0,. + 0
+ 565              	cur_msg:
+ 566 0000 00000000 		.space	4
+ 567              		.text
+ 568              	.Letext0:
+ 569              		.file 5 "/usr/lib/gcc/arm-none-eabi/9.2.1/include/stddef.h"
+ 570              		.file 6 "/usr/include/newlib/sys/_types.h"
+ 571              		.file 7 "/usr/include/newlib/sys/reent.h"
+ 572              		.file 8 "/usr/include/newlib/sys/lock.h"
+ 573              		.file 9 "/usr/include/newlib/stdlib.h"
+ 574              		.file 10 "/usr/lib/gcc/arm-none-eabi/9.2.1/include/stdint.h"
+ 575              		.file 11 "../../host/libubertooth/src/ubertooth_interface.h"
+ 576              		.file 12 "../common/ubertooth.h"
+ARM GAS  /tmp/ccuyhgK1.s 			page 17
+
+
+ 577              		.file 13 "include/ubtbr/queue.h"
+ 578              		.file 14 "include/ubtbr/mem_pool.h"
+ 579              		.file 15 "include/ubtbr/debug.h"
+ARM GAS  /tmp/ccuyhgK1.s 			page 18
+
+
+DEFINED SYMBOLS
+                            *ABS*:0000000000000000 console.c
+     /tmp/ccuyhgK1.s:16     .rodata.str1.4:0000000000000000 $d
+     /tmp/ccuyhgK1.s:23     .text.console_flush:0000000000000000 $t
+     /tmp/ccuyhgK1.s:32     .text.console_flush:0000000000000000 console_flush
+     /tmp/ccuyhgK1.s:241    .text.console_flush:000000000000004c $d
+     /tmp/ccuyhgK1.s:249    .text.console_putc:0000000000000000 $t
+     /tmp/ccuyhgK1.s:257    .text.console_putc:0000000000000000 console_putc
+     /tmp/ccuyhgK1.s:553    .text.console_putc:0000000000000070 $d
+     /tmp/ccuyhgK1.s:561    .bss:0000000000000000 $d
+     /tmp/ccuyhgK1.s:565    .bss:0000000000000000 cur_msg
+
+UNDEFINED SYMBOLS
+msg_enqueue
+die
+btctl
+mem_pool_alloc

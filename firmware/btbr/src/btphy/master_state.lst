@@ -1,0 +1,713 @@
+ARM GAS  /tmp/cci380tl.s 			page 1
+
+
+   1              		.cpu cortex-m3
+   2              		.eabi_attribute 20, 1
+   3              		.eabi_attribute 21, 1
+   4              		.eabi_attribute 23, 3
+   5              		.eabi_attribute 24, 1
+   6              		.eabi_attribute 25, 1
+   7              		.eabi_attribute 26, 1
+   8              		.eabi_attribute 30, 2
+   9              		.eabi_attribute 34, 1
+  10              		.eabi_attribute 18, 4
+  11              		.file	"master_state.c"
+  12              		.text
+  13              	.Ltext0:
+  14              		.cfi_sections	.debug_frame
+  15              		.section	.text.tx_done_cb,"ax",%progbits
+  16              		.align	1
+  17              		.p2align 2,,3
+  18              		.arch armv7-m
+  19              		.syntax unified
+  20              		.thumb
+  21              		.thumb_func
+  22              		.fpu softvfp
+  24              	tx_done_cb:
+  25              	.LVL0:
+  26              	.LFB34:
+  27              		.file 1 "src/btphy/master_state.c"
+   1:src/btphy/master_state.c **** /* Master connection state
+   2:src/btphy/master_state.c ****  *
+   3:src/btphy/master_state.c ****  * Copyright 2020 Etienne Helluy-Lafont, Univ. Lille, CNRS.
+   4:src/btphy/master_state.c ****  *
+   5:src/btphy/master_state.c ****  * This file is part of Project Ubertooth.
+   6:src/btphy/master_state.c ****  *
+   7:src/btphy/master_state.c ****  * This program is free software; you can redistribute it and/or modify
+   8:src/btphy/master_state.c ****  * it under the terms of the GNU General Public License as published by
+   9:src/btphy/master_state.c ****  * the Free Software Foundation; either version 2, or (at your option)
+  10:src/btphy/master_state.c ****  * any later version.
+  11:src/btphy/master_state.c ****  *
+  12:src/btphy/master_state.c ****  * This program is distributed in the hope that it will be useful,
+  13:src/btphy/master_state.c ****  * but WITHOUT ANY WARRANTY; without even the implied warranty of
+  14:src/btphy/master_state.c ****  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  15:src/btphy/master_state.c ****  * GNU General Public License for more details.
+  16:src/btphy/master_state.c ****  *
+  17:src/btphy/master_state.c ****  * You should have received a copy of the GNU General Public License
+  18:src/btphy/master_state.c ****  * along with this program; see the file COPYING.  If not, write to
+  19:src/btphy/master_state.c ****  * the Free Software Foundation, Inc., 51 Franklin Street,
+  20:src/btphy/master_state.c ****  * Boston, MA 02110-1301, USA.
+  21:src/btphy/master_state.c ****  */
+  22:src/btphy/master_state.c **** #include <string.h>
+  23:src/btphy/master_state.c **** #include <ubtbr/cfg.h>
+  24:src/btphy/master_state.c **** #include <ubtbr/btctl_intf.h>
+  25:src/btphy/master_state.c **** #include <ubtbr/btphy.h>
+  26:src/btphy/master_state.c **** #include <ubtbr/tdma_sched.h>
+  27:src/btphy/master_state.c **** #include <ubtbr/bb.h>
+  28:src/btphy/master_state.c **** #include <ubtbr/rx_task.h>
+  29:src/btphy/master_state.c **** #include <ubtbr/tx_task.h>
+  30:src/btphy/master_state.c **** #include <ubtbr/ll.h>
+  31:src/btphy/master_state.c **** 
+ARM GAS  /tmp/cci380tl.s 			page 2
+
+
+  32:src/btphy/master_state.c **** #define TX_PREPARE_IDX	3  // We will transmit at clkn1_0 = 0
+  33:src/btphy/master_state.c **** #define RX_PREPARE_IDX	1  //  We will receive at clkn1_0 = 2
+  34:src/btphy/master_state.c **** 
+  35:src/btphy/master_state.c **** static struct {
+  36:src/btphy/master_state.c **** 	link_layer_t ll;
+  37:src/btphy/master_state.c **** } master_state;
+  38:src/btphy/master_state.c **** 
+  39:src/btphy/master_state.c **** static void master_state_schedule_tx(unsigned skip_slots);
+  40:src/btphy/master_state.c **** static void master_state_schedule_rx(unsigned skip_slots);
+  41:src/btphy/master_state.c **** 
+  42:src/btphy/master_state.c **** static int master_canceled(void)
+  43:src/btphy/master_state.c **** {
+  44:src/btphy/master_state.c **** 	return btctl_get_state() != BTCTL_STATE_CONNECTED;
+  45:src/btphy/master_state.c **** }
+  46:src/btphy/master_state.c **** 
+  47:src/btphy/master_state.c **** static int master_rx_cb(msg_t *msg, void *arg, int time_offset)
+  48:src/btphy/master_state.c **** {
+  49:src/btphy/master_state.c **** 	int rc;
+  50:src/btphy/master_state.c **** 
+  51:src/btphy/master_state.c **** 	if (master_canceled())
+  52:src/btphy/master_state.c **** 	{
+  53:src/btphy/master_state.c **** 		msg_free(msg);
+  54:src/btphy/master_state.c **** 		ll_reset(&master_state.ll);
+  55:src/btphy/master_state.c **** 		return 0;
+  56:src/btphy/master_state.c **** 	}
+  57:src/btphy/master_state.c **** 	rc = ll_process_rx(&master_state.ll, msg);
+  58:src/btphy/master_state.c **** 
+  59:src/btphy/master_state.c **** 	if (rc < 0)
+  60:src/btphy/master_state.c **** 	{
+  61:src/btphy/master_state.c **** 		ll_reset(&master_state.ll);
+  62:src/btphy/master_state.c **** 		btctl_set_state(BTCTL_STATE_STANDBY, -rc);
+  63:src/btphy/master_state.c **** 	}
+  64:src/btphy/master_state.c **** 	else if (rc == 1)
+  65:src/btphy/master_state.c **** 	{
+  66:src/btphy/master_state.c **** 		master_state_schedule_tx(0);
+  67:src/btphy/master_state.c **** 	}
+  68:src/btphy/master_state.c **** 	else
+  69:src/btphy/master_state.c **** 	{
+  70:src/btphy/master_state.c **** 		master_state_schedule_rx(0);
+  71:src/btphy/master_state.c **** 	}
+  72:src/btphy/master_state.c **** 	return 0;
+  73:src/btphy/master_state.c **** }
+  74:src/btphy/master_state.c **** 
+  75:src/btphy/master_state.c **** static void master_state_schedule_rx(unsigned skip_slots)
+  76:src/btphy/master_state.c **** {
+  77:src/btphy/master_state.c **** 	/* Wait for next rx slot */
+  78:src/btphy/master_state.c **** 	unsigned delay = 4*skip_slots+(3&(RX_PREPARE_IDX-CUR_MASTER_SLOT_IDX()));
+  79:src/btphy/master_state.c **** 
+  80:src/btphy/master_state.c **** 	/* Schedule rx: */
+  81:src/btphy/master_state.c **** 	rx_task_schedule(delay,
+  82:src/btphy/master_state.c **** 		master_rx_cb, NULL,	// ID rx callback
+  83:src/btphy/master_state.c **** 		1<<RX_F_PAYLOAD		// wait for header
+  84:src/btphy/master_state.c **** 	);
+  85:src/btphy/master_state.c **** }
+  86:src/btphy/master_state.c **** 
+  87:src/btphy/master_state.c **** static void tx_done_cb(void* arg)
+  88:src/btphy/master_state.c **** {
+ARM GAS  /tmp/cci380tl.s 			page 3
+
+
+  28              		.loc 1 88 1 view -0
+  29              		.cfi_startproc
+  30              		@ args = 0, pretend = 0, frame = 0
+  31              		@ frame_needed = 0, uses_anonymous_args = 0
+  32              		@ link register save eliminated.
+  33              		.loc 1 88 1 is_stmt 0 view .LVU1
+  89:src/btphy/master_state.c **** 	master_state_schedule_rx(0);
+  34              		.loc 1 89 2 is_stmt 1 view .LVU2
+  35              	.LVL1:
+  36              	.LBB22:
+  37              	.LBI22:
+  75:src/btphy/master_state.c **** {
+  38              		.loc 1 75 13 view .LVU3
+  39              	.LBB23:
+  78:src/btphy/master_state.c **** 
+  40              		.loc 1 78 2 view .LVU4
+  81:src/btphy/master_state.c **** 		master_rx_cb, NULL,	// ID rx callback
+  41              		.loc 1 81 2 view .LVU5
+  42 0000 0123     		movs	r3, #1
+  78:src/btphy/master_state.c **** 
+  43              		.loc 1 78 51 is_stmt 0 view .LVU6
+  44 0002 044A     		ldr	r2, .L3
+  81:src/btphy/master_state.c **** 		master_rx_cb, NULL,	// ID rx callback
+  45              		.loc 1 81 2 view .LVU7
+  46 0004 0449     		ldr	r1, .L3+4
+  78:src/btphy/master_state.c **** 
+  47              		.loc 1 78 34 view .LVU8
+  48 0006 5068     		ldr	r0, [r2, #4]
+  49              	.LVL2:
+  81:src/btphy/master_state.c **** 		master_rx_cb, NULL,	// ID rx callback
+  50              		.loc 1 81 2 view .LVU9
+  51 0008 0022     		movs	r2, #0
+  78:src/btphy/master_state.c **** 
+  52              		.loc 1 78 34 view .LVU10
+  53 000a 181A     		subs	r0, r3, r0
+  81:src/btphy/master_state.c **** 		master_rx_cb, NULL,	// ID rx callback
+  54              		.loc 1 81 2 view .LVU11
+  55 000c 00F00300 		and	r0, r0, #3
+  56 0010 FFF7FEBF 		b	rx_task_schedule
+  57              	.LVL3:
+  58              	.L4:
+  81:src/btphy/master_state.c **** 		master_rx_cb, NULL,	// ID rx callback
+  59              		.loc 1 81 2 view .LVU12
+  60              		.align	2
+  61              	.L3:
+  62 0014 00000000 		.word	btphy
+  63 0018 00000000 		.word	master_rx_cb
+  64              	.LBE23:
+  65              	.LBE22:
+  66              		.cfi_endproc
+  67              	.LFE34:
+  69              		.section	.text.master_rx_cb,"ax",%progbits
+  70              		.align	1
+  71              		.p2align 2,,3
+  72              		.syntax unified
+  73              		.thumb
+  74              		.thumb_func
+ARM GAS  /tmp/cci380tl.s 			page 4
+
+
+  75              		.fpu softvfp
+  77              	master_rx_cb:
+  78              	.LVL4:
+  79              	.LFB32:
+  48:src/btphy/master_state.c **** 	int rc;
+  80              		.loc 1 48 1 is_stmt 1 view -0
+  81              		.cfi_startproc
+  82              		@ args = 0, pretend = 0, frame = 8
+  83              		@ frame_needed = 0, uses_anonymous_args = 0
+  48:src/btphy/master_state.c **** 	int rc;
+  84              		.loc 1 48 1 is_stmt 0 view .LVU14
+  85 0000 10B5     		push	{r4, lr}
+  86              		.cfi_def_cfa_offset 8
+  87              		.cfi_offset 4, -8
+  88              		.cfi_offset 14, -4
+  89 0002 84B0     		sub	sp, sp, #16
+  90              		.cfi_def_cfa_offset 24
+  49:src/btphy/master_state.c **** 
+  91              		.loc 1 49 2 is_stmt 1 view .LVU15
+  51:src/btphy/master_state.c **** 	{
+  92              		.loc 1 51 2 view .LVU16
+  93              	.LBB41:
+  94              	.LBI41:
+  42:src/btphy/master_state.c **** {
+  95              		.loc 1 42 12 view .LVU17
+  96              	.LBE41:
+  44:src/btphy/master_state.c **** }
+  97              		.loc 1 44 2 view .LVU18
+  98              	.LBB44:
+  99              	.LBB42:
+ 100              	.LBI42:
+ 101              		.file 2 "include/ubtbr/btctl_intf.h"
+   1:include/ubtbr/btctl_intf.h **** #ifndef __BTCTL_INTF_H
+   2:include/ubtbr/btctl_intf.h **** #define __BTCTL_INTF_H
+   3:include/ubtbr/btctl_intf.h **** #include <ubtbr/bb_msg.h>
+   4:include/ubtbr/btctl_intf.h **** #include <ubtbr/queue.h>
+   5:include/ubtbr/btctl_intf.h **** #include <ubtbr/system.h>
+   6:include/ubtbr/btctl_intf.h **** #include <ubertooth_interface.h>
+   7:include/ubtbr/btctl_intf.h **** 
+   8:include/ubtbr/btctl_intf.h **** typedef struct btctl_s {
+   9:include/ubtbr/btctl_intf.h **** 	btctl_state_t state;
+  10:include/ubtbr/btctl_intf.h **** 	msg_queue_t rx_q;
+  11:include/ubtbr/btctl_intf.h **** 	msg_queue_t tx_q;
+  12:include/ubtbr/btctl_intf.h **** 	msg_queue_t acl_tx_q;
+  13:include/ubtbr/btctl_intf.h **** 	msg_t *eir_msg;
+  14:include/ubtbr/btctl_intf.h **** 	btctl_tx_pkt_t *eir_pkt;
+  15:include/ubtbr/btctl_intf.h **** } btctl_t;
+  16:include/ubtbr/btctl_intf.h **** 
+  17:include/ubtbr/btctl_intf.h **** extern btctl_t btctl;
+  18:include/ubtbr/btctl_intf.h **** 
+  19:include/ubtbr/btctl_intf.h **** void btctl_init(void);
+  20:include/ubtbr/btctl_intf.h **** int btctl_work(void);
+  21:include/ubtbr/btctl_intf.h **** 
+  22:include/ubtbr/btctl_intf.h **** void btctl_set_state(btctl_state_t state, btctl_reason_t reason);
+  23:include/ubtbr/btctl_intf.h **** 
+  24:include/ubtbr/btctl_intf.h **** static inline btctl_state_t btctl_get_state(void)
+ 102              		.loc 2 24 29 view .LVU19
+ARM GAS  /tmp/cci380tl.s 			page 5
+
+
+ 103              	.LBB43:
+  25:include/ubtbr/btctl_intf.h **** {
+  26:include/ubtbr/btctl_intf.h **** 	return btctl.state;
+ 104              		.loc 2 26 2 view .LVU20
+ 105              		.loc 2 26 14 is_stmt 0 view .LVU21
+ 106 0004 204B     		ldr	r3, .L12
+ 107              	.LBE43:
+ 108              	.LBE42:
+ 109              	.LBE44:
+  48:src/btphy/master_state.c **** 	int rc;
+ 110              		.loc 1 48 1 view .LVU22
+ 111 0006 0146     		mov	r1, r0
+ 112              	.LVL5:
+  51:src/btphy/master_state.c **** 	{
+ 113              		.loc 1 51 5 view .LVU23
+ 114 0008 1B78     		ldrb	r3, [r3]	@ zero_extendqisi2
+ 115 000a 032B     		cmp	r3, #3
+ 116 000c 07D0     		beq	.L6
+  53:src/btphy/master_state.c **** 		ll_reset(&master_state.ll);
+ 117              		.loc 1 53 3 is_stmt 1 view .LVU24
+ 118              	.LVL6:
+ 119              	.LBB45:
+ 120              	.LBI45:
+ 121              		.file 3 "include/ubtbr/msg.h"
+   1:include/ubtbr/msg.h **** #ifndef __DEF_MSG_H
+   2:include/ubtbr/msg.h **** #define __DEF_MSG_H
+   3:include/ubtbr/msg.h **** #include <stdint.h>
+   4:include/ubtbr/msg.h **** 
+   5:include/ubtbr/msg.h **** typedef struct msg_s {
+   6:include/ubtbr/msg.h **** 	uint16_t len;
+   7:include/ubtbr/msg.h **** 	uint16_t data_len;
+   8:include/ubtbr/msg.h **** 	uint8_t *read;
+   9:include/ubtbr/msg.h **** 	uint8_t *write;
+  10:include/ubtbr/msg.h **** 	/* never move head */
+  11:include/ubtbr/msg.h **** 	uint8_t data[0];
+  12:include/ubtbr/msg.h **** } msg_t;
+  13:include/ubtbr/msg.h **** 
+  14:include/ubtbr/msg.h **** /* Allocate a msg_t wigh given room*/
+  15:include/ubtbr/msg.h **** static inline msg_t *msg_alloc(unsigned size)
+  16:include/ubtbr/msg.h **** {
+  17:include/ubtbr/msg.h **** 	msg_t *msg = (msg_t*)btctl_mem_alloc(sizeof(msg_t)+size);
+  18:include/ubtbr/msg.h **** 
+  19:include/ubtbr/msg.h **** 	msg->write = msg->data;
+  20:include/ubtbr/msg.h **** 	msg->read = msg->data;
+  21:include/ubtbr/msg.h **** 	msg->data_len = size;
+  22:include/ubtbr/msg.h **** 
+  23:include/ubtbr/msg.h **** 	return msg;
+  24:include/ubtbr/msg.h **** }
+  25:include/ubtbr/msg.h **** 
+  26:include/ubtbr/msg.h **** static inline void msg_free(msg_t *msg)
+ 122              		.loc 3 26 20 view .LVU25
+ 123              	.LBB46:
+  27:include/ubtbr/msg.h **** {
+  28:include/ubtbr/msg.h **** 	btctl_mem_free(msg);
+ 124              		.loc 3 28 2 view .LVU26
+ 125 000e FFF7FEFF 		bl	mem_pool_free
+ 126              	.LVL7:
+ARM GAS  /tmp/cci380tl.s 			page 6
+
+
+ 127              		.loc 3 28 2 is_stmt 0 view .LVU27
+ 128              	.LBE46:
+ 129              	.LBE45:
+  54:src/btphy/master_state.c **** 		return 0;
+ 130              		.loc 1 54 3 is_stmt 1 view .LVU28
+ 131 0012 1E48     		ldr	r0, .L12+4
+ 132 0014 FFF7FEFF 		bl	ll_reset
+ 133              	.LVL8:
+  55:src/btphy/master_state.c **** 	}
+ 134              		.loc 1 55 3 view .LVU29
+  73:src/btphy/master_state.c **** 
+ 135              		.loc 1 73 1 is_stmt 0 view .LVU30
+ 136 0018 0020     		movs	r0, #0
+ 137 001a 04B0     		add	sp, sp, #16
+ 138              		.cfi_remember_state
+ 139              		.cfi_def_cfa_offset 8
+ 140              		@ sp needed
+ 141 001c 10BD     		pop	{r4, pc}
+ 142              	.LVL9:
+ 143              	.L6:
+ 144              		.cfi_restore_state
+  57:src/btphy/master_state.c **** 
+ 145              		.loc 1 57 2 is_stmt 1 view .LVU31
+  57:src/btphy/master_state.c **** 
+ 146              		.loc 1 57 7 is_stmt 0 view .LVU32
+ 147 001e 1B48     		ldr	r0, .L12+4
+ 148              	.LVL10:
+  57:src/btphy/master_state.c **** 
+ 149              		.loc 1 57 7 view .LVU33
+ 150 0020 FFF7FEFF 		bl	ll_process_rx
+ 151              	.LVL11:
+  59:src/btphy/master_state.c **** 	{
+ 152              		.loc 1 59 2 is_stmt 1 view .LVU34
+  59:src/btphy/master_state.c **** 	{
+ 153              		.loc 1 59 5 is_stmt 0 view .LVU35
+ 154 0024 041E     		subs	r4, r0, #0
+ 155 0026 0EDB     		blt	.L10
+  64:src/btphy/master_state.c **** 	{
+ 156              		.loc 1 64 7 is_stmt 1 view .LVU36
+  64:src/btphy/master_state.c **** 	{
+ 157              		.loc 1 64 10 is_stmt 0 view .LVU37
+ 158 0028 012C     		cmp	r4, #1
+ 159 002a 17D0     		beq	.L11
+ 160              	.LBB47:
+ 161              	.LBI47:
+  47:src/btphy/master_state.c **** {
+ 162              		.loc 1 47 12 is_stmt 1 view .LVU38
+ 163              	.LVL12:
+ 164              	.LBB48:
+  70:src/btphy/master_state.c **** 	}
+ 165              		.loc 1 70 3 view .LVU39
+ 166              	.LBB49:
+ 167              	.LBI49:
+  75:src/btphy/master_state.c **** {
+ 168              		.loc 1 75 13 view .LVU40
+ 169              	.LBB50:
+  78:src/btphy/master_state.c **** 
+ARM GAS  /tmp/cci380tl.s 			page 7
+
+
+ 170              		.loc 1 78 2 view .LVU41
+  81:src/btphy/master_state.c **** 		master_rx_cb, NULL,	// ID rx callback
+ 171              		.loc 1 81 2 view .LVU42
+ 172 002c 0123     		movs	r3, #1
+  78:src/btphy/master_state.c **** 
+ 173              		.loc 1 78 51 is_stmt 0 view .LVU43
+ 174 002e 184A     		ldr	r2, .L12+8
+  81:src/btphy/master_state.c **** 		master_rx_cb, NULL,	// ID rx callback
+ 175              		.loc 1 81 2 view .LVU44
+ 176 0030 1849     		ldr	r1, .L12+12
+  78:src/btphy/master_state.c **** 
+ 177              		.loc 1 78 34 view .LVU45
+ 178 0032 5068     		ldr	r0, [r2, #4]
+ 179              	.LVL13:
+  81:src/btphy/master_state.c **** 		master_rx_cb, NULL,	// ID rx callback
+ 180              		.loc 1 81 2 view .LVU46
+ 181 0034 0022     		movs	r2, #0
+  78:src/btphy/master_state.c **** 
+ 182              		.loc 1 78 34 view .LVU47
+ 183 0036 181A     		subs	r0, r3, r0
+  81:src/btphy/master_state.c **** 		master_rx_cb, NULL,	// ID rx callback
+ 184              		.loc 1 81 2 view .LVU48
+ 185 0038 00F00300 		and	r0, r0, #3
+ 186 003c FFF7FEFF 		bl	rx_task_schedule
+ 187              	.LVL14:
+  81:src/btphy/master_state.c **** 		master_rx_cb, NULL,	// ID rx callback
+ 188              		.loc 1 81 2 view .LVU49
+ 189              	.LBE50:
+ 190              	.LBE49:
+ 191              	.LBE48:
+ 192              	.LBE47:
+  73:src/btphy/master_state.c **** 
+ 193              		.loc 1 73 1 view .LVU50
+ 194 0040 0020     		movs	r0, #0
+ 195 0042 04B0     		add	sp, sp, #16
+ 196              		.cfi_remember_state
+ 197              		.cfi_def_cfa_offset 8
+ 198              		@ sp needed
+ 199 0044 10BD     		pop	{r4, pc}
+ 200              	.LVL15:
+ 201              	.L10:
+ 202              		.cfi_restore_state
+  61:src/btphy/master_state.c **** 		btctl_set_state(BTCTL_STATE_STANDBY, -rc);
+ 203              		.loc 1 61 3 is_stmt 1 view .LVU51
+ 204 0046 1148     		ldr	r0, .L12+4
+ 205              	.LVL16:
+  61:src/btphy/master_state.c **** 		btctl_set_state(BTCTL_STATE_STANDBY, -rc);
+ 206              		.loc 1 61 3 is_stmt 0 view .LVU52
+ 207 0048 FFF7FEFF 		bl	ll_reset
+ 208              	.LVL17:
+  62:src/btphy/master_state.c **** 	}
+ 209              		.loc 1 62 3 is_stmt 1 view .LVU53
+ 210 004c 6142     		rsbs	r1, r4, #0
+ 211 004e 0020     		movs	r0, #0
+ 212 0050 C9B2     		uxtb	r1, r1
+ 213 0052 FFF7FEFF 		bl	btctl_set_state
+ 214              	.LVL18:
+ARM GAS  /tmp/cci380tl.s 			page 8
+
+
+  73:src/btphy/master_state.c **** 
+ 215              		.loc 1 73 1 is_stmt 0 view .LVU54
+ 216 0056 0020     		movs	r0, #0
+ 217 0058 04B0     		add	sp, sp, #16
+ 218              		.cfi_remember_state
+ 219              		.cfi_def_cfa_offset 8
+ 220              		@ sp needed
+ 221 005a 10BD     		pop	{r4, pc}
+ 222              	.LVL19:
+ 223              	.L11:
+ 224              		.cfi_restore_state
+  66:src/btphy/master_state.c **** 	}
+ 225              		.loc 1 66 3 is_stmt 1 view .LVU55
+ 226              	.LBB51:
+ 227              	.LBI51:
+  90:src/btphy/master_state.c **** }
+  91:src/btphy/master_state.c **** 
+  92:src/btphy/master_state.c **** static void master_state_schedule_tx(unsigned skip_slots)
+ 228              		.loc 1 92 13 view .LVU56
+ 229              	.LBB52:
+  93:src/btphy/master_state.c **** {
+  94:src/btphy/master_state.c **** 	/* Wait for next tx slot */
+  95:src/btphy/master_state.c **** 	unsigned delay = skip_slots * 4 + (3&(TX_PREPARE_IDX-CUR_MASTER_SLOT_IDX()));
+ 230              		.loc 1 95 2 view .LVU57
+ 231              		.loc 1 95 55 is_stmt 0 view .LVU58
+ 232 005c 0C4B     		ldr	r3, .L12+8
+  96:src/btphy/master_state.c **** 	bbhdr_t *tx_hdr;
+  97:src/btphy/master_state.c **** 	uint8_t *tx_data;
+  98:src/btphy/master_state.c **** 
+  99:src/btphy/master_state.c **** 	ll_prepare_tx(&master_state.ll, &tx_hdr, &tx_data);
+ 233              		.loc 1 99 2 view .LVU59
+ 234 005e 03AA     		add	r2, sp, #12
+  95:src/btphy/master_state.c **** 	bbhdr_t *tx_hdr;
+ 235              		.loc 1 95 54 view .LVU60
+ 236 0060 5C68     		ldr	r4, [r3, #4]
+ 237              		.loc 1 99 2 view .LVU61
+ 238 0062 02A9     		add	r1, sp, #8
+  95:src/btphy/master_state.c **** 	bbhdr_t *tx_hdr;
+ 239              		.loc 1 95 54 view .LVU62
+ 240 0064 E443     		mvns	r4, r4
+ 241              		.loc 1 99 2 view .LVU63
+ 242 0066 0948     		ldr	r0, .L12+4
+ 243              	.LVL20:
+ 244              		.loc 1 99 2 view .LVU64
+ 245 0068 FFF7FEFF 		bl	ll_prepare_tx
+ 246              	.LVL21:
+ 100:src/btphy/master_state.c **** 
+ 101:src/btphy/master_state.c **** 	tx_task_schedule(delay,
+ 247              		.loc 1 101 2 view .LVU65
+ 248 006c 039B     		ldr	r3, [sp, #12]
+  95:src/btphy/master_state.c **** 	bbhdr_t *tx_hdr;
+ 249              		.loc 1 95 38 view .LVU66
+ 250 006e 04F00304 		and	r4, r4, #3
+ 251              	.LVL22:
+  96:src/btphy/master_state.c **** 	uint8_t *tx_data;
+ 252              		.loc 1 96 2 is_stmt 1 view .LVU67
+  97:src/btphy/master_state.c **** 
+ARM GAS  /tmp/cci380tl.s 			page 9
+
+
+ 253              		.loc 1 97 2 view .LVU68
+  99:src/btphy/master_state.c **** 
+ 254              		.loc 1 99 2 view .LVU69
+ 255              		.loc 1 101 2 view .LVU70
+ 256 0072 2046     		mov	r0, r4
+ 257 0074 0093     		str	r3, [sp]
+ 258 0076 0022     		movs	r2, #0
+ 259 0078 029B     		ldr	r3, [sp, #8]
+ 260 007a 0749     		ldr	r1, .L12+16
+ 261 007c FFF7FEFF 		bl	tx_task_schedule
+ 262              	.LVL23:
+ 263              		.loc 1 101 2 is_stmt 0 view .LVU71
+ 264              	.LBE52:
+ 265              	.LBE51:
+  73:src/btphy/master_state.c **** 
+ 266              		.loc 1 73 1 view .LVU72
+ 267 0080 0020     		movs	r0, #0
+ 268 0082 04B0     		add	sp, sp, #16
+ 269              		.cfi_def_cfa_offset 8
+ 270              		@ sp needed
+ 271 0084 10BD     		pop	{r4, pc}
+ 272              	.L13:
+ 273 0086 00BF     		.align	2
+ 274              	.L12:
+ 275 0088 00000000 		.word	btctl
+ 276 008c 00000000 		.word	.LANCHOR0
+ 277 0090 00000000 		.word	btphy
+ 278 0094 00000000 		.word	master_rx_cb
+ 279 0098 00000000 		.word	tx_done_cb
+ 280              		.cfi_endproc
+ 281              	.LFE32:
+ 283              		.section	.rodata.str1.4,"aMS",%progbits,1
+ 284              		.align	2
+ 285              	.LC0:
+ 286 0000 6D617374 		.ascii	"master started\012\000"
+ 286      65722073 
+ 286      74617274 
+ 286      65640A00 
+ 287              		.section	.text.master_state_init,"ax",%progbits
+ 288              		.align	1
+ 289              		.p2align 2,,3
+ 290              		.global	master_state_init
+ 291              		.syntax unified
+ 292              		.thumb
+ 293              		.thumb_func
+ 294              		.fpu softvfp
+ 296              	master_state_init:
+ 297              	.LFB36:
+ 102:src/btphy/master_state.c **** 		tx_done_cb, NULL,
+ 103:src/btphy/master_state.c **** 		tx_hdr, tx_data);
+ 104:src/btphy/master_state.c **** }
+ 105:src/btphy/master_state.c **** 
+ 106:src/btphy/master_state.c **** /* Called by paging task once the slave acknowledged our FHS */
+ 107:src/btphy/master_state.c **** void master_state_init(void)
+ 108:src/btphy/master_state.c **** {
+ 298              		.loc 1 108 1 is_stmt 1 view -0
+ 299              		.cfi_startproc
+ARM GAS  /tmp/cci380tl.s 			page 10
+
+
+ 300              		@ args = 0, pretend = 0, frame = 8
+ 301              		@ frame_needed = 0, uses_anonymous_args = 0
+ 302 0000 30B5     		push	{r4, r5, lr}
+ 303              		.cfi_def_cfa_offset 12
+ 304              		.cfi_offset 4, -12
+ 305              		.cfi_offset 5, -8
+ 306              		.cfi_offset 14, -4
+ 307 0002 85B0     		sub	sp, sp, #20
+ 308              		.cfi_def_cfa_offset 32
+ 109:src/btphy/master_state.c **** 	/* Initialize basic hopping from master's clock */
+ 110:src/btphy/master_state.c **** 	btphy_set_mode(BT_MODE_MASTER, btphy.my_lap, btphy.my_uap);
+ 309              		.loc 1 110 2 view .LVU74
+ 310 0004 134C     		ldr	r4, .L15
+ 311 0006 0420     		movs	r0, #4
+ 312 0008 94F83820 		ldrb	r2, [r4, #56]	@ zero_extendqisi2
+ 313 000c 616B     		ldr	r1, [r4, #52]
+ 314 000e FFF7FEFF 		bl	btphy_set_mode
+ 315              	.LVL24:
+ 111:src/btphy/master_state.c **** 
+ 112:src/btphy/master_state.c **** 	ll_init(&master_state.ll, 1, 1); // FIXME: fixed slave lt_addr = 1
+ 316              		.loc 1 112 2 view .LVU75
+ 317 0012 0122     		movs	r2, #1
+ 318 0014 104D     		ldr	r5, .L15+4
+ 319 0016 1146     		mov	r1, r2
+ 320 0018 2846     		mov	r0, r5
+ 321 001a FFF7FEFF 		bl	ll_init
+ 322              	.LVL25:
+ 113:src/btphy/master_state.c **** 
+ 114:src/btphy/master_state.c **** 	/* We are already in sync, just schedule the first tx (in a while)*/
+ 115:src/btphy/master_state.c **** 	cprintf("master started\n");
+ 323              		.loc 1 115 2 view .LVU76
+ 324 001e 0F48     		ldr	r0, .L15+8
+ 325 0020 FFF7FEFF 		bl	cprintf
+ 326              	.LVL26:
+ 116:src/btphy/master_state.c **** 	master_state_schedule_tx(1);
+ 327              		.loc 1 116 2 view .LVU77
+ 328              	.LBB55:
+ 329              	.LBI55:
+  92:src/btphy/master_state.c **** {
+ 330              		.loc 1 92 13 view .LVU78
+ 331              	.LBB56:
+  95:src/btphy/master_state.c **** 	bbhdr_t *tx_hdr;
+ 332              		.loc 1 95 2 view .LVU79
+  95:src/btphy/master_state.c **** 	bbhdr_t *tx_hdr;
+ 333              		.loc 1 95 54 is_stmt 0 view .LVU80
+ 334 0024 6468     		ldr	r4, [r4, #4]
+  99:src/btphy/master_state.c **** 
+ 335              		.loc 1 99 2 view .LVU81
+ 336 0026 2846     		mov	r0, r5
+  95:src/btphy/master_state.c **** 	bbhdr_t *tx_hdr;
+ 337              		.loc 1 95 54 view .LVU82
+ 338 0028 E443     		mvns	r4, r4
+  99:src/btphy/master_state.c **** 
+ 339              		.loc 1 99 2 view .LVU83
+ 340 002a 03AA     		add	r2, sp, #12
+ 341 002c 02A9     		add	r1, sp, #8
+ 342 002e FFF7FEFF 		bl	ll_prepare_tx
+ARM GAS  /tmp/cci380tl.s 			page 11
+
+
+ 343              	.LVL27:
+  95:src/btphy/master_state.c **** 	bbhdr_t *tx_hdr;
+ 344              		.loc 1 95 38 view .LVU84
+ 345 0032 04F00304 		and	r4, r4, #3
+ 101:src/btphy/master_state.c **** 		tx_done_cb, NULL,
+ 346              		.loc 1 101 2 view .LVU85
+ 347 0036 039B     		ldr	r3, [sp, #12]
+  95:src/btphy/master_state.c **** 	bbhdr_t *tx_hdr;
+ 348              		.loc 1 95 11 view .LVU86
+ 349 0038 0434     		adds	r4, r4, #4
+ 350              	.LVL28:
+  96:src/btphy/master_state.c **** 	uint8_t *tx_data;
+ 351              		.loc 1 96 2 is_stmt 1 view .LVU87
+  97:src/btphy/master_state.c **** 
+ 352              		.loc 1 97 2 view .LVU88
+  99:src/btphy/master_state.c **** 
+ 353              		.loc 1 99 2 view .LVU89
+ 101:src/btphy/master_state.c **** 		tx_done_cb, NULL,
+ 354              		.loc 1 101 2 view .LVU90
+ 355 003a 2046     		mov	r0, r4
+ 356 003c 0022     		movs	r2, #0
+ 357 003e 0093     		str	r3, [sp]
+ 358 0040 0749     		ldr	r1, .L15+12
+ 359 0042 029B     		ldr	r3, [sp, #8]
+ 360 0044 FFF7FEFF 		bl	tx_task_schedule
+ 361              	.LVL29:
+ 101:src/btphy/master_state.c **** 		tx_done_cb, NULL,
+ 362              		.loc 1 101 2 is_stmt 0 view .LVU91
+ 363              	.LBE56:
+ 364              	.LBE55:
+ 117:src/btphy/master_state.c **** 	btctl_set_state(BTCTL_STATE_CONNECTED, BTCTL_REASON_PAGED);
+ 365              		.loc 1 117 2 is_stmt 1 view .LVU92
+ 366 0048 0221     		movs	r1, #2
+ 367 004a 0320     		movs	r0, #3
+ 368 004c FFF7FEFF 		bl	btctl_set_state
+ 369              	.LVL30:
+ 118:src/btphy/master_state.c **** }
+ 370              		.loc 1 118 1 is_stmt 0 view .LVU93
+ 371 0050 05B0     		add	sp, sp, #20
+ 372              		.cfi_def_cfa_offset 12
+ 373              		@ sp needed
+ 374 0052 30BD     		pop	{r4, r5, pc}
+ 375              	.L16:
+ 376              		.align	2
+ 377              	.L15:
+ 378 0054 00000000 		.word	btphy
+ 379 0058 00000000 		.word	.LANCHOR0
+ 380 005c 00000000 		.word	.LC0
+ 381 0060 00000000 		.word	tx_done_cb
+ 382              		.cfi_endproc
+ 383              	.LFE36:
+ 385              		.bss
+ 386              		.align	2
+ 387              		.set	.LANCHOR0,. + 0
+ 390              	master_state:
+ 391 0000 00000000 		.space	36
+ 391      00000000 
+ARM GAS  /tmp/cci380tl.s 			page 12
+
+
+ 391      00000000 
+ 391      00000000 
+ 391      00000000 
+ 392              		.text
+ 393              	.Letext0:
+ 394              		.file 4 "/usr/lib/gcc/arm-none-eabi/9.2.1/include/stddef.h"
+ 395              		.file 5 "/usr/include/newlib/sys/_types.h"
+ 396              		.file 6 "/usr/include/newlib/sys/reent.h"
+ 397              		.file 7 "/usr/include/newlib/sys/lock.h"
+ 398              		.file 8 "/usr/lib/gcc/arm-none-eabi/9.2.1/include/stdint.h"
+ 399              		.file 9 "../../host/libubertooth/src/ubertooth_interface.h"
+ 400              		.file 10 "../common/ubertooth.h"
+ 401              		.file 11 "include/ubtbr/queue.h"
+ 402              		.file 12 "include/ubtbr/btphy.h"
+ 403              		.file 13 "include/ubtbr/ll.h"
+ 404              		.file 14 "include/ubtbr/tx_task.h"
+ 405              		.file 15 "include/ubtbr/debug.h"
+ 406              		.file 16 "include/ubtbr/rx_task.h"
+ 407              		.file 17 "include/ubtbr/mem_pool.h"
+ARM GAS  /tmp/cci380tl.s 			page 13
+
+
+DEFINED SYMBOLS
+                            *ABS*:0000000000000000 master_state.c
+     /tmp/cci380tl.s:16     .text.tx_done_cb:0000000000000000 $t
+     /tmp/cci380tl.s:24     .text.tx_done_cb:0000000000000000 tx_done_cb
+     /tmp/cci380tl.s:62     .text.tx_done_cb:0000000000000014 $d
+     /tmp/cci380tl.s:77     .text.master_rx_cb:0000000000000000 master_rx_cb
+     /tmp/cci380tl.s:70     .text.master_rx_cb:0000000000000000 $t
+     /tmp/cci380tl.s:275    .text.master_rx_cb:0000000000000088 $d
+     /tmp/cci380tl.s:284    .rodata.str1.4:0000000000000000 $d
+     /tmp/cci380tl.s:288    .text.master_state_init:0000000000000000 $t
+     /tmp/cci380tl.s:296    .text.master_state_init:0000000000000000 master_state_init
+     /tmp/cci380tl.s:378    .text.master_state_init:0000000000000054 $d
+     /tmp/cci380tl.s:386    .bss:0000000000000000 $d
+     /tmp/cci380tl.s:390    .bss:0000000000000000 master_state
+
+UNDEFINED SYMBOLS
+rx_task_schedule
+btphy
+mem_pool_free
+ll_reset
+ll_process_rx
+btctl_set_state
+ll_prepare_tx
+tx_task_schedule
+btctl
+btphy_set_mode
+ll_init
+cprintf

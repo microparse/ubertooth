@@ -1,0 +1,2163 @@
+ARM GAS  /tmp/ccVVdvQV.s 			page 1
+
+
+   1              		.cpu cortex-m3
+   2              		.eabi_attribute 20, 1
+   3              		.eabi_attribute 21, 1
+   4              		.eabi_attribute 23, 3
+   5              		.eabi_attribute 24, 1
+   6              		.eabi_attribute 25, 1
+   7              		.eabi_attribute 26, 1
+   8              		.eabi_attribute 30, 2
+   9              		.eabi_attribute 34, 1
+  10              		.eabi_attribute 18, 4
+  11              		.file	"tdma_sched.c"
+  12              		.text
+  13              	.Ltext0:
+  14              		.cfi_sections	.debug_frame
+  15              		.section	.text.tdma_end_set,"ax",%progbits
+  16              		.align	1
+  17              		.p2align 2,,3
+  18              		.global	tdma_end_set
+  19              		.arch armv7-m
+  20              		.syntax unified
+  21              		.thumb
+  22              		.thumb_func
+  23              		.fpu softvfp
+  25              	tdma_end_set:
+  26              	.LVL0:
+  27              	.LFB1:
+  28              		.file 1 "src/btphy/tdma_sched.c"
+   1:src/btphy/tdma_sched.c **** /* TDMA Scheduler Implementation */
+   2:src/btphy/tdma_sched.c **** 
+   3:src/btphy/tdma_sched.c **** /* (C) 2010 by Harald Welte <laforge@gnumonks.org>
+   4:src/btphy/tdma_sched.c ****  *
+   5:src/btphy/tdma_sched.c ****  * All Rights Reserved
+   6:src/btphy/tdma_sched.c ****  *
+   7:src/btphy/tdma_sched.c ****  * This program is free software; you can redistribute it and/or modify
+   8:src/btphy/tdma_sched.c ****  * it under the terms of the GNU General Public License as published by
+   9:src/btphy/tdma_sched.c ****  * the Free Software Foundation; either version 2 of the License, or
+  10:src/btphy/tdma_sched.c ****  * (at your option) any later version.
+  11:src/btphy/tdma_sched.c ****  *
+  12:src/btphy/tdma_sched.c ****  * This program is distributed in the hope that it will be useful,
+  13:src/btphy/tdma_sched.c ****  * but WITHOUT ANY WARRANTY; without even the implied warranty of
+  14:src/btphy/tdma_sched.c ****  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  15:src/btphy/tdma_sched.c ****  * GNU General Public License for more details.
+  16:src/btphy/tdma_sched.c ****  *
+  17:src/btphy/tdma_sched.c ****  * You should have received a copy of the GNU General Public License along
+  18:src/btphy/tdma_sched.c ****  * with this program; if not, write to the Free Software Foundation, Inc.,
+  19:src/btphy/tdma_sched.c ****  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+  20:src/btphy/tdma_sched.c ****  *
+  21:src/btphy/tdma_sched.c ****  */
+  22:src/btphy/tdma_sched.c **** 
+  23:src/btphy/tdma_sched.c **** #include <stdint.h>
+  24:src/btphy/tdma_sched.c **** //#include <stdio.h>
+  25:src/btphy/tdma_sched.c **** #include <string.h>
+  26:src/btphy/tdma_sched.c **** 
+  27:src/btphy/tdma_sched.c **** #include <ubtbr/cfg.h>
+  28:src/btphy/tdma_sched.c **** #include <ubtbr/defines.h>
+  29:src/btphy/tdma_sched.c **** #include <ubtbr/debug.h>
+  30:src/btphy/tdma_sched.c **** 
+ARM GAS  /tmp/ccVVdvQV.s 			page 2
+
+
+  31:src/btphy/tdma_sched.c **** #include <ubtbr/tdma_sched.h>
+  32:src/btphy/tdma_sched.c **** 
+  33:src/btphy/tdma_sched.c **** static struct tdma_scheduler tdma_sched;
+  34:src/btphy/tdma_sched.c **** 
+  35:src/btphy/tdma_sched.c **** /* dummy function to mark end of set */
+  36:src/btphy/tdma_sched.c **** int tdma_end_set(__unused uint8_t p1, __unused uint8_t p2,
+  37:src/btphy/tdma_sched.c **** 		 __unused uint16_t p3)
+  38:src/btphy/tdma_sched.c **** {
+  29              		.loc 1 38 1 view -0
+  30              		.cfi_startproc
+  31              		@ args = 0, pretend = 0, frame = 0
+  32              		@ frame_needed = 0, uses_anonymous_args = 0
+  33              		@ link register save eliminated.
+  34              		.loc 1 38 1 is_stmt 0 view .LVU1
+  39:src/btphy/tdma_sched.c **** 	return 0;
+  35              		.loc 1 39 2 is_stmt 1 view .LVU2
+  40:src/btphy/tdma_sched.c **** }
+  36              		.loc 1 40 1 is_stmt 0 view .LVU3
+  37 0000 0020     		movs	r0, #0
+  38              	.LVL1:
+  39              		.loc 1 40 1 view .LVU4
+  40 0002 7047     		bx	lr
+  41              		.cfi_endproc
+  42              	.LFE1:
+  44              		.section	.rodata.str1.4,"aMS",%progbits,1
+  45              		.align	2
+  46              	.LC0:
+  47 0000 74646D61 		.ascii	"tdma_schedule bucket overflow\012\000"
+  47      5F736368 
+  47      6564756C 
+  47      65206275 
+  47      636B6574 
+  48              		.section	.text.tdma_schedule,"ax",%progbits
+  49              		.align	1
+  50              		.p2align 2,,3
+  51              		.global	tdma_schedule
+  52              		.syntax unified
+  53              		.thumb
+  54              		.thumb_func
+  55              		.fpu softvfp
+  57              	tdma_schedule:
+  58              	.LVL2:
+  59              	.LFB3:
+  41:src/btphy/tdma_sched.c **** 
+  42:src/btphy/tdma_sched.c **** static uint8_t wrap_bucket(uint8_t offset)
+  43:src/btphy/tdma_sched.c **** {
+  44:src/btphy/tdma_sched.c **** 	uint16_t bucket;
+  45:src/btphy/tdma_sched.c **** 
+  46:src/btphy/tdma_sched.c **** 	bucket = (tdma_sched.cur_bucket + offset)
+  47:src/btphy/tdma_sched.c **** 					% ARRAY_SIZE(tdma_sched.bucket);
+  48:src/btphy/tdma_sched.c **** 
+  49:src/btphy/tdma_sched.c **** 	return bucket;
+  50:src/btphy/tdma_sched.c **** }
+  51:src/btphy/tdma_sched.c **** 
+  52:src/btphy/tdma_sched.c **** /* Schedule an item at 'frame_offset' TDMA frames in the future */
+  53:src/btphy/tdma_sched.c **** int tdma_schedule(uint8_t frame_offset, tdma_sched_cb *cb,
+  54:src/btphy/tdma_sched.c ****                   uint8_t p1, uint8_t p2, uint16_t p3, int16_t prio)
+ARM GAS  /tmp/ccVVdvQV.s 			page 3
+
+
+  55:src/btphy/tdma_sched.c **** {
+  60              		.loc 1 55 1 is_stmt 1 view -0
+  61              		.cfi_startproc
+  62              		@ args = 8, pretend = 0, frame = 0
+  63              		@ frame_needed = 0, uses_anonymous_args = 0
+  64              		.loc 1 55 1 is_stmt 0 view .LVU6
+  65 0000 2DE9F041 		push	{r4, r5, r6, r7, r8, lr}
+  66              		.cfi_def_cfa_offset 24
+  67              		.cfi_offset 4, -24
+  68              		.cfi_offset 5, -20
+  69              		.cfi_offset 6, -16
+  70              		.cfi_offset 7, -12
+  71              		.cfi_offset 8, -8
+  72              		.cfi_offset 14, -4
+  56:src/btphy/tdma_sched.c **** 	struct tdma_scheduler *sched = &tdma_sched;
+  73              		.loc 1 56 2 is_stmt 1 view .LVU7
+  74              	.LVL3:
+  57:src/btphy/tdma_sched.c **** 	uint8_t bucket_nr = wrap_bucket(frame_offset);
+  75              		.loc 1 57 2 view .LVU8
+  76              	.LBB14:
+  77              	.LBI14:
+  42:src/btphy/tdma_sched.c **** {
+  78              		.loc 1 42 16 view .LVU9
+  79              	.LBB15:
+  44:src/btphy/tdma_sched.c **** 
+  80              		.loc 1 44 2 view .LVU10
+  46:src/btphy/tdma_sched.c **** 					% ARRAY_SIZE(tdma_sched.bucket);
+  81              		.loc 1 46 2 view .LVU11
+  49:src/btphy/tdma_sched.c **** }
+  82              		.loc 1 49 2 view .LVU12
+  49:src/btphy/tdma_sched.c **** }
+  83              		.loc 1 49 2 is_stmt 0 view .LVU13
+  84              	.LBE15:
+  85              	.LBE14:
+  58:src/btphy/tdma_sched.c **** 	struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+  86              		.loc 1 58 2 is_stmt 1 view .LVU14
+  59:src/btphy/tdma_sched.c **** 	struct tdma_sched_item *sched_item;
+  60:src/btphy/tdma_sched.c **** 
+  61:src/btphy/tdma_sched.c **** 	if (bucket->num_items >= ARRAY_SIZE(bucket->item)) {
+  87              		.loc 1 61 12 is_stmt 0 view .LVU15
+  88 0004 3424     		movs	r4, #52
+  89              	.LBB19:
+  90              	.LBB16:
+  46:src/btphy/tdma_sched.c **** 					% ARRAY_SIZE(tdma_sched.bucket);
+  91              		.loc 1 46 22 view .LVU16
+  92 0006 154E     		ldr	r6, .L7
+  93              	.LBE16:
+  94              	.LBE19:
+  55:src/btphy/tdma_sched.c **** 	struct tdma_scheduler *sched = &tdma_sched;
+  95              		.loc 1 55 1 view .LVU17
+  96 0008 BDF81880 		ldrh	r8, [sp, #24]
+  97              	.LBB20:
+  98              	.LBB17:
+  47:src/btphy/tdma_sched.c **** 
+  99              		.loc 1 47 6 view .LVU18
+ 100 000c 96F84053 		ldrb	r5, [r6, #832]	@ zero_extendqisi2
+ 101              	.LBE17:
+ARM GAS  /tmp/ccVVdvQV.s 			page 4
+
+
+ 102              	.LBE20:
+  55:src/btphy/tdma_sched.c **** 	struct tdma_scheduler *sched = &tdma_sched;
+ 103              		.loc 1 55 1 view .LVU19
+ 104 0010 BDF91CE0 		ldrsh	lr, [sp, #28]
+ 105              	.LBB21:
+ 106              	.LBB18:
+  47:src/btphy/tdma_sched.c **** 
+ 107              		.loc 1 47 6 view .LVU20
+ 108 0014 2844     		add	r0, r0, r5
+ 109              	.LVL4:
+  47:src/btphy/tdma_sched.c **** 
+ 110              		.loc 1 47 6 view .LVU21
+ 111              	.LBE18:
+ 112              	.LBE21:
+  58:src/btphy/tdma_sched.c **** 	struct tdma_sched_item *sched_item;
+ 113              		.loc 1 58 51 view .LVU22
+ 114 0016 00F00F00 		and	r0, r0, #15
+ 115              	.LVL5:
+  59:src/btphy/tdma_sched.c **** 
+ 116              		.loc 1 59 2 is_stmt 1 view .LVU23
+ 117              		.loc 1 61 2 view .LVU24
+ 118              		.loc 1 61 12 is_stmt 0 view .LVU25
+ 119 001a 04FB00F4 		mul	r4, r4, r0
+ 120 001e 06EB040C 		add	ip, r6, r4
+ 121 0022 9CF83050 		ldrb	r5, [ip, #48]	@ zero_extendqisi2
+ 122              		.loc 1 61 5 view .LVU26
+ 123 0026 032D     		cmp	r5, #3
+ 124 0028 11D8     		bhi	.L6
+  62:src/btphy/tdma_sched.c **** 		cprintf("tdma_schedule bucket overflow\n");
+  63:src/btphy/tdma_sched.c **** 		return -1;
+  64:src/btphy/tdma_sched.c **** 	}
+  65:src/btphy/tdma_sched.c **** 
+  66:src/btphy/tdma_sched.c **** 	sched_item = &bucket->item[bucket->num_items++];
+ 125              		.loc 1 66 2 is_stmt 1 view .LVU27
+  67:src/btphy/tdma_sched.c **** 
+  68:src/btphy/tdma_sched.c **** 	sched_item->cb = cb;
+  69:src/btphy/tdma_sched.c **** 	sched_item->p1 = p1;
+  70:src/btphy/tdma_sched.c **** 	sched_item->p2 = p2;
+  71:src/btphy/tdma_sched.c **** 	sched_item->p3 = p3;
+  72:src/btphy/tdma_sched.c **** 	sched_item->prio = prio;
+  73:src/btphy/tdma_sched.c **** 
+  74:src/btphy/tdma_sched.c **** 	return 0;
+ 126              		.loc 1 74 9 is_stmt 0 view .LVU28
+ 127 002a 0020     		movs	r0, #0
+ 128              	.LVL6:
+  68:src/btphy/tdma_sched.c **** 	sched_item->p1 = p1;
+ 129              		.loc 1 68 17 view .LVU29
+ 130 002c 05EB4507 		add	r7, r5, r5, lsl #1
+ 131 0030 04EB8704 		add	r4, r4, r7, lsl #2
+ 132 0034 3719     		adds	r7, r6, r4
+  66:src/btphy/tdma_sched.c **** 
+ 133              		.loc 1 66 46 view .LVU30
+ 134 0036 0135     		adds	r5, r5, #1
+  68:src/btphy/tdma_sched.c **** 	sched_item->p1 = p1;
+ 135              		.loc 1 68 17 view .LVU31
+ 136 0038 3151     		str	r1, [r6, r4]
+  69:src/btphy/tdma_sched.c **** 	sched_item->p2 = p2;
+ARM GAS  /tmp/ccVVdvQV.s 			page 5
+
+
+ 137              		.loc 1 69 17 view .LVU32
+ 138 003a 3A71     		strb	r2, [r7, #4]
+  70:src/btphy/tdma_sched.c **** 	sched_item->p3 = p3;
+ 139              		.loc 1 70 17 view .LVU33
+ 140 003c 7B71     		strb	r3, [r7, #5]
+  71:src/btphy/tdma_sched.c **** 	sched_item->prio = prio;
+ 141              		.loc 1 71 17 view .LVU34
+ 142 003e A7F80680 		strh	r8, [r7, #6]	@ movhi
+  72:src/btphy/tdma_sched.c **** 
+ 143              		.loc 1 72 19 view .LVU35
+ 144 0042 A7F808E0 		strh	lr, [r7, #8]	@ movhi
+  66:src/btphy/tdma_sched.c **** 
+ 145              		.loc 1 66 46 view .LVU36
+ 146 0046 8CF83050 		strb	r5, [ip, #48]
+ 147              	.LVL7:
+  68:src/btphy/tdma_sched.c **** 	sched_item->p1 = p1;
+ 148              		.loc 1 68 2 is_stmt 1 view .LVU37
+  69:src/btphy/tdma_sched.c **** 	sched_item->p2 = p2;
+ 149              		.loc 1 69 2 view .LVU38
+  70:src/btphy/tdma_sched.c **** 	sched_item->p3 = p3;
+ 150              		.loc 1 70 2 view .LVU39
+  71:src/btphy/tdma_sched.c **** 	sched_item->prio = prio;
+ 151              		.loc 1 71 2 view .LVU40
+  72:src/btphy/tdma_sched.c **** 
+ 152              		.loc 1 72 2 view .LVU41
+ 153              		.loc 1 74 2 view .LVU42
+ 154              	.L3:
+  75:src/btphy/tdma_sched.c **** }
+ 155              		.loc 1 75 1 is_stmt 0 view .LVU43
+ 156 004a BDE8F081 		pop	{r4, r5, r6, r7, r8, pc}
+ 157              	.LVL8:
+ 158              	.L6:
+  62:src/btphy/tdma_sched.c **** 		return -1;
+ 159              		.loc 1 62 3 is_stmt 1 view .LVU44
+ 160 004e 0448     		ldr	r0, .L7+4
+ 161              	.LVL9:
+  62:src/btphy/tdma_sched.c **** 		return -1;
+ 162              		.loc 1 62 3 is_stmt 0 view .LVU45
+ 163 0050 FFF7FEFF 		bl	cprintf
+ 164              	.LVL10:
+  63:src/btphy/tdma_sched.c **** 	}
+ 165              		.loc 1 63 3 is_stmt 1 view .LVU46
+  63:src/btphy/tdma_sched.c **** 	}
+ 166              		.loc 1 63 10 is_stmt 0 view .LVU47
+ 167 0054 4FF0FF30 		mov	r0, #-1
+ 168 0058 F7E7     		b	.L3
+ 169              	.L8:
+ 170 005a 00BF     		.align	2
+ 171              	.L7:
+ 172 005c 00000000 		.word	.LANCHOR0
+ 173 0060 00000000 		.word	.LC0
+ 174              		.cfi_endproc
+ 175              	.LFE3:
+ 177              		.section	.text.tdma_schedule_set,"ax",%progbits
+ 178              		.align	1
+ 179              		.p2align 2,,3
+ 180              		.global	tdma_schedule_set
+ARM GAS  /tmp/ccVVdvQV.s 			page 6
+
+
+ 181              		.syntax unified
+ 182              		.thumb
+ 183              		.thumb_func
+ 184              		.fpu softvfp
+ 186              	tdma_schedule_set:
+ 187              	.LVL11:
+ 188              	.LFB4:
+  76:src/btphy/tdma_sched.c **** 
+  77:src/btphy/tdma_sched.c **** /* Schedule a set of items starting from 'frame_offset' TDMA frames in the future */
+  78:src/btphy/tdma_sched.c **** int tdma_schedule_set(uint8_t frame_offset, const struct tdma_sched_item *item_set, uint16_t p3)
+  79:src/btphy/tdma_sched.c **** {
+ 189              		.loc 1 79 1 is_stmt 1 view -0
+ 190              		.cfi_startproc
+ 191              		@ args = 0, pretend = 0, frame = 8
+ 192              		@ frame_needed = 0, uses_anonymous_args = 0
+ 193              		.loc 1 79 1 is_stmt 0 view .LVU49
+ 194 0000 2DE9F04F 		push	{r4, r5, r6, r7, r8, r9, r10, fp, lr}
+ 195              		.cfi_def_cfa_offset 36
+ 196              		.cfi_offset 4, -36
+ 197              		.cfi_offset 5, -32
+ 198              		.cfi_offset 6, -28
+ 199              		.cfi_offset 7, -24
+ 200              		.cfi_offset 8, -20
+ 201              		.cfi_offset 9, -16
+ 202              		.cfi_offset 10, -12
+ 203              		.cfi_offset 11, -8
+ 204              		.cfi_offset 14, -4
+ 205 0004 83B0     		sub	sp, sp, #12
+ 206              		.cfi_def_cfa_offset 48
+  80:src/btphy/tdma_sched.c **** 	struct tdma_scheduler *sched = &tdma_sched;
+ 207              		.loc 1 80 2 is_stmt 1 view .LVU50
+ 208              	.LVL12:
+  81:src/btphy/tdma_sched.c **** 	uint8_t bucket_nr = wrap_bucket(frame_offset);
+ 209              		.loc 1 81 2 view .LVU51
+  79:src/btphy/tdma_sched.c **** 	struct tdma_scheduler *sched = &tdma_sched;
+ 210              		.loc 1 79 1 is_stmt 0 view .LVU52
+ 211 0006 0746     		mov	r7, r0
+ 212              	.LVL13:
+ 213              	.LBB22:
+ 214              	.LBI22:
+  42:src/btphy/tdma_sched.c **** {
+ 215              		.loc 1 42 16 is_stmt 1 view .LVU53
+ 216              	.LBB23:
+  44:src/btphy/tdma_sched.c **** 
+ 217              		.loc 1 44 2 view .LVU54
+  46:src/btphy/tdma_sched.c **** 					% ARRAY_SIZE(tdma_sched.bucket);
+ 218              		.loc 1 46 2 view .LVU55
+  46:src/btphy/tdma_sched.c **** 					% ARRAY_SIZE(tdma_sched.bucket);
+ 219              		.loc 1 46 22 is_stmt 0 view .LVU56
+ 220 0008 DFF8A490 		ldr	r9, .L19+4
+ 221              	.LBE23:
+ 222              	.LBE22:
+ 223              	.LBB27:
+  82:src/btphy/tdma_sched.c **** 	int i, j;
+  83:src/btphy/tdma_sched.c **** 
+  84:src/btphy/tdma_sched.c **** 	for (i = 0, j = 0; 1; i++) {
+  85:src/btphy/tdma_sched.c **** 		const struct tdma_sched_item *sched_item = &item_set[i];
+ARM GAS  /tmp/ccVVdvQV.s 			page 7
+
+
+  86:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+  87:src/btphy/tdma_sched.c **** 
+  88:src/btphy/tdma_sched.c **** 		if (sched_item->cb == &tdma_end_set) {
+ 224              		.loc 1 88 17 view .LVU57
+ 225 000c 0868     		ldr	r0, [r1]
+ 226              	.LVL14:
+ 227              		.loc 1 88 17 view .LVU58
+ 228              	.LBE27:
+ 229              	.LBB36:
+ 230              	.LBB24:
+  47:src/btphy/tdma_sched.c **** 
+ 231              		.loc 1 47 6 view .LVU59
+ 232 000e 99F84063 		ldrb	r6, [r9, #832]	@ zero_extendqisi2
+ 233              	.LBE24:
+ 234              	.LBE36:
+ 235              	.LBB37:
+ 236              		.loc 1 88 6 view .LVU60
+ 237 0012 DFF8A080 		ldr	r8, .L19+8
+ 238              	.LBE37:
+ 239              	.LBB38:
+ 240              	.LBB25:
+  47:src/btphy/tdma_sched.c **** 
+ 241              		.loc 1 47 6 view .LVU61
+ 242 0016 3E44     		add	r6, r6, r7
+ 243              	.LBE25:
+ 244              	.LBE38:
+ 245              	.LBB39:
+ 246              		.loc 1 88 6 view .LVU62
+ 247 0018 4045     		cmp	r0, r8
+ 248 001a 06F00F06 		and	r6, r6, #15
+ 249              	.LVL15:
+ 250              		.loc 1 88 6 view .LVU63
+ 251              	.LBE39:
+ 252              	.LBB40:
+ 253              	.LBB26:
+  49:src/btphy/tdma_sched.c **** }
+ 254              		.loc 1 49 2 is_stmt 1 view .LVU64
+  49:src/btphy/tdma_sched.c **** }
+ 255              		.loc 1 49 2 is_stmt 0 view .LVU65
+ 256              	.LBE26:
+ 257              	.LBE40:
+  82:src/btphy/tdma_sched.c **** 	int i, j;
+ 258              		.loc 1 82 2 is_stmt 1 view .LVU66
+  84:src/btphy/tdma_sched.c **** 		const struct tdma_sched_item *sched_item = &item_set[i];
+ 259              		.loc 1 84 2 view .LVU67
+ 260              	.LBB41:
+  85:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 261              		.loc 1 85 3 view .LVU68
+  86:src/btphy/tdma_sched.c **** 
+ 262              		.loc 1 86 3 view .LVU69
+ 263              		.loc 1 88 3 view .LVU70
+ 264              		.loc 1 88 6 is_stmt 0 view .LVU71
+ 265 001e 42D0     		beq	.L15
+ 266              	.LBE41:
+  84:src/btphy/tdma_sched.c **** 		const struct tdma_sched_item *sched_item = &item_set[i];
+ 267              		.loc 1 84 16 view .LVU72
+ 268 0020 0023     		movs	r3, #0
+ARM GAS  /tmp/ccVVdvQV.s 			page 8
+
+
+ 269 0022 8B46     		mov	fp, r1
+ 270              	.LBB42:
+  89:src/btphy/tdma_sched.c **** 			/* end of scheduler set, return */
+  90:src/btphy/tdma_sched.c **** 			break;
+  91:src/btphy/tdma_sched.c **** 		}
+  92:src/btphy/tdma_sched.c **** 
+  93:src/btphy/tdma_sched.c **** 		if (sched_item->cb == NULL) {
+  94:src/btphy/tdma_sched.c **** 			/* advance to next bucket (== TDMA frame) */
+  95:src/btphy/tdma_sched.c **** 			bucket_nr = wrap_bucket(++frame_offset);
+  96:src/btphy/tdma_sched.c **** 			j++;
+  97:src/btphy/tdma_sched.c **** 			continue;
+  98:src/btphy/tdma_sched.c **** 		}
+  99:src/btphy/tdma_sched.c **** 		/* check for bucket overflow */
+ 100:src/btphy/tdma_sched.c **** 		if (bucket->num_items >= ARRAY_SIZE(bucket->item)) {
+ 271              		.loc 1 100 13 view .LVU73
+ 272 0024 4FF0340A 		mov	r10, #52
+ 273 0028 1546     		mov	r5, r2
+ 274              	.LBE42:
+  84:src/btphy/tdma_sched.c **** 		const struct tdma_sched_item *sched_item = &item_set[i];
+ 275              		.loc 1 84 16 view .LVU74
+ 276 002a 0093     		str	r3, [sp]
+ 277              	.LBB43:
+ 278              		.loc 1 100 13 view .LVU75
+ 279 002c 0197     		str	r7, [sp, #4]
+ 280              	.LVL16:
+ 281              	.L14:
+  93:src/btphy/tdma_sched.c **** 			/* advance to next bucket (== TDMA frame) */
+ 282              		.loc 1 93 3 is_stmt 1 view .LVU76
+ 283              		.loc 1 100 3 view .LVU77
+ 101:src/btphy/tdma_sched.c **** 			cprintf("tdma_schedule bucket overflow\n");
+ 102:src/btphy/tdma_sched.c **** 			return -1;
+ 103:src/btphy/tdma_sched.c **** 		}
+ 104:src/btphy/tdma_sched.c **** 		/* copy the item from the set into the current bucket item position */
+ 105:src/btphy/tdma_sched.c **** 		memcpy(&bucket->item[bucket->num_items], sched_item, sizeof(*sched_item));
+ 284              		.loc 1 105 3 view .LVU78
+  93:src/btphy/tdma_sched.c **** 			/* advance to next bucket (== TDMA frame) */
+ 285              		.loc 1 93 6 is_stmt 0 view .LVU79
+ 286 002e 18B3     		cbz	r0, .L17
+ 100:src/btphy/tdma_sched.c **** 			cprintf("tdma_schedule bucket overflow\n");
+ 287              		.loc 1 100 13 view .LVU80
+ 288 0030 0AFB06F4 		mul	r4, r10, r6
+ 289 0034 09EB0407 		add	r7, r9, r4
+ 290 0038 97F83000 		ldrb	r0, [r7, #48]	@ zero_extendqisi2
+ 100:src/btphy/tdma_sched.c **** 			cprintf("tdma_schedule bucket overflow\n");
+ 291              		.loc 1 100 6 view .LVU81
+ 292 003c 0328     		cmp	r0, #3
+ 293 003e 28D8     		bhi	.L18
+ 294              		.loc 1 105 10 view .LVU82
+ 295 0040 00EB4000 		add	r0, r0, r0, lsl #1
+ 296 0044 04EB8000 		add	r0, r4, r0, lsl #2
+ 297              		.loc 1 105 3 view .LVU83
+ 298 0048 0C22     		movs	r2, #12
+ 299 004a 5946     		mov	r1, fp
+ 300 004c 4844     		add	r0, r0, r9
+ 301 004e FFF7FEFF 		bl	memcpy
+ 302              	.LVL17:
+ 106:src/btphy/tdma_sched.c **** 		bucket->item[bucket->num_items].p3 = p3;
+ARM GAS  /tmp/ccVVdvQV.s 			page 9
+
+
+ 303              		.loc 1 106 3 is_stmt 1 view .LVU84
+ 304              		.loc 1 106 22 is_stmt 0 view .LVU85
+ 305 0052 97F83020 		ldrb	r2, [r7, #48]	@ zero_extendqisi2
+ 306              		.loc 1 106 38 view .LVU86
+ 307 0056 02EB4200 		add	r0, r2, r2, lsl #1
+ 308 005a 04EB8004 		add	r4, r4, r0, lsl #2
+ 309 005e 4C44     		add	r4, r4, r9
+ 107:src/btphy/tdma_sched.c **** 		bucket->num_items++;
+ 310              		.loc 1 107 20 view .LVU87
+ 311 0060 0132     		adds	r2, r2, #1
+ 106:src/btphy/tdma_sched.c **** 		bucket->item[bucket->num_items].p3 = p3;
+ 312              		.loc 1 106 38 view .LVU88
+ 313 0062 E580     		strh	r5, [r4, #6]	@ movhi
+ 314              		.loc 1 107 3 is_stmt 1 view .LVU89
+ 315              		.loc 1 107 20 is_stmt 0 view .LVU90
+ 316 0064 87F83020 		strb	r2, [r7, #48]
+ 317              	.LVL18:
+ 318              	.L12:
+ 319              		.loc 1 107 20 view .LVU91
+ 320              	.LBE43:
+  84:src/btphy/tdma_sched.c **** 		const struct tdma_sched_item *sched_item = &item_set[i];
+ 321              		.loc 1 84 24 is_stmt 1 view .LVU92
+  84:src/btphy/tdma_sched.c **** 		const struct tdma_sched_item *sched_item = &item_set[i];
+ 322              		.loc 1 84 21 view .LVU93
+ 323              	.LBB44:
+  85:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 324              		.loc 1 85 3 view .LVU94
+  86:src/btphy/tdma_sched.c **** 
+ 325              		.loc 1 86 3 view .LVU95
+  88:src/btphy/tdma_sched.c **** 			/* end of scheduler set, return */
+ 326              		.loc 1 88 3 view .LVU96
+  88:src/btphy/tdma_sched.c **** 			/* end of scheduler set, return */
+ 327              		.loc 1 88 17 is_stmt 0 view .LVU97
+ 328 0068 5BF80C0F 		ldr	r0, [fp, #12]!
+ 329              	.LVL19:
+  88:src/btphy/tdma_sched.c **** 			/* end of scheduler set, return */
+ 330              		.loc 1 88 6 view .LVU98
+ 331 006c 4045     		cmp	r0, r8
+ 332 006e DED1     		bne	.L14
+ 333              	.LVL20:
+ 334              	.L9:
+  88:src/btphy/tdma_sched.c **** 			/* end of scheduler set, return */
+ 335              		.loc 1 88 6 view .LVU99
+ 336              	.LBE44:
+ 108:src/btphy/tdma_sched.c **** 	}
+ 109:src/btphy/tdma_sched.c **** 
+ 110:src/btphy/tdma_sched.c **** 	return j;
+ 111:src/btphy/tdma_sched.c **** }
+ 337              		.loc 1 111 1 view .LVU100
+ 338 0070 0098     		ldr	r0, [sp]
+ 339 0072 03B0     		add	sp, sp, #12
+ 340              		.cfi_remember_state
+ 341              		.cfi_def_cfa_offset 36
+ 342              		@ sp needed
+ 343 0074 BDE8F08F 		pop	{r4, r5, r6, r7, r8, r9, r10, fp, pc}
+ 344              	.LVL21:
+ 345              	.L17:
+ARM GAS  /tmp/ccVVdvQV.s 			page 10
+
+
+ 346              		.cfi_restore_state
+ 347              	.LBB45:
+  95:src/btphy/tdma_sched.c **** 			j++;
+ 348              		.loc 1 95 4 is_stmt 1 view .LVU101
+  95:src/btphy/tdma_sched.c **** 			j++;
+ 349              		.loc 1 95 14 is_stmt 0 view .LVU102
+ 350 0078 019F     		ldr	r7, [sp, #4]
+ 351              	.LBB28:
+ 352              	.LBB29:
+  47:src/btphy/tdma_sched.c **** 
+ 353              		.loc 1 47 6 view .LVU103
+ 354 007a 99F84063 		ldrb	r6, [r9, #832]	@ zero_extendqisi2
+ 355              	.LVL22:
+  47:src/btphy/tdma_sched.c **** 
+ 356              		.loc 1 47 6 view .LVU104
+ 357              	.LBE29:
+ 358              	.LBE28:
+  95:src/btphy/tdma_sched.c **** 			j++;
+ 359              		.loc 1 95 14 view .LVU105
+ 360 007e 0137     		adds	r7, r7, #1
+ 361 0080 FBB2     		uxtb	r3, r7
+ 362              	.LBB33:
+ 363              	.LBB30:
+  47:src/btphy/tdma_sched.c **** 
+ 364              		.loc 1 47 6 view .LVU106
+ 365 0082 1E44     		add	r6, r6, r3
+ 366              	.LBE30:
+ 367              	.LBE33:
+  95:src/btphy/tdma_sched.c **** 			j++;
+ 368              		.loc 1 95 14 view .LVU107
+ 369 0084 0193     		str	r3, [sp, #4]
+ 370              	.LVL23:
+ 371              	.LBB34:
+ 372              	.LBI28:
+  42:src/btphy/tdma_sched.c **** {
+ 373              		.loc 1 42 16 is_stmt 1 view .LVU108
+ 374              	.LBB31:
+  44:src/btphy/tdma_sched.c **** 
+ 375              		.loc 1 44 2 view .LVU109
+  46:src/btphy/tdma_sched.c **** 					% ARRAY_SIZE(tdma_sched.bucket);
+ 376              		.loc 1 46 2 view .LVU110
+ 377              	.LBE31:
+ 378              	.LBE34:
+  96:src/btphy/tdma_sched.c **** 			continue;
+ 379              		.loc 1 96 5 is_stmt 0 view .LVU111
+ 380 0086 009B     		ldr	r3, [sp]
+ 381              	.LVL24:
+  96:src/btphy/tdma_sched.c **** 			continue;
+ 382              		.loc 1 96 5 view .LVU112
+ 383 0088 06F00F06 		and	r6, r6, #15
+ 384              	.LVL25:
+ 385              	.LBB35:
+ 386              	.LBB32:
+  49:src/btphy/tdma_sched.c **** }
+ 387              		.loc 1 49 2 is_stmt 1 view .LVU113
+  49:src/btphy/tdma_sched.c **** }
+ 388              		.loc 1 49 2 is_stmt 0 view .LVU114
+ARM GAS  /tmp/ccVVdvQV.s 			page 11
+
+
+ 389              	.LBE32:
+ 390              	.LBE35:
+  96:src/btphy/tdma_sched.c **** 			continue;
+ 391              		.loc 1 96 4 is_stmt 1 view .LVU115
+  97:src/btphy/tdma_sched.c **** 		}
+ 392              		.loc 1 97 4 view .LVU116
+  96:src/btphy/tdma_sched.c **** 			continue;
+ 393              		.loc 1 96 5 is_stmt 0 view .LVU117
+ 394 008c 0133     		adds	r3, r3, #1
+ 395              	.LVL26:
+  96:src/btphy/tdma_sched.c **** 			continue;
+ 396              		.loc 1 96 5 view .LVU118
+ 397 008e 0093     		str	r3, [sp]
+ 398              	.LVL27:
+  97:src/btphy/tdma_sched.c **** 		}
+ 399              		.loc 1 97 4 view .LVU119
+ 400 0090 EAE7     		b	.L12
+ 401              	.LVL28:
+ 402              	.L18:
+ 101:src/btphy/tdma_sched.c **** 			return -1;
+ 403              		.loc 1 101 4 is_stmt 1 view .LVU120
+ 404 0092 0648     		ldr	r0, .L19
+ 405 0094 FFF7FEFF 		bl	cprintf
+ 406              	.LVL29:
+ 102:src/btphy/tdma_sched.c **** 		}
+ 407              		.loc 1 102 4 view .LVU121
+ 102:src/btphy/tdma_sched.c **** 		}
+ 408              		.loc 1 102 11 is_stmt 0 view .LVU122
+ 409 0098 4FF0FF33 		mov	r3, #-1
+ 410 009c 0093     		str	r3, [sp]
+ 411              	.LVL30:
+ 102:src/btphy/tdma_sched.c **** 		}
+ 412              		.loc 1 102 11 view .LVU123
+ 413              	.LBE45:
+ 414              		.loc 1 111 1 view .LVU124
+ 415 009e 0098     		ldr	r0, [sp]
+ 416 00a0 03B0     		add	sp, sp, #12
+ 417              		.cfi_remember_state
+ 418              		.cfi_def_cfa_offset 36
+ 419              		@ sp needed
+ 420 00a2 BDE8F08F 		pop	{r4, r5, r6, r7, r8, r9, r10, fp, pc}
+ 421              	.LVL31:
+ 422              	.L15:
+ 423              		.cfi_restore_state
+  84:src/btphy/tdma_sched.c **** 		const struct tdma_sched_item *sched_item = &item_set[i];
+ 424              		.loc 1 84 16 view .LVU125
+ 425 00a6 0023     		movs	r3, #0
+ 426 00a8 0093     		str	r3, [sp]
+ 427 00aa E1E7     		b	.L9
+ 428              	.L20:
+ 429              		.align	2
+ 430              	.L19:
+ 431 00ac 00000000 		.word	.LC0
+ 432 00b0 00000000 		.word	.LANCHOR0
+ 433 00b4 00000000 		.word	tdma_end_set
+ 434              		.cfi_endproc
+ 435              	.LFE4:
+ARM GAS  /tmp/ccVVdvQV.s 			page 12
+
+
+ 437              		.section	.text.tdma_sched_advance,"ax",%progbits
+ 438              		.align	1
+ 439              		.p2align 2,,3
+ 440              		.global	tdma_sched_advance
+ 441              		.syntax unified
+ 442              		.thumb
+ 443              		.thumb_func
+ 444              		.fpu softvfp
+ 446              	tdma_sched_advance:
+ 447              	.LFB5:
+ 112:src/btphy/tdma_sched.c **** 
+ 113:src/btphy/tdma_sched.c **** /* Advance TDMA scheduler to the next bucket */
+ 114:src/btphy/tdma_sched.c **** void tdma_sched_advance(void)
+ 115:src/btphy/tdma_sched.c **** {
+ 448              		.loc 1 115 1 is_stmt 1 view -0
+ 449              		.cfi_startproc
+ 450              		@ args = 0, pretend = 0, frame = 0
+ 451              		@ frame_needed = 0, uses_anonymous_args = 0
+ 452              		@ link register save eliminated.
+ 116:src/btphy/tdma_sched.c **** 	struct tdma_scheduler *sched = &tdma_sched;
+ 453              		.loc 1 116 2 view .LVU127
+ 454              	.LVL32:
+ 117:src/btphy/tdma_sched.c **** 	uint8_t next_bucket;
+ 455              		.loc 1 117 2 view .LVU128
+ 118:src/btphy/tdma_sched.c **** 
+ 119:src/btphy/tdma_sched.c **** 	/* advance to the next bucket */
+ 120:src/btphy/tdma_sched.c **** 	next_bucket = wrap_bucket(1);
+ 456              		.loc 1 120 2 view .LVU129
+ 457              	.LBB46:
+ 458              	.LBI46:
+  42:src/btphy/tdma_sched.c **** {
+ 459              		.loc 1 42 16 view .LVU130
+ 460              	.LBB47:
+  44:src/btphy/tdma_sched.c **** 
+ 461              		.loc 1 44 2 view .LVU131
+  46:src/btphy/tdma_sched.c **** 					% ARRAY_SIZE(tdma_sched.bucket);
+ 462              		.loc 1 46 2 view .LVU132
+  49:src/btphy/tdma_sched.c **** }
+ 463              		.loc 1 49 2 view .LVU133
+  49:src/btphy/tdma_sched.c **** }
+ 464              		.loc 1 49 2 is_stmt 0 view .LVU134
+ 465              	.LBE47:
+ 466              	.LBE46:
+ 121:src/btphy/tdma_sched.c **** 	sched->cur_bucket = next_bucket;
+ 467              		.loc 1 121 2 is_stmt 1 view .LVU135
+ 468              		.loc 1 121 20 is_stmt 0 view .LVU136
+ 469 0000 044A     		ldr	r2, .L22
+ 470              	.LBB49:
+ 471              	.LBB48:
+  47:src/btphy/tdma_sched.c **** 
+ 472              		.loc 1 47 6 view .LVU137
+ 473 0002 92F84033 		ldrb	r3, [r2, #832]	@ zero_extendqisi2
+ 474 0006 0133     		adds	r3, r3, #1
+ 475              	.LBE48:
+ 476              	.LBE49:
+ 477              		.loc 1 121 20 view .LVU138
+ 478 0008 03F00F03 		and	r3, r3, #15
+ARM GAS  /tmp/ccVVdvQV.s 			page 13
+
+
+ 479 000c 82F84033 		strb	r3, [r2, #832]
+ 480              	.LVL33:
+ 122:src/btphy/tdma_sched.c **** }
+ 481              		.loc 1 122 1 view .LVU139
+ 482 0010 7047     		bx	lr
+ 483              	.L23:
+ 484 0012 00BF     		.align	2
+ 485              	.L22:
+ 486 0014 00000000 		.word	.LANCHOR0
+ 487              		.cfi_endproc
+ 488              	.LFE5:
+ 490              		.section	.text.tdma_sched_flag_scan,"ax",%progbits
+ 491              		.align	1
+ 492              		.p2align 2,,3
+ 493              		.global	tdma_sched_flag_scan
+ 494              		.syntax unified
+ 495              		.thumb
+ 496              		.thumb_func
+ 497              		.fpu softvfp
+ 499              	tdma_sched_flag_scan:
+ 500              	.LFB6:
+ 123:src/btphy/tdma_sched.c **** 
+ 124:src/btphy/tdma_sched.c **** /* Scan current frame scheduled items for flags */
+ 125:src/btphy/tdma_sched.c **** uint16_t tdma_sched_flag_scan(void)
+ 126:src/btphy/tdma_sched.c **** {
+ 501              		.loc 1 126 1 is_stmt 1 view -0
+ 502              		.cfi_startproc
+ 503              		@ args = 0, pretend = 0, frame = 0
+ 504              		@ frame_needed = 0, uses_anonymous_args = 0
+ 505              		@ link register save eliminated.
+ 127:src/btphy/tdma_sched.c **** 	struct tdma_scheduler *sched = &tdma_sched;
+ 506              		.loc 1 127 2 view .LVU141
+ 507              	.LVL34:
+ 128:src/btphy/tdma_sched.c **** 	struct tdma_sched_bucket *bucket;
+ 508              		.loc 1 128 2 view .LVU142
+ 129:src/btphy/tdma_sched.c **** 	int i;
+ 509              		.loc 1 129 2 view .LVU143
+ 130:src/btphy/tdma_sched.c **** 	uint16_t flags = 0;
+ 510              		.loc 1 130 2 view .LVU144
+ 131:src/btphy/tdma_sched.c **** 
+ 132:src/btphy/tdma_sched.c **** 	/* determine current bucket */
+ 133:src/btphy/tdma_sched.c **** 	bucket = &sched->bucket[sched->cur_bucket];
+ 511              		.loc 1 133 2 view .LVU145
+ 134:src/btphy/tdma_sched.c **** 
+ 135:src/btphy/tdma_sched.c **** 	/* iterate over items in this bucket and call callback function */
+ 136:src/btphy/tdma_sched.c **** 	for (i=0; i<bucket->num_items; i++) {
+ 512              		.loc 1 136 20 is_stmt 0 view .LVU146
+ 513 0000 3421     		movs	r1, #52
+ 133:src/btphy/tdma_sched.c **** 
+ 514              		.loc 1 133 31 view .LVU147
+ 515 0002 0D4A     		ldr	r2, .L37
+ 516 0004 92F84033 		ldrb	r3, [r2, #832]	@ zero_extendqisi2
+ 517              	.LVL35:
+ 518              		.loc 1 136 2 is_stmt 1 view .LVU148
+ 519              		.loc 1 136 12 view .LVU149
+ 520              		.loc 1 136 20 is_stmt 0 view .LVU150
+ 521 0008 01FB0323 		mla	r3, r1, r3, r2
+ARM GAS  /tmp/ccVVdvQV.s 			page 14
+
+
+ 522              	.LVL36:
+ 523              		.loc 1 136 20 view .LVU151
+ 524 000c 93F83020 		ldrb	r2, [r3, #48]	@ zero_extendqisi2
+ 525              		.loc 1 136 2 view .LVU152
+ 526 0010 7AB1     		cbz	r2, .L27
+ 527              	.LBB50:
+ 137:src/btphy/tdma_sched.c **** 		struct tdma_sched_item *item = &bucket->item[i];
+ 528              		.loc 1 137 3 is_stmt 1 view .LVU153
+ 529              	.LVL37:
+ 138:src/btphy/tdma_sched.c **** 		flags |= item->flags;
+ 530              		.loc 1 138 3 view .LVU154
+ 531              	.LBE50:
+ 136:src/btphy/tdma_sched.c **** 		struct tdma_sched_item *item = &bucket->item[i];
+ 532              		.loc 1 136 2 is_stmt 0 view .LVU155
+ 533 0012 012A     		cmp	r2, #1
+ 534              	.LBB51:
+ 535              		.loc 1 138 16 view .LVU156
+ 536 0014 5889     		ldrh	r0, [r3, #10]
+ 537              	.LVL38:
+ 538              		.loc 1 138 16 view .LVU157
+ 539              	.LBE51:
+ 136:src/btphy/tdma_sched.c **** 		struct tdma_sched_item *item = &bucket->item[i];
+ 540              		.loc 1 136 33 is_stmt 1 view .LVU158
+ 136:src/btphy/tdma_sched.c **** 		struct tdma_sched_item *item = &bucket->item[i];
+ 541              		.loc 1 136 12 view .LVU159
+ 136:src/btphy/tdma_sched.c **** 		struct tdma_sched_item *item = &bucket->item[i];
+ 542              		.loc 1 136 2 is_stmt 0 view .LVU160
+ 543 0016 0DD0     		beq	.L25
+ 544              	.LBB52:
+ 137:src/btphy/tdma_sched.c **** 		struct tdma_sched_item *item = &bucket->item[i];
+ 545              		.loc 1 137 3 is_stmt 1 view .LVU161
+ 546              		.loc 1 138 3 view .LVU162
+ 547              		.loc 1 138 9 is_stmt 0 view .LVU163
+ 548 0018 D98A     		ldrh	r1, [r3, #22]
+ 549              	.LBE52:
+ 136:src/btphy/tdma_sched.c **** 		struct tdma_sched_item *item = &bucket->item[i];
+ 550              		.loc 1 136 2 view .LVU164
+ 551 001a 022A     		cmp	r2, #2
+ 552              	.LBB53:
+ 553              		.loc 1 138 9 view .LVU165
+ 554 001c 40EA0100 		orr	r0, r0, r1
+ 555              	.LVL39:
+ 556              		.loc 1 138 9 view .LVU166
+ 557              	.LBE53:
+ 136:src/btphy/tdma_sched.c **** 		struct tdma_sched_item *item = &bucket->item[i];
+ 558              		.loc 1 136 33 is_stmt 1 view .LVU167
+ 136:src/btphy/tdma_sched.c **** 		struct tdma_sched_item *item = &bucket->item[i];
+ 559              		.loc 1 136 12 view .LVU168
+ 136:src/btphy/tdma_sched.c **** 		struct tdma_sched_item *item = &bucket->item[i];
+ 560              		.loc 1 136 2 is_stmt 0 view .LVU169
+ 561 0020 08D0     		beq	.L25
+ 562              	.LBB54:
+ 137:src/btphy/tdma_sched.c **** 		struct tdma_sched_item *item = &bucket->item[i];
+ 563              		.loc 1 137 3 is_stmt 1 view .LVU170
+ 564              		.loc 1 138 3 view .LVU171
+ 565              		.loc 1 138 9 is_stmt 0 view .LVU172
+ 566 0022 598C     		ldrh	r1, [r3, #34]
+ARM GAS  /tmp/ccVVdvQV.s 			page 15
+
+
+ 567              	.LBE54:
+ 136:src/btphy/tdma_sched.c **** 		struct tdma_sched_item *item = &bucket->item[i];
+ 568              		.loc 1 136 2 view .LVU173
+ 569 0024 032A     		cmp	r2, #3
+ 570              	.LBB55:
+ 571              		.loc 1 138 9 view .LVU174
+ 572 0026 40EA0100 		orr	r0, r0, r1
+ 573              	.LVL40:
+ 574              		.loc 1 138 9 view .LVU175
+ 575              	.LBE55:
+ 136:src/btphy/tdma_sched.c **** 		struct tdma_sched_item *item = &bucket->item[i];
+ 576              		.loc 1 136 33 is_stmt 1 view .LVU176
+ 136:src/btphy/tdma_sched.c **** 		struct tdma_sched_item *item = &bucket->item[i];
+ 577              		.loc 1 136 12 view .LVU177
+ 136:src/btphy/tdma_sched.c **** 		struct tdma_sched_item *item = &bucket->item[i];
+ 578              		.loc 1 136 2 is_stmt 0 view .LVU178
+ 579 002a 03D0     		beq	.L25
+ 580              	.LBB56:
+ 137:src/btphy/tdma_sched.c **** 		struct tdma_sched_item *item = &bucket->item[i];
+ 581              		.loc 1 137 3 is_stmt 1 discriminator 3 view .LVU179
+ 582              		.loc 1 138 3 discriminator 3 view .LVU180
+ 583              		.loc 1 138 9 is_stmt 0 discriminator 3 view .LVU181
+ 584 002c DB8D     		ldrh	r3, [r3, #46]
+ 585 002e 1843     		orrs	r0, r0, r3
+ 586              	.LVL41:
+ 587              		.loc 1 138 9 discriminator 3 view .LVU182
+ 588              	.LBE56:
+ 136:src/btphy/tdma_sched.c **** 		struct tdma_sched_item *item = &bucket->item[i];
+ 589              		.loc 1 136 33 is_stmt 1 discriminator 3 view .LVU183
+ 136:src/btphy/tdma_sched.c **** 		struct tdma_sched_item *item = &bucket->item[i];
+ 590              		.loc 1 136 12 discriminator 3 view .LVU184
+ 591 0030 7047     		bx	lr
+ 592              	.LVL42:
+ 593              	.L27:
+ 130:src/btphy/tdma_sched.c **** 
+ 594              		.loc 1 130 11 is_stmt 0 view .LVU185
+ 595 0032 1046     		mov	r0, r2
+ 596              	.LVL43:
+ 597              	.L25:
+ 139:src/btphy/tdma_sched.c **** 	}
+ 140:src/btphy/tdma_sched.c **** 
+ 141:src/btphy/tdma_sched.c **** 	return flags;
+ 598              		.loc 1 141 2 is_stmt 1 view .LVU186
+ 142:src/btphy/tdma_sched.c **** }
+ 599              		.loc 1 142 1 is_stmt 0 view .LVU187
+ 600 0034 7047     		bx	lr
+ 601              	.L38:
+ 602 0036 00BF     		.align	2
+ 603              	.L37:
+ 604 0038 00000000 		.word	.LANCHOR0
+ 605              		.cfi_endproc
+ 606              	.LFE6:
+ 608              		.section	.text.tdma_sched_execute,"ax",%progbits
+ 609              		.align	1
+ 610              		.p2align 2,,3
+ 611              		.global	tdma_sched_execute
+ 612              		.syntax unified
+ARM GAS  /tmp/ccVVdvQV.s 			page 16
+
+
+ 613              		.thumb
+ 614              		.thumb_func
+ 615              		.fpu softvfp
+ 617              	tdma_sched_execute:
+ 618              	.LFB8:
+ 143:src/btphy/tdma_sched.c **** 
+ 144:src/btphy/tdma_sched.c **** /* Sort a bucket entries by priority */
+ 145:src/btphy/tdma_sched.c **** static void _tdma_sched_bucket_sort(struct tdma_sched_bucket *bucket, int *seq)
+ 146:src/btphy/tdma_sched.c **** {
+ 147:src/btphy/tdma_sched.c **** 	int i, j, k;
+ 148:src/btphy/tdma_sched.c **** 	struct tdma_sched_item *item_i, *item_j;
+ 149:src/btphy/tdma_sched.c **** 
+ 150:src/btphy/tdma_sched.c **** 	/* initial sequence */
+ 151:src/btphy/tdma_sched.c **** 		/* we need all the items because some call back may schedule
+ 152:src/btphy/tdma_sched.c **** 		 * new call backs 'on the fly' */
+ 153:src/btphy/tdma_sched.c **** 	for (i=0; i<TDMASCHED_NUM_CB; i++)
+ 154:src/btphy/tdma_sched.c **** 		seq[i] = i;
+ 155:src/btphy/tdma_sched.c **** 
+ 156:src/btphy/tdma_sched.c **** 	/* iterate over items in this bucket and sort them */
+ 157:src/btphy/tdma_sched.c **** 	for (i=0; i<bucket->num_items; i++)
+ 158:src/btphy/tdma_sched.c **** 	{
+ 159:src/btphy/tdma_sched.c **** 		item_i = &bucket->item[seq[i]];
+ 160:src/btphy/tdma_sched.c **** 
+ 161:src/btphy/tdma_sched.c **** 		for (j=i+1; j<bucket->num_items; j++)
+ 162:src/btphy/tdma_sched.c **** 		{
+ 163:src/btphy/tdma_sched.c **** 			item_j = &bucket->item[seq[j]];
+ 164:src/btphy/tdma_sched.c **** 
+ 165:src/btphy/tdma_sched.c **** 			if (item_i->prio > item_j->prio)
+ 166:src/btphy/tdma_sched.c **** 			{
+ 167:src/btphy/tdma_sched.c **** 				item_i = item_j;
+ 168:src/btphy/tdma_sched.c **** 				k      = seq[i];
+ 169:src/btphy/tdma_sched.c **** 				seq[i] = seq[j];
+ 170:src/btphy/tdma_sched.c **** 				seq[j] = k;
+ 171:src/btphy/tdma_sched.c **** 			}
+ 172:src/btphy/tdma_sched.c **** 		}
+ 173:src/btphy/tdma_sched.c **** 	}
+ 174:src/btphy/tdma_sched.c **** }
+ 175:src/btphy/tdma_sched.c **** 
+ 176:src/btphy/tdma_sched.c **** /* Execute pre-scheduled events for current frame */
+ 177:src/btphy/tdma_sched.c **** int tdma_sched_execute(void)
+ 178:src/btphy/tdma_sched.c **** {
+ 619              		.loc 1 178 1 is_stmt 1 view -0
+ 620              		.cfi_startproc
+ 621              		@ args = 0, pretend = 0, frame = 24
+ 622              		@ frame_needed = 0, uses_anonymous_args = 0
+ 623 0000 2DE9F04F 		push	{r4, r5, r6, r7, r8, r9, r10, fp, lr}
+ 624              		.cfi_def_cfa_offset 36
+ 625              		.cfi_offset 4, -36
+ 626              		.cfi_offset 5, -32
+ 627              		.cfi_offset 6, -28
+ 628              		.cfi_offset 7, -24
+ 629              		.cfi_offset 8, -20
+ 630              		.cfi_offset 9, -16
+ 631              		.cfi_offset 10, -12
+ 632              		.cfi_offset 11, -8
+ 633              		.cfi_offset 14, -4
+ 634 0004 87B0     		sub	sp, sp, #28
+ARM GAS  /tmp/ccVVdvQV.s 			page 17
+
+
+ 635              		.cfi_def_cfa_offset 64
+ 179:src/btphy/tdma_sched.c **** 	struct tdma_scheduler *sched = &tdma_sched;
+ 636              		.loc 1 179 2 view .LVU189
+ 637              	.LVL44:
+ 180:src/btphy/tdma_sched.c **** 	struct tdma_sched_bucket *bucket;
+ 638              		.loc 1 180 2 view .LVU190
+ 181:src/btphy/tdma_sched.c **** 	int i, num_events = 0;
+ 639              		.loc 1 181 2 view .LVU191
+ 182:src/btphy/tdma_sched.c **** 	int seq[TDMASCHED_NUM_CB];
+ 640              		.loc 1 182 2 view .LVU192
+ 183:src/btphy/tdma_sched.c **** 
+ 184:src/btphy/tdma_sched.c **** 	/* determine current bucket */
+ 185:src/btphy/tdma_sched.c **** 	bucket = &sched->bucket[sched->cur_bucket];
+ 641              		.loc 1 185 2 view .LVU193
+ 642              	.LBB60:
+ 643              	.LBB61:
+ 154:src/btphy/tdma_sched.c **** 
+ 644              		.loc 1 154 10 is_stmt 0 view .LVU194
+ 645 0006 0020     		movs	r0, #0
+ 646 0008 0121     		movs	r1, #1
+ 157:src/btphy/tdma_sched.c **** 	{
+ 647              		.loc 1 157 20 view .LVU195
+ 648 000a 3427     		movs	r7, #52
+ 154:src/btphy/tdma_sched.c **** 
+ 649              		.loc 1 154 10 view .LVU196
+ 650 000c 0323     		movs	r3, #3
+ 651 000e 0222     		movs	r2, #2
+ 652              	.LBE61:
+ 653              	.LBE60:
+ 654              		.loc 1 185 31 view .LVU197
+ 655 0010 324D     		ldr	r5, .L56
+ 656              	.LBB65:
+ 657              	.LBB62:
+ 154:src/btphy/tdma_sched.c **** 
+ 658              		.loc 1 154 10 view .LVU198
+ 659 0012 CDE90201 		strd	r0, [sp, #8]
+ 660              	.LBE62:
+ 661              	.LBE65:
+ 662              		.loc 1 185 31 view .LVU199
+ 663 0016 95F84013 		ldrb	r1, [r5, #832]	@ zero_extendqisi2
+ 664              	.LBB66:
+ 665              	.LBB63:
+ 154:src/btphy/tdma_sched.c **** 
+ 666              		.loc 1 154 10 view .LVU200
+ 667 001a CDE90423 		strd	r2, [sp, #16]
+ 157:src/btphy/tdma_sched.c **** 	{
+ 668              		.loc 1 157 20 view .LVU201
+ 669 001e 07FB01F7 		mul	r7, r7, r1
+ 670 0022 EB19     		adds	r3, r5, r7
+ 671 0024 93F83000 		ldrb	r0, [r3, #48]	@ zero_extendqisi2
+ 672              	.LBE63:
+ 673              	.LBE66:
+ 674              		.loc 1 185 31 view .LVU202
+ 675 0028 0191     		str	r1, [sp, #4]
+ 676              	.LVL45:
+ 186:src/btphy/tdma_sched.c **** 
+ 187:src/btphy/tdma_sched.c **** 	/* get sequence in priority order */
+ARM GAS  /tmp/ccVVdvQV.s 			page 18
+
+
+ 188:src/btphy/tdma_sched.c **** 	_tdma_sched_bucket_sort(bucket, seq);
+ 677              		.loc 1 188 2 is_stmt 1 view .LVU203
+ 678              	.LBB67:
+ 679              	.LBI60:
+ 145:src/btphy/tdma_sched.c **** {
+ 680              		.loc 1 145 13 view .LVU204
+ 681              	.LBB64:
+ 147:src/btphy/tdma_sched.c **** 	struct tdma_sched_item *item_i, *item_j;
+ 682              		.loc 1 147 2 view .LVU205
+ 148:src/btphy/tdma_sched.c **** 
+ 683              		.loc 1 148 2 view .LVU206
+ 153:src/btphy/tdma_sched.c **** 		seq[i] = i;
+ 684              		.loc 1 153 2 view .LVU207
+ 153:src/btphy/tdma_sched.c **** 		seq[i] = i;
+ 685              		.loc 1 153 12 view .LVU208
+ 154:src/btphy/tdma_sched.c **** 
+ 686              		.loc 1 154 3 view .LVU209
+ 153:src/btphy/tdma_sched.c **** 		seq[i] = i;
+ 687              		.loc 1 153 32 view .LVU210
+ 153:src/btphy/tdma_sched.c **** 		seq[i] = i;
+ 688              		.loc 1 153 12 view .LVU211
+ 154:src/btphy/tdma_sched.c **** 
+ 689              		.loc 1 154 3 view .LVU212
+ 153:src/btphy/tdma_sched.c **** 		seq[i] = i;
+ 690              		.loc 1 153 32 view .LVU213
+ 153:src/btphy/tdma_sched.c **** 		seq[i] = i;
+ 691              		.loc 1 153 12 view .LVU214
+ 154:src/btphy/tdma_sched.c **** 
+ 692              		.loc 1 154 3 view .LVU215
+ 153:src/btphy/tdma_sched.c **** 		seq[i] = i;
+ 693              		.loc 1 153 32 view .LVU216
+ 153:src/btphy/tdma_sched.c **** 		seq[i] = i;
+ 694              		.loc 1 153 12 view .LVU217
+ 154:src/btphy/tdma_sched.c **** 
+ 695              		.loc 1 154 3 view .LVU218
+ 153:src/btphy/tdma_sched.c **** 		seq[i] = i;
+ 696              		.loc 1 153 32 view .LVU219
+ 153:src/btphy/tdma_sched.c **** 		seq[i] = i;
+ 697              		.loc 1 153 12 view .LVU220
+ 157:src/btphy/tdma_sched.c **** 	{
+ 698              		.loc 1 157 12 view .LVU221
+ 157:src/btphy/tdma_sched.c **** 	{
+ 699              		.loc 1 157 20 is_stmt 0 view .LVU222
+ 700 002a 0646     		mov	r6, r0
+ 157:src/btphy/tdma_sched.c **** 	{
+ 701              		.loc 1 157 2 view .LVU223
+ 702 002c 0028     		cmp	r0, #0
+ 703 002e 49D0     		beq	.L40
+ 157:src/btphy/tdma_sched.c **** 	{
+ 704              		.loc 1 157 8 view .LVU224
+ 705 0030 0026     		movs	r6, #0
+ 165:src/btphy/tdma_sched.c **** 			{
+ 706              		.loc 1 165 29 view .LVU225
+ 707 0032 BE46     		mov	lr, r7
+ 708 0034 02A9     		add	r1, sp, #8
+ 709              	.LVL46:
+ 165:src/btphy/tdma_sched.c **** 			{
+ARM GAS  /tmp/ccVVdvQV.s 			page 19
+
+
+ 710              		.loc 1 165 29 view .LVU226
+ 711 0036 01EB800C 		add	ip, r1, r0, lsl #2
+ 712              	.LVL47:
+ 713              	.L43:
+ 159:src/btphy/tdma_sched.c **** 
+ 714              		.loc 1 159 3 is_stmt 1 view .LVU227
+ 159:src/btphy/tdma_sched.c **** 
+ 715              		.loc 1 159 29 is_stmt 0 view .LVU228
+ 716 003a 51F8043B 		ldr	r3, [r1], #4
+ 161:src/btphy/tdma_sched.c **** 		{
+ 717              		.loc 1 161 9 view .LVU229
+ 718 003e 0136     		adds	r6, r6, #1
+ 719              	.LVL48:
+ 159:src/btphy/tdma_sched.c **** 
+ 720              		.loc 1 159 10 view .LVU230
+ 721 0040 03EB4303 		add	r3, r3, r3, lsl #1
+ 722 0044 07EB8303 		add	r3, r7, r3, lsl #2
+ 161:src/btphy/tdma_sched.c **** 		{
+ 723              		.loc 1 161 3 view .LVU231
+ 724 0048 8642     		cmp	r6, r0
+ 725 004a B8BF     		it	lt
+ 726 004c 8846     		movlt	r8, r1
+ 159:src/btphy/tdma_sched.c **** 
+ 727              		.loc 1 159 10 view .LVU232
+ 728 004e 2B44     		add	r3, r3, r5
+ 729              	.LVL49:
+ 161:src/btphy/tdma_sched.c **** 		{
+ 730              		.loc 1 161 3 is_stmt 1 view .LVU233
+ 161:src/btphy/tdma_sched.c **** 		{
+ 731              		.loc 1 161 15 view .LVU234
+ 161:src/btphy/tdma_sched.c **** 		{
+ 732              		.loc 1 161 3 is_stmt 0 view .LVU235
+ 733 0050 18DA     		bge	.L54
+ 734              	.LVL50:
+ 735              	.L41:
+ 163:src/btphy/tdma_sched.c **** 
+ 736              		.loc 1 163 4 is_stmt 1 view .LVU236
+ 163:src/btphy/tdma_sched.c **** 
+ 737              		.loc 1 163 30 is_stmt 0 view .LVU237
+ 738 0052 58F8049B 		ldr	r9, [r8], #4
+ 739              	.LVL51:
+ 165:src/btphy/tdma_sched.c **** 			{
+ 740              		.loc 1 165 4 is_stmt 1 view .LVU238
+ 165:src/btphy/tdma_sched.c **** 			{
+ 741              		.loc 1 165 7 is_stmt 0 view .LVU239
+ 742 0056 B3F908B0 		ldrsh	fp, [r3, #8]
+ 165:src/btphy/tdma_sched.c **** 			{
+ 743              		.loc 1 165 29 view .LVU240
+ 744 005a 09EB4902 		add	r2, r9, r9, lsl #1
+ 745 005e 0EEB820A 		add	r10, lr, r2, lsl #2
+ 746 0062 AA44     		add	r10, r10, r5
+ 165:src/btphy/tdma_sched.c **** 			{
+ 747              		.loc 1 165 7 view .LVU241
+ 748 0064 BAF908A0 		ldrsh	r10, [r10, #8]
+ 165:src/btphy/tdma_sched.c **** 			{
+ 749              		.loc 1 165 29 view .LVU242
+ 750 0068 9200     		lsls	r2, r2, #2
+ARM GAS  /tmp/ccVVdvQV.s 			page 20
+
+
+ 165:src/btphy/tdma_sched.c **** 			{
+ 751              		.loc 1 165 7 view .LVU243
+ 752 006a D345     		cmp	fp, r10
+ 753 006c 07DD     		ble	.L44
+ 168:src/btphy/tdma_sched.c **** 				seq[i] = seq[j];
+ 754              		.loc 1 168 12 view .LVU244
+ 755 006e 51F8044C 		ldr	r4, [r1, #-4]
+ 163:src/btphy/tdma_sched.c **** 
+ 756              		.loc 1 163 11 view .LVU245
+ 757 0072 D319     		adds	r3, r2, r7
+ 758              	.LVL52:
+ 169:src/btphy/tdma_sched.c **** 				seq[j] = k;
+ 759              		.loc 1 169 12 view .LVU246
+ 760 0074 41F8049C 		str	r9, [r1, #-4]
+ 163:src/btphy/tdma_sched.c **** 
+ 761              		.loc 1 163 11 view .LVU247
+ 762 0078 2B44     		add	r3, r3, r5
+ 167:src/btphy/tdma_sched.c **** 				k      = seq[i];
+ 763              		.loc 1 167 5 is_stmt 1 view .LVU248
+ 168:src/btphy/tdma_sched.c **** 				seq[i] = seq[j];
+ 764              		.loc 1 168 5 view .LVU249
+ 765              	.LVL53:
+ 169:src/btphy/tdma_sched.c **** 				seq[j] = k;
+ 766              		.loc 1 169 5 view .LVU250
+ 170:src/btphy/tdma_sched.c **** 			}
+ 767              		.loc 1 170 5 view .LVU251
+ 170:src/btphy/tdma_sched.c **** 			}
+ 768              		.loc 1 170 12 is_stmt 0 view .LVU252
+ 769 007a 48F8044C 		str	r4, [r8, #-4]
+ 770              	.LVL54:
+ 771              	.L44:
+ 161:src/btphy/tdma_sched.c **** 		{
+ 772              		.loc 1 161 36 is_stmt 1 view .LVU253
+ 161:src/btphy/tdma_sched.c **** 		{
+ 773              		.loc 1 161 15 view .LVU254
+ 161:src/btphy/tdma_sched.c **** 		{
+ 774              		.loc 1 161 3 is_stmt 0 view .LVU255
+ 775 007e E045     		cmp	r8, ip
+ 776 0080 E7D1     		bne	.L41
+ 777 0082 DAE7     		b	.L43
+ 778              	.LVL55:
+ 779              	.L54:
+ 157:src/btphy/tdma_sched.c **** 	{
+ 780              		.loc 1 157 12 is_stmt 1 view .LVU256
+ 157:src/btphy/tdma_sched.c **** 	{
+ 781              		.loc 1 157 2 is_stmt 0 view .LVU257
+ 782 0084 D9D1     		bne	.L43
+ 783              	.LBE64:
+ 784              	.LBE67:
+ 785              	.LBB68:
+ 189:src/btphy/tdma_sched.c **** 
+ 190:src/btphy/tdma_sched.c **** 	/* iterate over items in this bucket and call callback function */
+ 191:src/btphy/tdma_sched.c **** #ifdef USE_TDMA_DEBUG
+ 192:src/btphy/tdma_sched.c **** 	//if (bucket->num_items) 	cprintf (">");
+ 193:src/btphy/tdma_sched.c **** #endif
+ 194:src/btphy/tdma_sched.c **** 	for (i = 0; i < bucket->num_items; i++) {
+ 195:src/btphy/tdma_sched.c **** 		struct tdma_sched_item *item = &bucket->item[seq[i]];
+ARM GAS  /tmp/ccVVdvQV.s 			page 21
+
+
+ 196:src/btphy/tdma_sched.c **** 		int rc;
+ 197:src/btphy/tdma_sched.c **** 
+ 198:src/btphy/tdma_sched.c **** 		num_events++;
+ 199:src/btphy/tdma_sched.c **** 
+ 200:src/btphy/tdma_sched.c **** 		rc = item->cb(item->p1, item->p2, item->p3);
+ 786              		.loc 1 200 8 view .LVU258
+ 787 0086 3427     		movs	r7, #52
+ 788 0088 019B     		ldr	r3, [sp, #4]
+ 789              	.LVL56:
+ 790              		.loc 1 200 8 view .LVU259
+ 791              	.LBE68:
+ 194:src/btphy/tdma_sched.c **** 		struct tdma_sched_item *item = &bucket->item[seq[i]];
+ 792              		.loc 1 194 9 view .LVU260
+ 793 008a 0026     		movs	r6, #0
+ 794              	.LVL57:
+ 795              	.LBB69:
+ 796              		.loc 1 200 8 view .LVU261
+ 797 008c 07FB03F7 		mul	r7, r7, r3
+ 798 0090 05EB0708 		add	r8, r5, r7
+ 799 0094 01E0     		b	.L42
+ 800              	.LVL58:
+ 801              	.L55:
+ 802              		.loc 1 200 8 view .LVU262
+ 803 0096 98F83000 		ldrb	r0, [r8, #48]	@ zero_extendqisi2
+ 804              	.LVL59:
+ 805              	.L42:
+ 195:src/btphy/tdma_sched.c **** 		int rc;
+ 806              		.loc 1 195 3 is_stmt 1 discriminator 1 view .LVU263
+ 195:src/btphy/tdma_sched.c **** 		int rc;
+ 807              		.loc 1 195 3 is_stmt 0 discriminator 1 view .LVU264
+ 808              	.LBE69:
+ 194:src/btphy/tdma_sched.c **** 		struct tdma_sched_item *item = &bucket->item[seq[i]];
+ 809              		.loc 1 194 14 is_stmt 1 discriminator 1 view .LVU265
+ 194:src/btphy/tdma_sched.c **** 		struct tdma_sched_item *item = &bucket->item[seq[i]];
+ 810              		.loc 1 194 2 is_stmt 0 discriminator 1 view .LVU266
+ 811 009a B042     		cmp	r0, r6
+ 812 009c 12DD     		ble	.L40
+ 813              	.LBB70:
+ 195:src/btphy/tdma_sched.c **** 		int rc;
+ 814              		.loc 1 195 51 view .LVU267
+ 815 009e 02AB     		add	r3, sp, #8
+ 816 00a0 53F82630 		ldr	r3, [r3, r6, lsl #2]
+ 196:src/btphy/tdma_sched.c **** 
+ 817              		.loc 1 196 3 is_stmt 1 view .LVU268
+ 198:src/btphy/tdma_sched.c **** 
+ 818              		.loc 1 198 3 view .LVU269
+ 198:src/btphy/tdma_sched.c **** 
+ 819              		.loc 1 198 13 is_stmt 0 view .LVU270
+ 820 00a4 0136     		adds	r6, r6, #1
+ 821              	.LVL60:
+ 822              		.loc 1 200 3 is_stmt 1 view .LVU271
+ 823              		.loc 1 200 8 is_stmt 0 view .LVU272
+ 824 00a6 03EB4303 		add	r3, r3, r3, lsl #1
+ 825 00aa 07EB8303 		add	r3, r7, r3, lsl #2
+ 826 00ae E818     		adds	r0, r5, r3
+ 827 00b0 C288     		ldrh	r2, [r0, #6]
+ 828 00b2 4179     		ldrb	r1, [r0, #5]	@ zero_extendqisi2
+ARM GAS  /tmp/ccVVdvQV.s 			page 22
+
+
+ 829 00b4 EB58     		ldr	r3, [r5, r3]
+ 830 00b6 0079     		ldrb	r0, [r0, #4]	@ zero_extendqisi2
+ 831 00b8 9847     		blx	r3
+ 832              	.LVL61:
+ 201:src/btphy/tdma_sched.c **** 		if (rc < 0) {
+ 833              		.loc 1 201 3 is_stmt 1 view .LVU273
+ 834              		.loc 1 201 6 is_stmt 0 view .LVU274
+ 835 00ba 0028     		cmp	r0, #0
+ 836              		.loc 1 201 6 view .LVU275
+ 837 00bc EBDA     		bge	.L55
+ 838              	.LBE70:
+ 202:src/btphy/tdma_sched.c **** 			//cprintf("Error %d during processing of item %u of bucket %u\n",
+ 203:src/btphy/tdma_sched.c **** 			//	rc, i, sched->cur_bucket);
+ 204:src/btphy/tdma_sched.c **** 			return rc;
+ 205:src/btphy/tdma_sched.c **** 		}
+ 206:src/btphy/tdma_sched.c **** 		/* if the cb() we just called has scheduled more items for the
+ 207:src/btphy/tdma_sched.c **** 		 * current TDMA, bucket->num_items will have increased and we
+ 208:src/btphy/tdma_sched.c **** 		 * will simply continue to execute them as intended. Priorities
+ 209:src/btphy/tdma_sched.c **** 		 * won't work though ! */
+ 210:src/btphy/tdma_sched.c **** 	}
+ 211:src/btphy/tdma_sched.c **** 
+ 212:src/btphy/tdma_sched.c **** 	/* clear/reset the bucket */
+ 213:src/btphy/tdma_sched.c **** 	bucket->num_items = 0;
+ 214:src/btphy/tdma_sched.c **** 
+ 215:src/btphy/tdma_sched.c **** 	/* return number of items that we called */
+ 216:src/btphy/tdma_sched.c **** 	return num_events;
+ 217:src/btphy/tdma_sched.c **** }
+ 839              		.loc 1 217 1 view .LVU276
+ 840 00be 07B0     		add	sp, sp, #28
+ 841              		.cfi_remember_state
+ 842              		.cfi_def_cfa_offset 36
+ 843              		@ sp needed
+ 844 00c0 BDE8F08F 		pop	{r4, r5, r6, r7, r8, r9, r10, fp, pc}
+ 845              	.LVL62:
+ 846              	.L40:
+ 847              		.cfi_restore_state
+ 213:src/btphy/tdma_sched.c **** 
+ 848              		.loc 1 213 2 is_stmt 1 view .LVU277
+ 213:src/btphy/tdma_sched.c **** 
+ 849              		.loc 1 213 20 is_stmt 0 view .LVU278
+ 850 00c4 3422     		movs	r2, #52
+ 851 00c6 0023     		movs	r3, #0
+ 216:src/btphy/tdma_sched.c **** }
+ 852              		.loc 1 216 9 view .LVU279
+ 853 00c8 3046     		mov	r0, r6
+ 213:src/btphy/tdma_sched.c **** 
+ 854              		.loc 1 213 20 view .LVU280
+ 855 00ca 0199     		ldr	r1, [sp, #4]
+ 856 00cc 02FB0154 		mla	r4, r2, r1, r5
+ 857 00d0 84F83030 		strb	r3, [r4, #48]
+ 216:src/btphy/tdma_sched.c **** }
+ 858              		.loc 1 216 2 is_stmt 1 view .LVU281
+ 859              		.loc 1 217 1 is_stmt 0 view .LVU282
+ 860 00d4 07B0     		add	sp, sp, #28
+ 861              		.cfi_def_cfa_offset 36
+ 862              		@ sp needed
+ 863 00d6 BDE8F08F 		pop	{r4, r5, r6, r7, r8, r9, r10, fp, pc}
+ARM GAS  /tmp/ccVVdvQV.s 			page 23
+
+
+ 864              	.LVL63:
+ 865              	.L57:
+ 866              		.loc 1 217 1 view .LVU283
+ 867 00da 00BF     		.align	2
+ 868              	.L56:
+ 869 00dc 00000000 		.word	.LANCHOR0
+ 870              		.cfi_endproc
+ 871              	.LFE8:
+ 873              		.section	.text.tdma_sched_reset,"ax",%progbits
+ 874              		.align	1
+ 875              		.p2align 2,,3
+ 876              		.global	tdma_sched_reset
+ 877              		.syntax unified
+ 878              		.thumb
+ 879              		.thumb_func
+ 880              		.fpu softvfp
+ 882              	tdma_sched_reset:
+ 883              	.LFB9:
+ 218:src/btphy/tdma_sched.c **** 
+ 219:src/btphy/tdma_sched.c **** void tdma_sched_reset(void)
+ 220:src/btphy/tdma_sched.c **** {
+ 884              		.loc 1 220 1 is_stmt 1 view -0
+ 885              		.cfi_startproc
+ 886              		@ args = 0, pretend = 0, frame = 0
+ 887              		@ frame_needed = 0, uses_anonymous_args = 0
+ 888              		@ link register save eliminated.
+ 221:src/btphy/tdma_sched.c **** 	struct tdma_scheduler *sched = &tdma_sched;
+ 889              		.loc 1 221 2 view .LVU285
+ 890              	.LVL64:
+ 222:src/btphy/tdma_sched.c **** 	unsigned int bucket_nr;
+ 891              		.loc 1 222 2 view .LVU286
+ 223:src/btphy/tdma_sched.c **** 
+ 224:src/btphy/tdma_sched.c **** 	for (bucket_nr = 0; bucket_nr < ARRAY_SIZE(sched->bucket); bucket_nr++) {
+ 892              		.loc 1 224 2 view .LVU287
+ 893              		.loc 1 224 22 view .LVU288
+ 894              	.LBB71:
+ 225:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 226:src/btphy/tdma_sched.c **** 		/* current bucket will be reset by iteration code above! */
+ 227:src/btphy/tdma_sched.c **** 		if (bucket_nr != sched->cur_bucket)
+ 895              		.loc 1 227 25 is_stmt 0 view .LVU289
+ 896 0000 404B     		ldr	r3, .L99
+ 897 0002 93F84023 		ldrb	r2, [r3, #832]	@ zero_extendqisi2
+ 225:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 898              		.loc 1 225 3 is_stmt 1 view .LVU290
+ 899              	.LVL65:
+ 900              		.loc 1 227 3 view .LVU291
+ 901              		.loc 1 227 6 is_stmt 0 view .LVU292
+ 902 0006 002A     		cmp	r2, #0
+ 903 0008 74D0     		beq	.L59
+ 228:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 904              		.loc 1 228 4 is_stmt 1 view .LVU293
+ 905              		.loc 1 228 22 is_stmt 0 view .LVU294
+ 906 000a 0021     		movs	r1, #0
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 907              		.loc 1 227 6 view .LVU295
+ 908 000c 012A     		cmp	r2, #1
+ 909              		.loc 1 228 22 view .LVU296
+ARM GAS  /tmp/ccVVdvQV.s 			page 24
+
+
+ 910 000e 83F83010 		strb	r1, [r3, #48]
+ 911              	.LBE71:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 912              		.loc 1 224 61 is_stmt 1 view .LVU297
+ 913              	.LVL66:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 914              		.loc 1 224 22 view .LVU298
+ 915              	.LBB72:
+ 225:src/btphy/tdma_sched.c **** 		/* current bucket will be reset by iteration code above! */
+ 916              		.loc 1 225 3 view .LVU299
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 917              		.loc 1 227 3 view .LVU300
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 918              		.loc 1 227 6 is_stmt 0 view .LVU301
+ 919 0012 47D1     		bne	.L97
+ 920              	.LVL67:
+ 921              	.L60:
+ 922              		.loc 1 228 4 is_stmt 1 view .LVU302
+ 923              		.loc 1 228 22 is_stmt 0 view .LVU303
+ 924 0014 0021     		movs	r1, #0
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 925              		.loc 1 227 6 view .LVU304
+ 926 0016 032A     		cmp	r2, #3
+ 927              		.loc 1 228 22 view .LVU305
+ 928 0018 83F89810 		strb	r1, [r3, #152]
+ 929              	.LBE72:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 930              		.loc 1 224 61 is_stmt 1 view .LVU306
+ 931              	.LVL68:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 932              		.loc 1 224 22 view .LVU307
+ 933              	.LBB73:
+ 225:src/btphy/tdma_sched.c **** 		/* current bucket will be reset by iteration code above! */
+ 934              		.loc 1 225 3 view .LVU308
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 935              		.loc 1 227 3 view .LVU309
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 936              		.loc 1 227 6 is_stmt 0 view .LVU310
+ 937 001c 1FD1     		bne	.L98
+ 938              	.L62:
+ 939              	.LBE73:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 940              		.loc 1 224 61 is_stmt 1 view .LVU311
+ 941              	.LVL69:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 942              		.loc 1 224 22 view .LVU312
+ 943              	.LBB74:
+ 225:src/btphy/tdma_sched.c **** 		/* current bucket will be reset by iteration code above! */
+ 944              		.loc 1 225 3 view .LVU313
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 945              		.loc 1 227 3 view .LVU314
+ 946              		.loc 1 228 4 view .LVU315
+ 947              		.loc 1 228 22 is_stmt 0 view .LVU316
+ 948 001e 83F80011 		strb	r1, [r3, #256]
+ 949              	.LBE74:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 950              		.loc 1 224 61 is_stmt 1 view .LVU317
+ARM GAS  /tmp/ccVVdvQV.s 			page 25
+
+
+ 951              	.LVL70:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 952              		.loc 1 224 22 view .LVU318
+ 953              	.LBB75:
+ 225:src/btphy/tdma_sched.c **** 		/* current bucket will be reset by iteration code above! */
+ 954              		.loc 1 225 3 view .LVU319
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 955              		.loc 1 227 3 view .LVU320
+ 956              	.L84:
+ 957              		.loc 1 228 4 view .LVU321
+ 958              		.loc 1 228 22 is_stmt 0 view .LVU322
+ 959 0022 0021     		movs	r1, #0
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 960              		.loc 1 227 6 view .LVU323
+ 961 0024 062A     		cmp	r2, #6
+ 962              		.loc 1 228 22 view .LVU324
+ 963 0026 83F83411 		strb	r1, [r3, #308]
+ 964              	.LBE75:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 965              		.loc 1 224 61 is_stmt 1 view .LVU325
+ 966              	.LVL71:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 967              		.loc 1 224 22 view .LVU326
+ 968              	.LBB76:
+ 225:src/btphy/tdma_sched.c **** 		/* current bucket will be reset by iteration code above! */
+ 969              		.loc 1 225 3 view .LVU327
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 970              		.loc 1 227 3 view .LVU328
+ 971              		.loc 1 228 22 is_stmt 0 view .LVU329
+ 972 002a 08BF     		it	eq
+ 973 002c 83F89C11 		strbeq	r1, [r3, #412]
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 974              		.loc 1 227 6 view .LVU330
+ 975 0030 1CD1     		bne	.L83
+ 976              	.LVL72:
+ 977              	.L81:
+ 978              		.loc 1 228 4 is_stmt 1 view .LVU331
+ 979              		.loc 1 228 22 is_stmt 0 view .LVU332
+ 980 0032 0021     		movs	r1, #0
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 981              		.loc 1 227 6 view .LVU333
+ 982 0034 092A     		cmp	r2, #9
+ 983              		.loc 1 228 22 view .LVU334
+ 984 0036 83F8D011 		strb	r1, [r3, #464]
+ 985              	.LBE76:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 986              		.loc 1 224 61 is_stmt 1 view .LVU335
+ 987              	.LVL73:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 988              		.loc 1 224 22 view .LVU336
+ 989              	.LBB77:
+ 225:src/btphy/tdma_sched.c **** 		/* current bucket will be reset by iteration code above! */
+ 990              		.loc 1 225 3 view .LVU337
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 991              		.loc 1 227 3 view .LVU338
+ 992              		.loc 1 228 22 is_stmt 0 view .LVU339
+ 993 003a 08BF     		it	eq
+ARM GAS  /tmp/ccVVdvQV.s 			page 26
+
+
+ 994 003c 83F83812 		strbeq	r1, [r3, #568]
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 995              		.loc 1 227 6 view .LVU340
+ 996 0040 1CD1     		bne	.L80
+ 997              	.LVL74:
+ 998              	.L78:
+ 999              		.loc 1 228 4 is_stmt 1 view .LVU341
+ 1000              		.loc 1 228 22 is_stmt 0 view .LVU342
+ 1001 0042 0021     		movs	r1, #0
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1002              		.loc 1 227 6 view .LVU343
+ 1003 0044 0C2A     		cmp	r2, #12
+ 1004              		.loc 1 228 22 view .LVU344
+ 1005 0046 83F86C12 		strb	r1, [r3, #620]
+ 1006              	.LBE77:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 1007              		.loc 1 224 61 is_stmt 1 view .LVU345
+ 1008              	.LVL75:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 1009              		.loc 1 224 22 view .LVU346
+ 1010              	.LBB78:
+ 225:src/btphy/tdma_sched.c **** 		/* current bucket will be reset by iteration code above! */
+ 1011              		.loc 1 225 3 view .LVU347
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1012              		.loc 1 227 3 view .LVU348
+ 1013              		.loc 1 228 22 is_stmt 0 view .LVU349
+ 1014 004a 08BF     		it	eq
+ 1015 004c 83F8D412 		strbeq	r1, [r3, #724]
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1016              		.loc 1 227 6 view .LVU350
+ 1017 0050 1CD1     		bne	.L77
+ 1018              	.LVL76:
+ 1019              	.L75:
+ 1020              		.loc 1 228 4 is_stmt 1 view .LVU351
+ 1021              		.loc 1 228 22 is_stmt 0 view .LVU352
+ 1022 0052 0021     		movs	r1, #0
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1023              		.loc 1 227 6 view .LVU353
+ 1024 0054 0F2A     		cmp	r2, #15
+ 1025              		.loc 1 228 22 view .LVU354
+ 1026 0056 83F80813 		strb	r1, [r3, #776]
+ 1027              	.LBE78:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 1028              		.loc 1 224 61 is_stmt 1 view .LVU355
+ 1029              	.LVL77:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 1030              		.loc 1 224 22 view .LVU356
+ 1031              	.LBB79:
+ 225:src/btphy/tdma_sched.c **** 		/* current bucket will be reset by iteration code above! */
+ 1032              		.loc 1 225 3 view .LVU357
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1033              		.loc 1 227 3 view .LVU358
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1034              		.loc 1 227 6 is_stmt 0 view .LVU359
+ 1035 005a 1FD1     		bne	.L73
+ 1036              	.LBE79:
+ 229:src/btphy/tdma_sched.c **** 	}
+ARM GAS  /tmp/ccVVdvQV.s 			page 27
+
+
+ 230:src/btphy/tdma_sched.c **** 
+ 231:src/btphy/tdma_sched.c **** 	/* Don't reset cur_bucket, as it would upset the bucket iteration code
+ 232:src/btphy/tdma_sched.c **** 	 * in tdma_sched_execute() */
+ 233:src/btphy/tdma_sched.c **** }
+ 1037              		.loc 1 233 1 view .LVU360
+ 1038 005c 7047     		bx	lr
+ 1039              	.LVL78:
+ 1040              	.L98:
+ 1041              	.LBB80:
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1042              		.loc 1 228 4 is_stmt 1 view .LVU361
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1043              		.loc 1 227 6 is_stmt 0 view .LVU362
+ 1044 005e 042A     		cmp	r2, #4
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1045              		.loc 1 228 22 view .LVU363
+ 1046 0060 83F8CC10 		strb	r1, [r3, #204]
+ 1047              	.LBE80:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 1048              		.loc 1 224 61 is_stmt 1 view .LVU364
+ 1049              	.LVL79:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 1050              		.loc 1 224 22 view .LVU365
+ 1051              	.LBB81:
+ 225:src/btphy/tdma_sched.c **** 		/* current bucket will be reset by iteration code above! */
+ 1052              		.loc 1 225 3 view .LVU366
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1053              		.loc 1 227 3 view .LVU367
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1054              		.loc 1 228 22 is_stmt 0 view .LVU368
+ 1055 0064 08BF     		it	eq
+ 1056 0066 83F83411 		strbeq	r1, [r3, #308]
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1057              		.loc 1 227 6 view .LVU369
+ 1058 006a 22D1     		bne	.L85
+ 1059              	.LVL80:
+ 1060              	.L83:
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1061              		.loc 1 228 4 is_stmt 1 view .LVU370
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1062              		.loc 1 228 22 is_stmt 0 view .LVU371
+ 1063 006c 0021     		movs	r1, #0
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1064              		.loc 1 227 6 view .LVU372
+ 1065 006e 072A     		cmp	r2, #7
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1066              		.loc 1 228 22 view .LVU373
+ 1067 0070 83F86811 		strb	r1, [r3, #360]
+ 1068              	.LBE81:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 1069              		.loc 1 224 61 is_stmt 1 view .LVU374
+ 1070              	.LVL81:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 1071              		.loc 1 224 22 view .LVU375
+ 1072              	.LBB82:
+ 225:src/btphy/tdma_sched.c **** 		/* current bucket will be reset by iteration code above! */
+ 1073              		.loc 1 225 3 view .LVU376
+ARM GAS  /tmp/ccVVdvQV.s 			page 28
+
+
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1074              		.loc 1 227 3 view .LVU377
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1075              		.loc 1 228 22 is_stmt 0 view .LVU378
+ 1076 0074 08BF     		it	eq
+ 1077 0076 83F8D011 		strbeq	r1, [r3, #464]
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1078              		.loc 1 227 6 view .LVU379
+ 1079 007a 22D1     		bne	.L82
+ 1080              	.LVL82:
+ 1081              	.L80:
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1082              		.loc 1 228 4 is_stmt 1 view .LVU380
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1083              		.loc 1 228 22 is_stmt 0 view .LVU381
+ 1084 007c 0021     		movs	r1, #0
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1085              		.loc 1 227 6 view .LVU382
+ 1086 007e 0A2A     		cmp	r2, #10
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1087              		.loc 1 228 22 view .LVU383
+ 1088 0080 83F80412 		strb	r1, [r3, #516]
+ 1089              	.LBE82:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 1090              		.loc 1 224 61 is_stmt 1 view .LVU384
+ 1091              	.LVL83:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 1092              		.loc 1 224 22 view .LVU385
+ 1093              	.LBB83:
+ 225:src/btphy/tdma_sched.c **** 		/* current bucket will be reset by iteration code above! */
+ 1094              		.loc 1 225 3 view .LVU386
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1095              		.loc 1 227 3 view .LVU387
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1096              		.loc 1 228 22 is_stmt 0 view .LVU388
+ 1097 0084 08BF     		it	eq
+ 1098 0086 83F86C12 		strbeq	r1, [r3, #620]
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1099              		.loc 1 227 6 view .LVU389
+ 1100 008a 22D1     		bne	.L79
+ 1101              	.LVL84:
+ 1102              	.L77:
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1103              		.loc 1 228 4 is_stmt 1 view .LVU390
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1104              		.loc 1 228 22 is_stmt 0 view .LVU391
+ 1105 008c 0021     		movs	r1, #0
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1106              		.loc 1 227 6 view .LVU392
+ 1107 008e 0D2A     		cmp	r2, #13
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1108              		.loc 1 228 22 view .LVU393
+ 1109 0090 83F8A012 		strb	r1, [r3, #672]
+ 1110              	.LBE83:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 1111              		.loc 1 224 61 is_stmt 1 view .LVU394
+ 1112              	.LVL85:
+ARM GAS  /tmp/ccVVdvQV.s 			page 29
+
+
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 1113              		.loc 1 224 22 view .LVU395
+ 1114              	.LBB84:
+ 225:src/btphy/tdma_sched.c **** 		/* current bucket will be reset by iteration code above! */
+ 1115              		.loc 1 225 3 view .LVU396
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1116              		.loc 1 227 3 view .LVU397
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1117              		.loc 1 228 22 is_stmt 0 view .LVU398
+ 1118 0094 08BF     		it	eq
+ 1119 0096 83F80813 		strbeq	r1, [r3, #776]
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1120              		.loc 1 227 6 view .LVU399
+ 1121 009a 22D1     		bne	.L76
+ 1122              	.LVL86:
+ 1123              	.L73:
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1124              		.loc 1 228 4 is_stmt 1 view .LVU400
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1125              		.loc 1 228 22 is_stmt 0 view .LVU401
+ 1126 009c 0022     		movs	r2, #0
+ 1127 009e 83F83C23 		strb	r2, [r3, #828]
+ 1128              	.LBE84:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 1129              		.loc 1 224 61 is_stmt 1 view .LVU402
+ 1130              	.LVL87:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 1131              		.loc 1 224 22 view .LVU403
+ 1132              		.loc 1 233 1 is_stmt 0 view .LVU404
+ 1133 00a2 7047     		bx	lr
+ 1134              	.LVL88:
+ 1135              	.L97:
+ 1136              	.LBB85:
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1137              		.loc 1 228 4 is_stmt 1 view .LVU405
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1138              		.loc 1 227 6 is_stmt 0 view .LVU406
+ 1139 00a4 022A     		cmp	r2, #2
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1140              		.loc 1 228 22 view .LVU407
+ 1141 00a6 83F86410 		strb	r1, [r3, #100]
+ 1142              	.LBE85:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 1143              		.loc 1 224 61 is_stmt 1 view .LVU408
+ 1144              	.LVL89:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 1145              		.loc 1 224 22 view .LVU409
+ 1146              	.LBB86:
+ 225:src/btphy/tdma_sched.c **** 		/* current bucket will be reset by iteration code above! */
+ 1147              		.loc 1 225 3 view .LVU410
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1148              		.loc 1 227 3 view .LVU411
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1149              		.loc 1 228 22 is_stmt 0 view .LVU412
+ 1150 00aa 08BF     		it	eq
+ 1151 00ac 83F8CC10 		strbeq	r1, [r3, #204]
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ARM GAS  /tmp/ccVVdvQV.s 			page 30
+
+
+ 1152              		.loc 1 227 6 view .LVU413
+ 1153 00b0 B0D1     		bne	.L60
+ 1154              	.LVL90:
+ 1155              	.L85:
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1156              		.loc 1 228 4 is_stmt 1 view .LVU414
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1157              		.loc 1 228 22 is_stmt 0 view .LVU415
+ 1158 00b2 0021     		movs	r1, #0
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1159              		.loc 1 227 6 view .LVU416
+ 1160 00b4 052A     		cmp	r2, #5
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1161              		.loc 1 228 22 view .LVU417
+ 1162 00b6 83F80011 		strb	r1, [r3, #256]
+ 1163              	.LBE86:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 1164              		.loc 1 224 61 is_stmt 1 view .LVU418
+ 1165              	.LVL91:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 1166              		.loc 1 224 22 view .LVU419
+ 1167              	.LBB87:
+ 225:src/btphy/tdma_sched.c **** 		/* current bucket will be reset by iteration code above! */
+ 1168              		.loc 1 225 3 view .LVU420
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1169              		.loc 1 227 3 view .LVU421
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1170              		.loc 1 228 22 is_stmt 0 view .LVU422
+ 1171 00ba 08BF     		it	eq
+ 1172 00bc 83F86811 		strbeq	r1, [r3, #360]
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1173              		.loc 1 227 6 view .LVU423
+ 1174 00c0 AFD1     		bne	.L84
+ 1175              	.LVL92:
+ 1176              	.L82:
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1177              		.loc 1 228 4 is_stmt 1 view .LVU424
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1178              		.loc 1 228 22 is_stmt 0 view .LVU425
+ 1179 00c2 0021     		movs	r1, #0
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1180              		.loc 1 227 6 view .LVU426
+ 1181 00c4 082A     		cmp	r2, #8
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1182              		.loc 1 228 22 view .LVU427
+ 1183 00c6 83F89C11 		strb	r1, [r3, #412]
+ 1184              	.LBE87:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 1185              		.loc 1 224 61 is_stmt 1 view .LVU428
+ 1186              	.LVL93:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 1187              		.loc 1 224 22 view .LVU429
+ 1188              	.LBB88:
+ 225:src/btphy/tdma_sched.c **** 		/* current bucket will be reset by iteration code above! */
+ 1189              		.loc 1 225 3 view .LVU430
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1190              		.loc 1 227 3 view .LVU431
+ARM GAS  /tmp/ccVVdvQV.s 			page 31
+
+
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1191              		.loc 1 228 22 is_stmt 0 view .LVU432
+ 1192 00ca 08BF     		it	eq
+ 1193 00cc 83F80412 		strbeq	r1, [r3, #516]
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1194              		.loc 1 227 6 view .LVU433
+ 1195 00d0 AFD1     		bne	.L81
+ 1196              	.LVL94:
+ 1197              	.L79:
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1198              		.loc 1 228 4 is_stmt 1 view .LVU434
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1199              		.loc 1 228 22 is_stmt 0 view .LVU435
+ 1200 00d2 0021     		movs	r1, #0
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1201              		.loc 1 227 6 view .LVU436
+ 1202 00d4 0B2A     		cmp	r2, #11
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1203              		.loc 1 228 22 view .LVU437
+ 1204 00d6 83F83812 		strb	r1, [r3, #568]
+ 1205              	.LBE88:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 1206              		.loc 1 224 61 is_stmt 1 view .LVU438
+ 1207              	.LVL95:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 1208              		.loc 1 224 22 view .LVU439
+ 1209              	.LBB89:
+ 225:src/btphy/tdma_sched.c **** 		/* current bucket will be reset by iteration code above! */
+ 1210              		.loc 1 225 3 view .LVU440
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1211              		.loc 1 227 3 view .LVU441
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1212              		.loc 1 228 22 is_stmt 0 view .LVU442
+ 1213 00da 08BF     		it	eq
+ 1214 00dc 83F8A012 		strbeq	r1, [r3, #672]
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1215              		.loc 1 227 6 view .LVU443
+ 1216 00e0 AFD1     		bne	.L78
+ 1217              	.LVL96:
+ 1218              	.L76:
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1219              		.loc 1 228 4 is_stmt 1 view .LVU444
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1220              		.loc 1 228 22 is_stmt 0 view .LVU445
+ 1221 00e2 0021     		movs	r1, #0
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1222              		.loc 1 227 6 view .LVU446
+ 1223 00e4 0E2A     		cmp	r2, #14
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1224              		.loc 1 228 22 view .LVU447
+ 1225 00e6 83F8D412 		strb	r1, [r3, #724]
+ 1226              	.LBE89:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 1227              		.loc 1 224 61 is_stmt 1 view .LVU448
+ 1228              	.LVL97:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 1229              		.loc 1 224 22 view .LVU449
+ARM GAS  /tmp/ccVVdvQV.s 			page 32
+
+
+ 1230              	.LBB90:
+ 225:src/btphy/tdma_sched.c **** 		/* current bucket will be reset by iteration code above! */
+ 1231              		.loc 1 225 3 view .LVU450
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1232              		.loc 1 227 3 view .LVU451
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1233              		.loc 1 227 6 is_stmt 0 view .LVU452
+ 1234 00ea B2D1     		bne	.L75
+ 1235              	.LVL98:
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1236              		.loc 1 228 4 is_stmt 1 view .LVU453
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1237              		.loc 1 228 22 is_stmt 0 view .LVU454
+ 1238 00ec 0022     		movs	r2, #0
+ 1239 00ee 83F83C23 		strb	r2, [r3, #828]
+ 1240              	.LBE90:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 1241              		.loc 1 224 61 is_stmt 1 view .LVU455
+ 1242              	.LVL99:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 1243              		.loc 1 224 22 view .LVU456
+ 1244              		.loc 1 233 1 is_stmt 0 view .LVU457
+ 1245 00f2 7047     		bx	lr
+ 1246              	.LVL100:
+ 1247              	.L59:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 1248              		.loc 1 224 61 is_stmt 1 view .LVU458
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 1249              		.loc 1 224 22 view .LVU459
+ 1250              	.LBB91:
+ 225:src/btphy/tdma_sched.c **** 		/* current bucket will be reset by iteration code above! */
+ 1251              		.loc 1 225 3 view .LVU460
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1252              		.loc 1 227 3 view .LVU461
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1253              		.loc 1 228 4 view .LVU462
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1254              		.loc 1 228 22 is_stmt 0 view .LVU463
+ 1255 00f4 0021     		movs	r1, #0
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1256              		.loc 1 227 6 view .LVU464
+ 1257 00f6 032A     		cmp	r2, #3
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1258              		.loc 1 228 22 view .LVU465
+ 1259 00f8 83F86420 		strb	r2, [r3, #100]
+ 1260              	.LBE91:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 1261              		.loc 1 224 61 is_stmt 1 view .LVU466
+ 1262              	.LVL101:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 1263              		.loc 1 224 22 view .LVU467
+ 1264              	.LBB92:
+ 225:src/btphy/tdma_sched.c **** 		/* current bucket will be reset by iteration code above! */
+ 1265              		.loc 1 225 3 view .LVU468
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1266              		.loc 1 227 3 view .LVU469
+ 228:src/btphy/tdma_sched.c **** 	}
+ARM GAS  /tmp/ccVVdvQV.s 			page 33
+
+
+ 1267              		.loc 1 228 4 view .LVU470
+ 228:src/btphy/tdma_sched.c **** 	}
+ 1268              		.loc 1 228 22 is_stmt 0 view .LVU471
+ 1269 00fc 83F89810 		strb	r1, [r3, #152]
+ 1270              	.LBE92:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 1271              		.loc 1 224 61 is_stmt 1 view .LVU472
+ 1272              	.LVL102:
+ 224:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &sched->bucket[bucket_nr];
+ 1273              		.loc 1 224 22 view .LVU473
+ 1274              	.LBB93:
+ 225:src/btphy/tdma_sched.c **** 		/* current bucket will be reset by iteration code above! */
+ 1275              		.loc 1 225 3 view .LVU474
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1276              		.loc 1 227 3 view .LVU475
+ 227:src/btphy/tdma_sched.c **** 			bucket->num_items = 0;
+ 1277              		.loc 1 227 6 is_stmt 0 view .LVU476
+ 1278 0100 8DD0     		beq	.L62
+ 1279 0102 ACE7     		b	.L98
+ 1280              	.L100:
+ 1281              		.align	2
+ 1282              	.L99:
+ 1283 0104 00000000 		.word	.LANCHOR0
+ 1284              	.LBE93:
+ 1285              		.cfi_endproc
+ 1286              	.LFE9:
+ 1288              		.section	.rodata.str1.4
+ 1289 001f 00       		.align	2
+ 1290              	.LC1:
+ 1291 0020 0A282532 		.ascii	"\012(%2u)\000"
+ 1291      752900
+ 1292 0027 00       		.align	2
+ 1293              	.LC2:
+ 1294 0028 25753A00 		.ascii	"%u:\000"
+ 1295              		.section	.text.tdma_sched_dump,"ax",%progbits
+ 1296              		.align	1
+ 1297              		.p2align 2,,3
+ 1298              		.global	tdma_sched_dump
+ 1299              		.syntax unified
+ 1300              		.thumb
+ 1301              		.thumb_func
+ 1302              		.fpu softvfp
+ 1304              	tdma_sched_dump:
+ 1305              	.LFB10:
+ 234:src/btphy/tdma_sched.c **** 
+ 235:src/btphy/tdma_sched.c **** void tdma_sched_dump(void)
+ 236:src/btphy/tdma_sched.c **** {
+ 1306              		.loc 1 236 1 is_stmt 1 view -0
+ 1307              		.cfi_startproc
+ 1308              		@ args = 0, pretend = 0, frame = 0
+ 1309              		@ frame_needed = 0, uses_anonymous_args = 0
+ 1310 0000 F8B5     		push	{r3, r4, r5, r6, r7, lr}
+ 1311              		.cfi_def_cfa_offset 24
+ 1312              		.cfi_offset 3, -24
+ 1313              		.cfi_offset 4, -20
+ 1314              		.cfi_offset 5, -16
+ 1315              		.cfi_offset 6, -12
+ARM GAS  /tmp/ccVVdvQV.s 			page 34
+
+
+ 1316              		.cfi_offset 7, -8
+ 1317              		.cfi_offset 14, -4
+ 237:src/btphy/tdma_sched.c **** 	unsigned int i;
+ 1318              		.loc 1 237 2 view .LVU478
+ 238:src/btphy/tdma_sched.c **** 
+ 239:src/btphy/tdma_sched.c **** 	cprintf("\n(%2u)", tdma_sched.cur_bucket);
+ 1319              		.loc 1 239 2 view .LVU479
+ 1320              		.loc 1 239 31 is_stmt 0 view .LVU480
+ 1321 0002 0E4D     		ldr	r5, .L104
+ 1322              		.loc 1 239 2 view .LVU481
+ 1323 0004 0E48     		ldr	r0, .L104+4
+ 1324 0006 95F84013 		ldrb	r1, [r5, #832]	@ zero_extendqisi2
+ 1325 000a FFF7FEFF 		bl	cprintf
+ 1326              	.LVL103:
+ 240:src/btphy/tdma_sched.c **** 	for (i = 0; i < ARRAY_SIZE(tdma_sched.bucket); i++) {
+ 1327              		.loc 1 240 2 is_stmt 1 view .LVU482
+ 1328              		.loc 1 240 14 view .LVU483
+ 1329              		.loc 1 240 9 is_stmt 0 view .LVU484
+ 1330 000e 0024     		movs	r4, #0
+ 1331              	.LBB94:
+ 241:src/btphy/tdma_sched.c **** 		int bucket_nr = wrap_bucket(i);
+ 242:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &tdma_sched.bucket[bucket_nr];
+ 243:src/btphy/tdma_sched.c **** 		cprintf("%u:", bucket->num_items);
+ 1332              		.loc 1 243 24 view .LVU485
+ 1333 0010 3427     		movs	r7, #52
+ 1334              		.loc 1 243 3 view .LVU486
+ 1335 0012 0C4E     		ldr	r6, .L104+8
+ 1336              	.LVL104:
+ 1337              	.L102:
+ 241:src/btphy/tdma_sched.c **** 		int bucket_nr = wrap_bucket(i);
+ 1338              		.loc 1 241 3 is_stmt 1 discriminator 3 view .LVU487
+ 1339              	.LBB95:
+ 1340              	.LBI95:
+  42:src/btphy/tdma_sched.c **** {
+ 1341              		.loc 1 42 16 discriminator 3 view .LVU488
+ 1342              	.LBB96:
+  44:src/btphy/tdma_sched.c **** 
+ 1343              		.loc 1 44 2 discriminator 3 view .LVU489
+  46:src/btphy/tdma_sched.c **** 					% ARRAY_SIZE(tdma_sched.bucket);
+ 1344              		.loc 1 46 2 discriminator 3 view .LVU490
+  49:src/btphy/tdma_sched.c **** }
+ 1345              		.loc 1 49 2 discriminator 3 view .LVU491
+  49:src/btphy/tdma_sched.c **** }
+ 1346              		.loc 1 49 2 is_stmt 0 discriminator 3 view .LVU492
+ 1347              	.LBE96:
+ 1348              	.LBE95:
+ 242:src/btphy/tdma_sched.c **** 		cprintf("%u:", bucket->num_items);
+ 1349              		.loc 1 242 3 is_stmt 1 discriminator 3 view .LVU493
+ 1350              		.loc 1 243 3 discriminator 3 view .LVU494
+ 1351              	.LBB99:
+ 1352              	.LBB97:
+  47:src/btphy/tdma_sched.c **** 
+ 1353              		.loc 1 47 6 is_stmt 0 discriminator 3 view .LVU495
+ 1354 0014 95F84033 		ldrb	r3, [r5, #832]	@ zero_extendqisi2
+ 1355              	.LBE97:
+ 1356              	.LBE99:
+ 1357              		.loc 1 243 3 discriminator 3 view .LVU496
+ARM GAS  /tmp/ccVVdvQV.s 			page 35
+
+
+ 1358 0018 3046     		mov	r0, r6
+ 1359              	.LBB100:
+ 1360              	.LBB98:
+  47:src/btphy/tdma_sched.c **** 
+ 1361              		.loc 1 47 6 discriminator 3 view .LVU497
+ 1362 001a 2344     		add	r3, r3, r4
+ 1363              	.LBE98:
+ 1364              	.LBE100:
+ 241:src/btphy/tdma_sched.c **** 		struct tdma_sched_bucket *bucket = &tdma_sched.bucket[bucket_nr];
+ 1365              		.loc 1 241 7 discriminator 3 view .LVU498
+ 1366 001c 03F00F03 		and	r3, r3, #15
+ 1367              		.loc 1 243 24 discriminator 3 view .LVU499
+ 1368 0020 07FB0353 		mla	r3, r7, r3, r5
+ 1369              	.LBE94:
+ 240:src/btphy/tdma_sched.c **** 		int bucket_nr = wrap_bucket(i);
+ 1370              		.loc 1 240 50 discriminator 3 view .LVU500
+ 1371 0024 0134     		adds	r4, r4, #1
+ 1372              	.LVL105:
+ 1373              	.LBB101:
+ 1374              		.loc 1 243 3 discriminator 3 view .LVU501
+ 1375 0026 93F83010 		ldrb	r1, [r3, #48]	@ zero_extendqisi2
+ 1376 002a FFF7FEFF 		bl	cprintf
+ 1377              	.LVL106:
+ 1378              		.loc 1 243 3 discriminator 3 view .LVU502
+ 1379              	.LBE101:
+ 240:src/btphy/tdma_sched.c **** 		int bucket_nr = wrap_bucket(i);
+ 1380              		.loc 1 240 49 is_stmt 1 discriminator 3 view .LVU503
+ 240:src/btphy/tdma_sched.c **** 		int bucket_nr = wrap_bucket(i);
+ 1381              		.loc 1 240 14 discriminator 3 view .LVU504
+ 240:src/btphy/tdma_sched.c **** 		int bucket_nr = wrap_bucket(i);
+ 1382              		.loc 1 240 2 is_stmt 0 discriminator 3 view .LVU505
+ 1383 002e 102C     		cmp	r4, #16
+ 1384 0030 F0D1     		bne	.L102
+ 244:src/btphy/tdma_sched.c **** 	}
+ 245:src/btphy/tdma_sched.c **** 	cputc('\n');
+ 1385              		.loc 1 245 2 is_stmt 1 view .LVU506
+ 1386 0032 0A20     		movs	r0, #10
+ 246:src/btphy/tdma_sched.c **** }
+ 1387              		.loc 1 246 1 is_stmt 0 view .LVU507
+ 1388 0034 BDE8F840 		pop	{r3, r4, r5, r6, r7, lr}
+ 1389              		.cfi_restore 14
+ 1390              		.cfi_restore 7
+ 1391              		.cfi_restore 6
+ 1392              		.cfi_restore 5
+ 1393              		.cfi_restore 4
+ 1394              		.cfi_restore 3
+ 1395              		.cfi_def_cfa_offset 0
+ 1396              	.LVL107:
+ 245:src/btphy/tdma_sched.c **** }
+ 1397              		.loc 1 245 2 view .LVU508
+ 1398 0038 FFF7FEBF 		b	console_putc
+ 1399              	.LVL108:
+ 1400              	.L105:
+ 1401              		.align	2
+ 1402              	.L104:
+ 1403 003c 00000000 		.word	.LANCHOR0
+ 1404 0040 20000000 		.word	.LC1
+ARM GAS  /tmp/ccVVdvQV.s 			page 36
+
+
+ 1405 0044 28000000 		.word	.LC2
+ 1406              		.cfi_endproc
+ 1407              	.LFE10:
+ 1409              		.bss
+ 1410              		.align	2
+ 1411              		.set	.LANCHOR0,. + 0
+ 1414              	tdma_sched:
+ 1415 0000 00000000 		.space	836
+ 1415      00000000 
+ 1415      00000000 
+ 1415      00000000 
+ 1415      00000000 
+ 1416              		.text
+ 1417              	.Letext0:
+ 1418              		.file 2 "/usr/lib/gcc/arm-none-eabi/9.2.1/include/stdint.h"
+ 1419              		.file 3 "/usr/lib/gcc/arm-none-eabi/9.2.1/include/stddef.h"
+ 1420              		.file 4 "/usr/include/newlib/sys/_types.h"
+ 1421              		.file 5 "/usr/include/newlib/sys/reent.h"
+ 1422              		.file 6 "/usr/include/newlib/sys/lock.h"
+ 1423              		.file 7 "../common/ubertooth.h"
+ 1424              		.file 8 "include/ubtbr/tdma_sched.h"
+ 1425              		.file 9 "include/ubtbr/debug.h"
+ 1426              		.file 10 "include/ubtbr/console.h"
+ 1427              		.file 11 "/usr/include/newlib/string.h"
+ARM GAS  /tmp/ccVVdvQV.s 			page 37
+
+
+DEFINED SYMBOLS
+                            *ABS*:0000000000000000 tdma_sched.c
+     /tmp/ccVVdvQV.s:16     .text.tdma_end_set:0000000000000000 $t
+     /tmp/ccVVdvQV.s:25     .text.tdma_end_set:0000000000000000 tdma_end_set
+     /tmp/ccVVdvQV.s:45     .rodata.str1.4:0000000000000000 $d
+     /tmp/ccVVdvQV.s:49     .text.tdma_schedule:0000000000000000 $t
+     /tmp/ccVVdvQV.s:57     .text.tdma_schedule:0000000000000000 tdma_schedule
+     /tmp/ccVVdvQV.s:172    .text.tdma_schedule:000000000000005c $d
+     /tmp/ccVVdvQV.s:178    .text.tdma_schedule_set:0000000000000000 $t
+     /tmp/ccVVdvQV.s:186    .text.tdma_schedule_set:0000000000000000 tdma_schedule_set
+     /tmp/ccVVdvQV.s:431    .text.tdma_schedule_set:00000000000000ac $d
+     /tmp/ccVVdvQV.s:438    .text.tdma_sched_advance:0000000000000000 $t
+     /tmp/ccVVdvQV.s:446    .text.tdma_sched_advance:0000000000000000 tdma_sched_advance
+     /tmp/ccVVdvQV.s:486    .text.tdma_sched_advance:0000000000000014 $d
+     /tmp/ccVVdvQV.s:491    .text.tdma_sched_flag_scan:0000000000000000 $t
+     /tmp/ccVVdvQV.s:499    .text.tdma_sched_flag_scan:0000000000000000 tdma_sched_flag_scan
+     /tmp/ccVVdvQV.s:604    .text.tdma_sched_flag_scan:0000000000000038 $d
+     /tmp/ccVVdvQV.s:609    .text.tdma_sched_execute:0000000000000000 $t
+     /tmp/ccVVdvQV.s:617    .text.tdma_sched_execute:0000000000000000 tdma_sched_execute
+     /tmp/ccVVdvQV.s:869    .text.tdma_sched_execute:00000000000000dc $d
+     /tmp/ccVVdvQV.s:874    .text.tdma_sched_reset:0000000000000000 $t
+     /tmp/ccVVdvQV.s:882    .text.tdma_sched_reset:0000000000000000 tdma_sched_reset
+     /tmp/ccVVdvQV.s:1283   .text.tdma_sched_reset:0000000000000104 $d
+     /tmp/ccVVdvQV.s:1296   .text.tdma_sched_dump:0000000000000000 $t
+     /tmp/ccVVdvQV.s:1304   .text.tdma_sched_dump:0000000000000000 tdma_sched_dump
+     /tmp/ccVVdvQV.s:1403   .text.tdma_sched_dump:000000000000003c $d
+     /tmp/ccVVdvQV.s:1410   .bss:0000000000000000 $d
+     /tmp/ccVVdvQV.s:1414   .bss:0000000000000000 tdma_sched
+
+UNDEFINED SYMBOLS
+cprintf
+memcpy
+console_putc

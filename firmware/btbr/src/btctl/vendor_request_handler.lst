@@ -1,0 +1,1394 @@
+ARM GAS  /tmp/cclHAjNu.s 			page 1
+
+
+   1              		.cpu cortex-m3
+   2              		.eabi_attribute 20, 1
+   3              		.eabi_attribute 21, 1
+   4              		.eabi_attribute 23, 3
+   5              		.eabi_attribute 24, 1
+   6              		.eabi_attribute 25, 1
+   7              		.eabi_attribute 26, 1
+   8              		.eabi_attribute 30, 2
+   9              		.eabi_attribute 34, 1
+  10              		.eabi_attribute 18, 4
+  11              		.file	"vendor_request_handler.c"
+  12              		.text
+  13              	.Ltext0:
+  14              		.cfi_sections	.debug_frame
+  15              		.section	.rodata.str1.4,"aMS",%progbits,1
+  16              		.align	2
+  17              	.LC0:
+  18 0000 32303230 		.ascii	"2020-12-R1\000"
+  18      2D31322D 
+  18      523100
+  19              		.section	.text.vendor_request_handler,"ax",%progbits
+  20              		.align	1
+  21              		.p2align 2,,3
+  22              		.global	vendor_request_handler
+  23              		.arch armv7-m
+  24              		.syntax unified
+  25              		.thumb
+  26              		.thumb_func
+  27              		.fpu softvfp
+  29              	vendor_request_handler:
+  30              	.LVL0:
+  31              	.LFB26:
+  32              		.file 1 "src/btctl/vendor_request_handler.c"
+   1:src/btctl/vendor_request_handler.c **** /*
+   2:src/btctl/vendor_request_handler.c ****  * Copyright 2012 Dominic Spill
+   3:src/btctl/vendor_request_handler.c ****  * Copyright 2020 Etienne Helluy-Lafont, Univ. Lille, CNRS.
+   4:src/btctl/vendor_request_handler.c ****  *
+   5:src/btctl/vendor_request_handler.c ****  * This file is part of Project Ubertooth.
+   6:src/btctl/vendor_request_handler.c ****  *
+   7:src/btctl/vendor_request_handler.c ****  * This program is free software; you can redistribute it and/or modify
+   8:src/btctl/vendor_request_handler.c ****  * it under the terms of the GNU General Public License as published by
+   9:src/btctl/vendor_request_handler.c ****  * the Free Software Foundation; either version 2, or (at your option)
+  10:src/btctl/vendor_request_handler.c ****  * any later version.
+  11:src/btctl/vendor_request_handler.c ****  *
+  12:src/btctl/vendor_request_handler.c ****  * This program is distributed in the hope that it will be useful,
+  13:src/btctl/vendor_request_handler.c ****  * but WITHOUT ANY WARRANTY; without even the implied warranty of
+  14:src/btctl/vendor_request_handler.c ****  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  15:src/btctl/vendor_request_handler.c ****  * GNU General Public License for more details.
+  16:src/btctl/vendor_request_handler.c ****  *
+  17:src/btctl/vendor_request_handler.c ****  * You should have received a copy of the GNU General Public License
+  18:src/btctl/vendor_request_handler.c ****  * along with this program; see the file COPYING.  If not, write to
+  19:src/btctl/vendor_request_handler.c ****  * the Free Software Foundation, Inc., 51 Franklin Street,
+  20:src/btctl/vendor_request_handler.c ****  * Boston, MA 02110-1301, USA.
+  21:src/btctl/vendor_request_handler.c ****  */
+  22:src/btctl/vendor_request_handler.c **** #include <string.h>
+  23:src/btctl/vendor_request_handler.c **** #include <ubertooth.h>
+  24:src/btctl/vendor_request_handler.c **** #include <ubertooth_interface.h>
+ARM GAS  /tmp/cclHAjNu.s 			page 2
+
+
+  25:src/btctl/vendor_request_handler.c **** #include <ubtbr/cfg.h>
+  26:src/btctl/vendor_request_handler.c **** #include <ubtbr/ubertooth_usb.h>
+  27:src/btctl/vendor_request_handler.c **** #include <ubtbr/ubertooth_dma.h>
+  28:src/btctl/vendor_request_handler.c **** #include <ubtbr/btphy.h>
+  29:src/btctl/vendor_request_handler.c **** #include <ubtbr/btctl_intf.h>
+  30:src/btctl/vendor_request_handler.c **** 
+  31:src/btctl/vendor_request_handler.c **** static void request_reset(void)
+  32:src/btctl/vendor_request_handler.c **** {
+  33:src/btctl/vendor_request_handler.c **** 	btctl_rx_enqueue(btctl_msg_alloc(BTCTL_RESET_REQ));
+  34:src/btctl/vendor_request_handler.c **** }
+  35:src/btctl/vendor_request_handler.c **** 
+  36:src/btctl/vendor_request_handler.c **** int vendor_request_handler(uint8_t request, uint16_t* request_params, uint8_t* data, int* data_len)
+  37:src/btctl/vendor_request_handler.c **** {
+  33              		.loc 1 37 1 view -0
+  34              		.cfi_startproc
+  35              		@ args = 0, pretend = 0, frame = 8
+  36              		@ frame_needed = 0, uses_anonymous_args = 0
+  37              		.loc 1 37 1 is_stmt 0 view .LVU1
+  38 0000 30B5     		push	{r4, r5, lr}
+  39              		.cfi_def_cfa_offset 12
+  40              		.cfi_offset 4, -12
+  41              		.cfi_offset 5, -8
+  42              		.cfi_offset 14, -4
+  43 0002 83B0     		sub	sp, sp, #12
+  44              		.cfi_def_cfa_offset 24
+  38:src/btctl/vendor_request_handler.c **** 	uint32_t clock;
+  45              		.loc 1 38 2 is_stmt 1 view .LVU2
+  39:src/btctl/vendor_request_handler.c **** 	size_t length; // string length
+  46              		.loc 1 39 2 view .LVU3
+  40:src/btctl/vendor_request_handler.c **** 	usb_pkt_rx* p = NULL;
+  47              		.loc 1 40 2 view .LVU4
+  48              	.LVL1:
+  41:src/btctl/vendor_request_handler.c **** 	uint16_t reg_val;
+  49              		.loc 1 41 2 view .LVU5
+  42:src/btctl/vendor_request_handler.c **** 	uint8_t i;
+  50              		.loc 1 42 2 view .LVU6
+  43:src/btctl/vendor_request_handler.c **** 	unsigned data_in_len = request_params[2];
+  51              		.loc 1 43 2 view .LVU7
+  44:src/btctl/vendor_request_handler.c **** 
+  45:src/btctl/vendor_request_handler.c **** 	switch (request) {
+  52              		.loc 1 45 2 view .LVU8
+  37:src/btctl/vendor_request_handler.c **** 	uint32_t clock;
+  53              		.loc 1 37 1 is_stmt 0 view .LVU9
+  54 0004 1C46     		mov	r4, r3
+  55 0006 2328     		cmp	r0, #35
+  56 0008 25D8     		bhi	.L33
+  57 000a DFE810F0 		tbh	[pc, r0, lsl #1]
+  58              	.LVL2:
+  59              	.L4:
+  60 000e 2900     		.2byte	(.L34-.L4)/2
+  61 0010 2400     		.2byte	(.L33-.L4)/2
+  62 0012 2400     		.2byte	(.L33-.L4)/2
+  63 0014 3600     		.2byte	(.L24-.L4)/2
+  64 0016 9300     		.2byte	(.L23-.L4)/2
+  65 0018 8A00     		.2byte	(.L22-.L4)/2
+  66 001a B300     		.2byte	(.L21-.L4)/2
+  67 001c AA00     		.2byte	(.L20-.L4)/2
+ARM GAS  /tmp/cclHAjNu.s 			page 3
+
+
+  68 001e A400     		.2byte	(.L19-.L4)/2
+  69 0020 9B00     		.2byte	(.L18-.L4)/2
+  70 0022 2D00     		.2byte	(.L17-.L4)/2
+  71 0024 2400     		.2byte	(.L33-.L4)/2
+  72 0026 2400     		.2byte	(.L33-.L4)/2
+  73 0028 E000     		.2byte	(.L16-.L4)/2
+  74 002a DA00     		.2byte	(.L15-.L4)/2
+  75 002c D400     		.2byte	(.L14-.L4)/2
+  76 002e CB00     		.2byte	(.L13-.L4)/2
+  77 0030 C300     		.2byte	(.L12-.L4)/2
+  78 0032 C000     		.2byte	(.L11-.L4)/2
+  79 0034 B800     		.2byte	(.L10-.L4)/2
+  80 0036 2400     		.2byte	(.L33-.L4)/2
+  81 0038 2400     		.2byte	(.L33-.L4)/2
+  82 003a 2400     		.2byte	(.L33-.L4)/2
+  83 003c 2400     		.2byte	(.L33-.L4)/2
+  84 003e 2700     		.2byte	(.L9-.L4)/2
+  85 0040 4B00     		.2byte	(.L8-.L4)/2
+  86 0042 2400     		.2byte	(.L33-.L4)/2
+  87 0044 2400     		.2byte	(.L33-.L4)/2
+  88 0046 3F00     		.2byte	(.L7-.L4)/2
+  89 0048 6800     		.2byte	(.L6-.L4)/2
+  90 004a 2400     		.2byte	(.L33-.L4)/2
+  91 004c 2400     		.2byte	(.L33-.L4)/2
+  92 004e 2400     		.2byte	(.L33-.L4)/2
+  93 0050 7700     		.2byte	(.L5-.L4)/2
+  94 0052 2400     		.2byte	(.L33-.L4)/2
+  95 0054 7200     		.2byte	(.L3-.L4)/2
+  96              		.p2align 1
+  97              	.L33:
+  46:src/btctl/vendor_request_handler.c **** 
+  47:src/btctl/vendor_request_handler.c **** 	case UBERTOOTH_PING:
+  48:src/btctl/vendor_request_handler.c **** 		*data_len = 0;
+  49:src/btctl/vendor_request_handler.c **** 		break;
+  50:src/btctl/vendor_request_handler.c **** 
+  51:src/btctl/vendor_request_handler.c **** 	case UBERTOOTH_GET_USRLED:
+  52:src/btctl/vendor_request_handler.c **** 		data[0] = (USRLED) ? 1 : 0;
+  53:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+  54:src/btctl/vendor_request_handler.c **** 		break;
+  55:src/btctl/vendor_request_handler.c **** 
+  56:src/btctl/vendor_request_handler.c **** 	case UBERTOOTH_SET_USRLED:
+  57:src/btctl/vendor_request_handler.c **** 		if (request_params[0])
+  58:src/btctl/vendor_request_handler.c **** 			USRLED_SET;
+  59:src/btctl/vendor_request_handler.c **** 		else
+  60:src/btctl/vendor_request_handler.c **** 			USRLED_CLR;
+  61:src/btctl/vendor_request_handler.c **** 		break;
+  62:src/btctl/vendor_request_handler.c **** 
+  63:src/btctl/vendor_request_handler.c **** 	case UBERTOOTH_GET_RXLED:
+  64:src/btctl/vendor_request_handler.c **** 		data[0] = (RXLED) ? 1 : 0;
+  65:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+  66:src/btctl/vendor_request_handler.c **** 		break;
+  67:src/btctl/vendor_request_handler.c **** 
+  68:src/btctl/vendor_request_handler.c **** 	case UBERTOOTH_SET_RXLED:
+  69:src/btctl/vendor_request_handler.c **** 		if (request_params[0])
+  70:src/btctl/vendor_request_handler.c **** 			RXLED_SET;
+  71:src/btctl/vendor_request_handler.c **** 		else
+  72:src/btctl/vendor_request_handler.c **** 			RXLED_CLR;
+ARM GAS  /tmp/cclHAjNu.s 			page 4
+
+
+  73:src/btctl/vendor_request_handler.c **** 		break;
+  74:src/btctl/vendor_request_handler.c **** 
+  75:src/btctl/vendor_request_handler.c **** 	case UBERTOOTH_GET_TXLED:
+  76:src/btctl/vendor_request_handler.c **** 		data[0] = (TXLED) ? 1 : 0;
+  77:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+  78:src/btctl/vendor_request_handler.c **** 		break;
+  79:src/btctl/vendor_request_handler.c **** 
+  80:src/btctl/vendor_request_handler.c **** 	case UBERTOOTH_SET_TXLED:
+  81:src/btctl/vendor_request_handler.c **** 		if (request_params[0])
+  82:src/btctl/vendor_request_handler.c **** 			TXLED_SET;
+  83:src/btctl/vendor_request_handler.c **** 		else
+  84:src/btctl/vendor_request_handler.c **** 			TXLED_CLR;
+  85:src/btctl/vendor_request_handler.c **** 		break;
+  86:src/btctl/vendor_request_handler.c **** 
+  87:src/btctl/vendor_request_handler.c **** 	case UBERTOOTH_GET_1V8:
+  88:src/btctl/vendor_request_handler.c **** 		data[0] = (CC1V8) ? 1 : 0;
+  89:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+  90:src/btctl/vendor_request_handler.c **** 		break;
+  91:src/btctl/vendor_request_handler.c **** 
+  92:src/btctl/vendor_request_handler.c **** 	case UBERTOOTH_SET_1V8:
+  93:src/btctl/vendor_request_handler.c **** 		if (request_params[0])
+  94:src/btctl/vendor_request_handler.c **** 			CC1V8_SET;
+  95:src/btctl/vendor_request_handler.c **** 		else
+  96:src/btctl/vendor_request_handler.c **** 			CC1V8_CLR;
+  97:src/btctl/vendor_request_handler.c **** 		break;
+  98:src/btctl/vendor_request_handler.c **** 
+  99:src/btctl/vendor_request_handler.c **** 	case UBERTOOTH_GET_PARTNUM:
+ 100:src/btctl/vendor_request_handler.c **** 		get_part_num(data, data_len);
+ 101:src/btctl/vendor_request_handler.c **** 		break;
+ 102:src/btctl/vendor_request_handler.c **** 
+ 103:src/btctl/vendor_request_handler.c **** 	case UBERTOOTH_RESET:
+ 104:src/btctl/vendor_request_handler.c **** 		request_reset();
+ 105:src/btctl/vendor_request_handler.c **** 		break;
+ 106:src/btctl/vendor_request_handler.c **** 
+ 107:src/btctl/vendor_request_handler.c **** 	case UBERTOOTH_GET_SERIAL:
+ 108:src/btctl/vendor_request_handler.c **** 		get_device_serial(data, data_len);
+ 109:src/btctl/vendor_request_handler.c **** 		break;
+ 110:src/btctl/vendor_request_handler.c **** 
+ 111:src/btctl/vendor_request_handler.c **** #ifdef UBERTOOTH_ONE
+ 112:src/btctl/vendor_request_handler.c **** 	case UBERTOOTH_GET_PAEN:
+ 113:src/btctl/vendor_request_handler.c **** 		data[0] = (PAEN) ? 1 : 0;
+ 114:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 115:src/btctl/vendor_request_handler.c **** 		break;
+ 116:src/btctl/vendor_request_handler.c **** 
+ 117:src/btctl/vendor_request_handler.c **** 	case UBERTOOTH_SET_PAEN:
+ 118:src/btctl/vendor_request_handler.c **** 		if (request_params[0])
+ 119:src/btctl/vendor_request_handler.c **** 			PAEN_SET;
+ 120:src/btctl/vendor_request_handler.c **** 		else
+ 121:src/btctl/vendor_request_handler.c **** 			PAEN_CLR;
+ 122:src/btctl/vendor_request_handler.c **** 		break;
+ 123:src/btctl/vendor_request_handler.c **** 
+ 124:src/btctl/vendor_request_handler.c **** 	case UBERTOOTH_GET_HGM:
+ 125:src/btctl/vendor_request_handler.c **** 		data[0] = (HGM) ? 1 : 0;
+ 126:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 127:src/btctl/vendor_request_handler.c **** 		break;
+ 128:src/btctl/vendor_request_handler.c **** 
+ 129:src/btctl/vendor_request_handler.c **** 	case UBERTOOTH_SET_HGM:
+ARM GAS  /tmp/cclHAjNu.s 			page 5
+
+
+ 130:src/btctl/vendor_request_handler.c **** 		if (request_params[0])
+ 131:src/btctl/vendor_request_handler.c **** 			HGM_SET;
+ 132:src/btctl/vendor_request_handler.c **** 		else
+ 133:src/btctl/vendor_request_handler.c **** 			HGM_CLR;
+ 134:src/btctl/vendor_request_handler.c **** 		break;
+ 135:src/btctl/vendor_request_handler.c **** 
+ 136:src/btctl/vendor_request_handler.c **** 	case UBERTOOTH_GET_PALEVEL:
+ 137:src/btctl/vendor_request_handler.c **** 		data[0] = cc2400_get(FREND) & 0x7;
+ 138:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 139:src/btctl/vendor_request_handler.c **** 		break;
+ 140:src/btctl/vendor_request_handler.c **** 
+ 141:src/btctl/vendor_request_handler.c **** 	case UBERTOOTH_SET_PALEVEL:
+ 142:src/btctl/vendor_request_handler.c **** 		if( request_params[0] < 8 ) {
+ 143:src/btctl/vendor_request_handler.c **** 			cc2400_set(FREND, 8 | request_params[0]);
+ 144:src/btctl/vendor_request_handler.c **** 		} else {
+ 145:src/btctl/vendor_request_handler.c **** 			return 0;
+  98              		.loc 1 145 11 view .LVU10
+  99 0056 0020     		movs	r0, #0
+ 100              	.LVL3:
+ 101              	.L1:
+ 146:src/btctl/vendor_request_handler.c **** 		}
+ 147:src/btctl/vendor_request_handler.c **** 		break;
+ 148:src/btctl/vendor_request_handler.c **** #endif
+ 149:src/btctl/vendor_request_handler.c **** 
+ 150:src/btctl/vendor_request_handler.c **** 	case UBERTOOTH_SET_ISP:
+ 151:src/btctl/vendor_request_handler.c **** 		set_isp();
+ 152:src/btctl/vendor_request_handler.c **** 		*data_len = 0; /* should never return */
+ 153:src/btctl/vendor_request_handler.c **** 		break;
+ 154:src/btctl/vendor_request_handler.c **** 
+ 155:src/btctl/vendor_request_handler.c **** 	case UBERTOOTH_FLASH:
+ 156:src/btctl/vendor_request_handler.c **** 		bootloader_ctrl = DFU_MODE;
+ 157:src/btctl/vendor_request_handler.c **** 		request_reset();
+ 158:src/btctl/vendor_request_handler.c **** 		break;
+ 159:src/btctl/vendor_request_handler.c **** 
+ 160:src/btctl/vendor_request_handler.c **** 	case UBERTOOTH_GET_REV_NUM:
+ 161:src/btctl/vendor_request_handler.c **** 		data[0] = 0x00;
+ 162:src/btctl/vendor_request_handler.c **** 		data[1] = 0x00;
+ 163:src/btctl/vendor_request_handler.c **** 
+ 164:src/btctl/vendor_request_handler.c **** 		length = (u8)strlen(GIT_REVISION);
+ 165:src/btctl/vendor_request_handler.c **** 		data[2] = length;
+ 166:src/btctl/vendor_request_handler.c **** 
+ 167:src/btctl/vendor_request_handler.c **** 		memcpy(&data[3], GIT_REVISION, length);
+ 168:src/btctl/vendor_request_handler.c **** 
+ 169:src/btctl/vendor_request_handler.c **** 		*data_len = 2 + 1 + length;
+ 170:src/btctl/vendor_request_handler.c **** 		break;
+ 171:src/btctl/vendor_request_handler.c **** 
+ 172:src/btctl/vendor_request_handler.c **** 	case UBERTOOTH_GET_BOARD_ID:
+ 173:src/btctl/vendor_request_handler.c **** 		data[0] = BOARD_ID;
+ 174:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 175:src/btctl/vendor_request_handler.c **** 		break;
+ 176:src/btctl/vendor_request_handler.c **** 
+ 177:src/btctl/vendor_request_handler.c **** 	default:
+ 178:src/btctl/vendor_request_handler.c **** 		return 0;
+ 179:src/btctl/vendor_request_handler.c **** 	}
+ 180:src/btctl/vendor_request_handler.c **** 	return 1;
+ 181:src/btctl/vendor_request_handler.c **** }
+ 102              		.loc 1 181 1 view .LVU11
+ARM GAS  /tmp/cclHAjNu.s 			page 6
+
+
+ 103 0058 03B0     		add	sp, sp, #12
+ 104              		.cfi_remember_state
+ 105              		.cfi_def_cfa_offset 12
+ 106              		@ sp needed
+ 107 005a 30BD     		pop	{r4, r5, pc}
+ 108              	.LVL4:
+ 109              	.L9:
+ 110              		.cfi_restore_state
+ 151:src/btctl/vendor_request_handler.c **** 		*data_len = 0; /* should never return */
+ 111              		.loc 1 151 3 is_stmt 1 view .LVU12
+ 112 005c FFF7FEFF 		bl	set_isp
+ 113              	.LVL5:
+ 114              	.L34:
+ 152:src/btctl/vendor_request_handler.c **** 		break;
+ 115              		.loc 1 152 3 view .LVU13
+ 152:src/btctl/vendor_request_handler.c **** 		break;
+ 116              		.loc 1 152 13 is_stmt 0 view .LVU14
+ 117 0060 0023     		movs	r3, #0
+ 180:src/btctl/vendor_request_handler.c **** }
+ 118              		.loc 1 180 9 view .LVU15
+ 119 0062 0120     		movs	r0, #1
+ 152:src/btctl/vendor_request_handler.c **** 		break;
+ 120              		.loc 1 152 13 view .LVU16
+ 121 0064 2360     		str	r3, [r4]
+ 153:src/btctl/vendor_request_handler.c **** 
+ 122              		.loc 1 153 3 is_stmt 1 view .LVU17
+ 123 0066 F7E7     		b	.L1
+ 124              	.LVL6:
+ 125              	.L17:
+  93:src/btctl/vendor_request_handler.c **** 			CC1V8_SET;
+ 126              		.loc 1 93 3 view .LVU18
+  93:src/btctl/vendor_request_handler.c **** 			CC1V8_SET;
+ 127              		.loc 1 93 6 is_stmt 0 view .LVU19
+ 128 0068 0B88     		ldrh	r3, [r1]
+  94:src/btctl/vendor_request_handler.c **** 		else
+ 129              		.loc 1 94 4 view .LVU20
+ 130 006a 4FF40072 		mov	r2, #512
+ 131              	.LVL7:
+  93:src/btctl/vendor_request_handler.c **** 			CC1V8_SET;
+ 132              		.loc 1 93 6 view .LVU21
+ 133 006e 002B     		cmp	r3, #0
+ 134 0070 64D0     		beq	.L29
+ 135              	.L38:
+  94:src/btctl/vendor_request_handler.c **** 		else
+ 136              		.loc 1 94 4 is_stmt 1 view .LVU22
+ 137 0072 584B     		ldr	r3, .L42
+ 180:src/btctl/vendor_request_handler.c **** }
+ 138              		.loc 1 180 9 is_stmt 0 view .LVU23
+ 139 0074 0120     		movs	r0, #1
+ 140              	.LVL8:
+  94:src/btctl/vendor_request_handler.c **** 		else
+ 141              		.loc 1 94 4 view .LVU24
+ 142 0076 1A60     		str	r2, [r3]
+ 143 0078 EEE7     		b	.L1
+ 144              	.LVL9:
+ 145              	.L24:
+  52:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ARM GAS  /tmp/cclHAjNu.s 			page 7
+
+
+ 146              		.loc 1 52 3 is_stmt 1 view .LVU25
+  53:src/btctl/vendor_request_handler.c **** 		break;
+ 147              		.loc 1 53 13 is_stmt 0 view .LVU26
+ 148 007a 0121     		movs	r1, #1
+ 149              	.LVL10:
+  52:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 150              		.loc 1 52 14 view .LVU27
+ 151 007c 564B     		ldr	r3, .L42+4
+ 180:src/btctl/vendor_request_handler.c **** }
+ 152              		.loc 1 180 9 view .LVU28
+ 153 007e 0846     		mov	r0, r1
+ 154              	.LVL11:
+  52:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 155              		.loc 1 52 14 view .LVU29
+ 156 0080 1B68     		ldr	r3, [r3]
+  52:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 157              		.loc 1 52 26 view .LVU30
+ 158 0082 C3F34003 		ubfx	r3, r3, #1, #1
+  52:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 159              		.loc 1 52 11 view .LVU31
+ 160 0086 1370     		strb	r3, [r2]
+ 161              	.LVL12:
+  53:src/btctl/vendor_request_handler.c **** 		break;
+ 162              		.loc 1 53 3 is_stmt 1 view .LVU32
+  53:src/btctl/vendor_request_handler.c **** 		break;
+ 163              		.loc 1 53 13 is_stmt 0 view .LVU33
+ 164 0088 2160     		str	r1, [r4]
+  54:src/btctl/vendor_request_handler.c **** 
+ 165              		.loc 1 54 3 is_stmt 1 view .LVU34
+ 166 008a E5E7     		b	.L1
+ 167              	.LVL13:
+ 168              	.L7:
+ 137:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 169              		.loc 1 137 3 view .LVU35
+ 137:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 170              		.loc 1 137 13 is_stmt 0 view .LVU36
+ 171 008c 0520     		movs	r0, #5
+ 172              	.LVL14:
+ 137:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 173              		.loc 1 137 13 view .LVU37
+ 174 008e 0192     		str	r2, [sp, #4]
+ 175 0090 FFF7FEFF 		bl	cc2400_get
+ 176              	.LVL15:
+ 138:src/btctl/vendor_request_handler.c **** 		break;
+ 177              		.loc 1 138 13 view .LVU38
+ 178 0094 0123     		movs	r3, #1
+ 137:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 179              		.loc 1 137 11 view .LVU39
+ 180 0096 019A     		ldr	r2, [sp, #4]
+ 137:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 181              		.loc 1 137 31 view .LVU40
+ 182 0098 00F00700 		and	r0, r0, #7
+ 137:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 183              		.loc 1 137 11 view .LVU41
+ 184 009c 1070     		strb	r0, [r2]
+ 138:src/btctl/vendor_request_handler.c **** 		break;
+ 185              		.loc 1 138 3 is_stmt 1 view .LVU42
+ARM GAS  /tmp/cclHAjNu.s 			page 8
+
+
+ 180:src/btctl/vendor_request_handler.c **** }
+ 186              		.loc 1 180 9 is_stmt 0 view .LVU43
+ 187 009e 1846     		mov	r0, r3
+ 138:src/btctl/vendor_request_handler.c **** 		break;
+ 188              		.loc 1 138 13 view .LVU44
+ 189 00a0 2360     		str	r3, [r4]
+ 139:src/btctl/vendor_request_handler.c **** 
+ 190              		.loc 1 139 3 is_stmt 1 view .LVU45
+ 191 00a2 D9E7     		b	.L1
+ 192              	.LVL16:
+ 193              	.L8:
+ 156:src/btctl/vendor_request_handler.c **** 		request_reset();
+ 194              		.loc 1 156 3 view .LVU46
+ 195              	.LBB72:
+ 196              	.LBB73:
+ 197              	.LBB74:
+ 198              	.LBB75:
+ 199              	.LBB76:
+ 200              	.LBB77:
+ 201              		.file 2 "include/ubtbr/msg.h"
+   1:include/ubtbr/msg.h **** #ifndef __DEF_MSG_H
+   2:include/ubtbr/msg.h **** #define __DEF_MSG_H
+   3:include/ubtbr/msg.h **** #include <stdint.h>
+   4:include/ubtbr/msg.h **** 
+   5:include/ubtbr/msg.h **** typedef struct msg_s {
+   6:include/ubtbr/msg.h **** 	uint16_t len;
+   7:include/ubtbr/msg.h **** 	uint16_t data_len;
+   8:include/ubtbr/msg.h **** 	uint8_t *read;
+   9:include/ubtbr/msg.h **** 	uint8_t *write;
+  10:include/ubtbr/msg.h **** 	/* never move head */
+  11:include/ubtbr/msg.h **** 	uint8_t data[0];
+  12:include/ubtbr/msg.h **** } msg_t;
+  13:include/ubtbr/msg.h **** 
+  14:include/ubtbr/msg.h **** /* Allocate a msg_t wigh given room*/
+  15:include/ubtbr/msg.h **** static inline msg_t *msg_alloc(unsigned size)
+  16:include/ubtbr/msg.h **** {
+  17:include/ubtbr/msg.h **** 	msg_t *msg = (msg_t*)btctl_mem_alloc(sizeof(msg_t)+size);
+ 202              		.loc 2 17 23 is_stmt 0 view .LVU47
+ 203 00a4 4FF4BA70 		mov	r0, #372
+ 204              	.LVL17:
+ 205              		.loc 2 17 23 view .LVU48
+ 206              	.LBE77:
+ 207              	.LBE76:
+ 208              	.LBE75:
+ 209              	.LBE74:
+ 210              	.LBE73:
+ 211              	.LBE72:
+ 156:src/btctl/vendor_request_handler.c **** 		request_reset();
+ 212              		.loc 1 156 19 view .LVU49
+ 213 00a8 4C4B     		ldr	r3, .L42+8
+ 214 00aa 4D4A     		ldr	r2, .L42+12
+ 215              	.LVL18:
+ 156:src/btctl/vendor_request_handler.c **** 		request_reset();
+ 216              		.loc 1 156 19 view .LVU50
+ 217 00ac 1A60     		str	r2, [r3]
+ 218              	.L39:
+ 157:src/btctl/vendor_request_handler.c **** 		break;
+ARM GAS  /tmp/cclHAjNu.s 			page 9
+
+
+ 219              		.loc 1 157 3 is_stmt 1 view .LVU51
+ 220              	.LBB105:
+ 221              	.LBI72:
+  31:src/btctl/vendor_request_handler.c **** {
+ 222              		.loc 1 31 13 view .LVU52
+ 223              	.LBB102:
+  33:src/btctl/vendor_request_handler.c **** }
+ 224              		.loc 1 33 2 view .LVU53
+ 225              	.LVL19:
+ 226              	.LBB92:
+ 227              	.LBI74:
+ 228              		.file 3 "include/ubtbr/btctl_intf.h"
+   1:include/ubtbr/btctl_intf.h **** #ifndef __BTCTL_INTF_H
+   2:include/ubtbr/btctl_intf.h **** #define __BTCTL_INTF_H
+   3:include/ubtbr/btctl_intf.h **** #include <ubtbr/bb_msg.h>
+   4:include/ubtbr/btctl_intf.h **** #include <ubtbr/queue.h>
+   5:include/ubtbr/btctl_intf.h **** #include <ubtbr/system.h>
+   6:include/ubtbr/btctl_intf.h **** #include <ubertooth_interface.h>
+   7:include/ubtbr/btctl_intf.h **** 
+   8:include/ubtbr/btctl_intf.h **** typedef struct btctl_s {
+   9:include/ubtbr/btctl_intf.h **** 	btctl_state_t state;
+  10:include/ubtbr/btctl_intf.h **** 	msg_queue_t rx_q;
+  11:include/ubtbr/btctl_intf.h **** 	msg_queue_t tx_q;
+  12:include/ubtbr/btctl_intf.h **** 	msg_queue_t acl_tx_q;
+  13:include/ubtbr/btctl_intf.h **** 	msg_t *eir_msg;
+  14:include/ubtbr/btctl_intf.h **** 	btctl_tx_pkt_t *eir_pkt;
+  15:include/ubtbr/btctl_intf.h **** } btctl_t;
+  16:include/ubtbr/btctl_intf.h **** 
+  17:include/ubtbr/btctl_intf.h **** extern btctl_t btctl;
+  18:include/ubtbr/btctl_intf.h **** 
+  19:include/ubtbr/btctl_intf.h **** void btctl_init(void);
+  20:include/ubtbr/btctl_intf.h **** int btctl_work(void);
+  21:include/ubtbr/btctl_intf.h **** 
+  22:include/ubtbr/btctl_intf.h **** void btctl_set_state(btctl_state_t state, btctl_reason_t reason);
+  23:include/ubtbr/btctl_intf.h **** 
+  24:include/ubtbr/btctl_intf.h **** static inline btctl_state_t btctl_get_state(void)
+  25:include/ubtbr/btctl_intf.h **** {
+  26:include/ubtbr/btctl_intf.h **** 	return btctl.state;
+  27:include/ubtbr/btctl_intf.h **** }
+  28:include/ubtbr/btctl_intf.h **** 
+  29:include/ubtbr/btctl_intf.h **** static inline btctl_tx_pkt_t *btctl_get_eir(void)
+  30:include/ubtbr/btctl_intf.h **** {
+  31:include/ubtbr/btctl_intf.h **** 	return btctl.eir_pkt;
+  32:include/ubtbr/btctl_intf.h **** }
+  33:include/ubtbr/btctl_intf.h **** 
+  34:include/ubtbr/btctl_intf.h **** static inline msg_t *btctl_msg_alloc(unsigned type)
+ 229              		.loc 3 34 22 view .LVU54
+ 230              	.LBB90:
+  35:include/ubtbr/btctl_intf.h **** {
+  36:include/ubtbr/btctl_intf.h **** 	msg_t *msg;
+ 231              		.loc 3 36 2 view .LVU55
+  37:include/ubtbr/btctl_intf.h **** 	btctl_hdr_t *hdr;
+ 232              		.loc 3 37 2 view .LVU56
+  38:include/ubtbr/btctl_intf.h **** 
+  39:include/ubtbr/btctl_intf.h **** 	/* maximum size ?*/
+  40:include/ubtbr/btctl_intf.h **** 	msg = msg_alloc(sizeof(btctl_hdr_t)+sizeof(btctl_rx_pkt_t)+MAX_ACL_PACKET_SIZE);
+ 233              		.loc 3 40 2 view .LVU57
+ARM GAS  /tmp/cclHAjNu.s 			page 10
+
+
+ 234              	.LBB81:
+ 235              	.LBI76:
+  15:include/ubtbr/msg.h **** {
+ 236              		.loc 2 15 22 view .LVU58
+ 237              	.LBB78:
+ 238              		.loc 2 17 2 view .LVU59
+ 239              		.loc 2 17 23 is_stmt 0 view .LVU60
+ 240 00ae FFF7FEFF 		bl	mem_pool_alloc
+ 241              	.LVL20:
+ 242              		.loc 2 17 23 view .LVU61
+ 243 00b2 0146     		mov	r1, r0
+ 244              	.LVL21:
+  18:include/ubtbr/msg.h **** 
+  19:include/ubtbr/msg.h **** 	msg->write = msg->data;
+ 245              		.loc 2 19 2 is_stmt 1 view .LVU62
+  20:include/ubtbr/msg.h **** 	msg->read = msg->data;
+ 246              		.loc 2 20 2 view .LVU63
+ 247              	.LBE78:
+ 248              	.LBE81:
+  41:include/ubtbr/btctl_intf.h **** 	hdr = (btctl_hdr_t*) msg_put(msg, sizeof(*hdr));
+  42:include/ubtbr/btctl_intf.h **** 	hdr->type = type;
+ 249              		.loc 3 42 12 is_stmt 0 view .LVU64
+ 250 00b4 1423     		movs	r3, #20
+ 251              	.LBB82:
+ 252              	.LBB79:
+  21:include/ubtbr/msg.h **** 	msg->data_len = size;
+ 253              		.loc 2 21 16 view .LVU65
+ 254 00b6 4FF4B470 		mov	r0, #360
+ 255              	.LVL22:
+  19:include/ubtbr/msg.h **** 	msg->read = msg->data;
+ 256              		.loc 2 19 15 view .LVU66
+ 257 00ba 01F10C04 		add	r4, r1, #12
+ 258              	.LVL23:
+  19:include/ubtbr/msg.h **** 	msg->read = msg->data;
+ 259              		.loc 2 19 15 view .LVU67
+ 260              	.LBE79:
+ 261              	.LBE82:
+ 262              	.LBB83:
+ 263              	.LBB84:
+  22:include/ubtbr/msg.h **** 
+  23:include/ubtbr/msg.h **** 	return msg;
+  24:include/ubtbr/msg.h **** }
+  25:include/ubtbr/msg.h **** 
+  26:include/ubtbr/msg.h **** static inline void msg_free(msg_t *msg)
+  27:include/ubtbr/msg.h **** {
+  28:include/ubtbr/msg.h **** 	btctl_mem_free(msg);
+  29:include/ubtbr/msg.h **** }
+  30:include/ubtbr/msg.h **** 
+  31:include/ubtbr/msg.h **** /* Return number of bytes written in the data buffer. */
+  32:include/ubtbr/msg.h **** static inline int msg_write_len(const msg_t *msg)
+  33:include/ubtbr/msg.h **** {
+  34:include/ubtbr/msg.h **** 	return (int)(msg->write - msg->data);
+  35:include/ubtbr/msg.h **** }
+  36:include/ubtbr/msg.h **** 
+  37:include/ubtbr/msg.h **** /* Return number of bytes we can pull between
+  38:include/ubtbr/msg.h ****  * the data pointer and the end of the buffer. */
+  39:include/ubtbr/msg.h **** static inline int msg_read_avail(const msg_t *msg)
+ARM GAS  /tmp/cclHAjNu.s 			page 11
+
+
+  40:include/ubtbr/msg.h **** {
+  41:include/ubtbr/msg.h **** 	return (int)(msg->write - msg->read);
+  42:include/ubtbr/msg.h **** }
+  43:include/ubtbr/msg.h **** 
+  44:include/ubtbr/msg.h **** /* Return number of bytes we can put between
+  45:include/ubtbr/msg.h ****  * the tail pointer and the end of the buffer. */
+  46:include/ubtbr/msg.h **** static inline int msg_write_avail(const msg_t *msg)
+  47:include/ubtbr/msg.h **** {
+  48:include/ubtbr/msg.h ****         return msg->data_len - msg_write_len(msg);
+  49:include/ubtbr/msg.h **** }
+  50:include/ubtbr/msg.h **** 
+  51:include/ubtbr/msg.h **** /* Set write pointer.
+  52:include/ubtbr/msg.h ****  * Meant to trim the msg to the end of data written. */
+  53:include/ubtbr/msg.h **** static inline int msg_set_write(msg_t *msg, uint8_t *write)
+  54:include/ubtbr/msg.h **** {
+  55:include/ubtbr/msg.h **** 	if (write < msg->data || write > (msg->data + msg->data_len))
+  56:include/ubtbr/msg.h ****                 return -1;
+  57:include/ubtbr/msg.h ****         msg->write = write;
+  58:include/ubtbr/msg.h **** 
+  59:include/ubtbr/msg.h ****         return 0;
+  60:include/ubtbr/msg.h **** }
+  61:include/ubtbr/msg.h **** 
+  62:include/ubtbr/msg.h **** static inline uint8_t *msg_put(msg_t *msg, unsigned int len)
+  63:include/ubtbr/msg.h **** {
+  64:include/ubtbr/msg.h ****         uint8_t *tmp = msg->write;
+  65:include/ubtbr/msg.h **** 
+  66:include/ubtbr/msg.h ****         if (msg_write_avail(msg) < (int) len)
+  67:include/ubtbr/msg.h **** 		DIE("msg_put: short buf\n");
+  68:include/ubtbr/msg.h ****         msg->write += len;
+ 264              		.loc 2 68 20 view .LVU68
+ 265 00be 01F11002 		add	r2, r1, #16
+ 266              	.LBE84:
+ 267              	.LBE83:
+ 268              	.LBB87:
+ 269              	.LBB80:
+  20:include/ubtbr/msg.h **** 	msg->data_len = size;
+ 270              		.loc 2 20 12 view .LVU69
+ 271 00c2 4C60     		str	r4, [r1, #4]
+  21:include/ubtbr/msg.h **** 
+ 272              		.loc 2 21 2 is_stmt 1 view .LVU70
+  21:include/ubtbr/msg.h **** 
+ 273              		.loc 2 21 16 is_stmt 0 view .LVU71
+ 274 00c4 4880     		strh	r0, [r1, #2]	@ movhi
+  23:include/ubtbr/msg.h **** }
+ 275              		.loc 2 23 2 is_stmt 1 view .LVU72
+ 276              	.LVL24:
+  23:include/ubtbr/msg.h **** }
+ 277              		.loc 2 23 2 is_stmt 0 view .LVU73
+ 278              	.LBE80:
+ 279              	.LBE87:
+  41:include/ubtbr/btctl_intf.h **** 	hdr->type = type;
+ 280              		.loc 3 41 2 is_stmt 1 view .LVU74
+ 281              	.LBB88:
+ 282              	.LBI83:
+  62:include/ubtbr/msg.h **** {
+ 283              		.loc 2 62 24 view .LVU75
+ 284              	.LBB85:
+ARM GAS  /tmp/cclHAjNu.s 			page 12
+
+
+  64:include/ubtbr/msg.h **** 
+ 285              		.loc 2 64 9 view .LVU76
+  66:include/ubtbr/msg.h **** 		DIE("msg_put: short buf\n");
+ 286              		.loc 2 66 9 view .LVU77
+  66:include/ubtbr/msg.h **** 		DIE("msg_put: short buf\n");
+ 287              		.loc 2 66 9 is_stmt 0 view .LVU78
+ 288              	.LBE85:
+ 289              	.LBE88:
+ 290              	.LBE90:
+ 291              	.LBE92:
+ 292              	.LBE102:
+ 293              	.LBE105:
+  48:include/ubtbr/msg.h **** }
+ 294              		.loc 2 48 9 is_stmt 1 view .LVU79
+  34:include/ubtbr/msg.h **** }
+ 295              		.loc 2 34 2 view .LVU80
+ 296              	.LBB106:
+ 297              	.LBB103:
+ 298              	.LBB93:
+ 299              	.LBB91:
+ 300              	.LBB89:
+ 301              	.LBB86:
+ 302              		.loc 2 68 9 view .LVU81
+ 303              		.loc 2 68 20 is_stmt 0 view .LVU82
+ 304 00c6 8A60     		str	r2, [r1, #8]
+  69:include/ubtbr/msg.h **** 
+  70:include/ubtbr/msg.h ****         return tmp;
+ 305              		.loc 2 70 9 is_stmt 1 view .LVU83
+ 306              	.LVL25:
+ 307              		.loc 2 70 9 is_stmt 0 view .LVU84
+ 308              	.LBE86:
+ 309              	.LBE89:
+ 310              		.loc 3 42 2 is_stmt 1 view .LVU85
+ 311              		.loc 3 42 12 is_stmt 0 view .LVU86
+ 312 00c8 0B73     		strb	r3, [r1, #12]
+  43:include/ubtbr/btctl_intf.h **** 
+  44:include/ubtbr/btctl_intf.h **** 	return msg;
+ 313              		.loc 3 44 2 is_stmt 1 view .LVU87
+ 314              	.LVL26:
+ 315              		.loc 3 44 2 is_stmt 0 view .LVU88
+ 316              	.LBE91:
+ 317              	.LBE93:
+ 318              	.LBB94:
+ 319              	.LBI94:
+  45:include/ubtbr/btctl_intf.h **** }
+  46:include/ubtbr/btctl_intf.h **** 
+  47:include/ubtbr/btctl_intf.h **** static inline msg_t *safe_dequeue(msg_queue_t* q)
+  48:include/ubtbr/btctl_intf.h **** {
+  49:include/ubtbr/btctl_intf.h **** 	uint32_t flags = irq_save_disable();
+  50:include/ubtbr/btctl_intf.h **** 	msg_t *msg;
+  51:include/ubtbr/btctl_intf.h **** 
+  52:include/ubtbr/btctl_intf.h **** 	msg = msg_dequeue(q);
+  53:include/ubtbr/btctl_intf.h **** 	irq_restore(flags);
+  54:include/ubtbr/btctl_intf.h **** 
+  55:include/ubtbr/btctl_intf.h **** 	return msg;
+  56:include/ubtbr/btctl_intf.h **** }
+  57:include/ubtbr/btctl_intf.h **** 
+ARM GAS  /tmp/cclHAjNu.s 			page 13
+
+
+  58:include/ubtbr/btctl_intf.h **** static inline int safe_enqueue(msg_queue_t *q, msg_t *msg)
+  59:include/ubtbr/btctl_intf.h **** {
+  60:include/ubtbr/btctl_intf.h **** 	uint32_t flags = irq_save_disable();
+  61:include/ubtbr/btctl_intf.h **** 	int rc;
+  62:include/ubtbr/btctl_intf.h **** 
+  63:include/ubtbr/btctl_intf.h **** 	rc = msg_enqueue(q, msg);
+  64:include/ubtbr/btctl_intf.h **** 	irq_restore(flags);
+  65:include/ubtbr/btctl_intf.h **** 
+  66:include/ubtbr/btctl_intf.h **** 	return rc;
+  67:include/ubtbr/btctl_intf.h **** }
+  68:include/ubtbr/btctl_intf.h **** 
+  69:include/ubtbr/btctl_intf.h **** /* Called by usb driver to retreive next message to send to host */
+  70:include/ubtbr/btctl_intf.h **** static inline msg_t *btctl_tx_dequeue(void)
+  71:include/ubtbr/btctl_intf.h **** {
+  72:include/ubtbr/btctl_intf.h **** 	return safe_dequeue(&btctl.tx_q);
+  73:include/ubtbr/btctl_intf.h **** }
+  74:include/ubtbr/btctl_intf.h **** 
+  75:include/ubtbr/btctl_intf.h **** /* Enqueue a message for host */
+  76:include/ubtbr/btctl_intf.h **** static inline int btctl_tx_enqueue(msg_t *msg)
+  77:include/ubtbr/btctl_intf.h **** {
+  78:include/ubtbr/btctl_intf.h **** 	return safe_enqueue(&btctl.tx_q, msg);
+  79:include/ubtbr/btctl_intf.h **** }
+  80:include/ubtbr/btctl_intf.h **** 
+  81:include/ubtbr/btctl_intf.h **** /* Dequeue a message from host */
+  82:include/ubtbr/btctl_intf.h **** static inline msg_t *btctl_rx_dequeue(void)
+  83:include/ubtbr/btctl_intf.h **** {
+  84:include/ubtbr/btctl_intf.h **** 	return safe_dequeue(&btctl.rx_q);
+  85:include/ubtbr/btctl_intf.h **** }
+  86:include/ubtbr/btctl_intf.h **** 
+  87:include/ubtbr/btctl_intf.h **** /* Called by usb driver with last message received from host */
+  88:include/ubtbr/btctl_intf.h **** static inline int btctl_rx_enqueue(msg_t *msg)
+ 320              		.loc 3 88 19 is_stmt 1 view .LVU89
+ 321              	.LBB95:
+  89:include/ubtbr/btctl_intf.h **** {
+  90:include/ubtbr/btctl_intf.h **** 	return safe_enqueue(&btctl.rx_q, msg);
+ 322              		.loc 3 90 2 view .LVU90
+ 323              	.LBB96:
+ 324              	.LBI96:
+  58:include/ubtbr/btctl_intf.h **** {
+ 325              		.loc 3 58 19 view .LVU91
+ 326              	.LBB97:
+  60:include/ubtbr/btctl_intf.h **** 	int rc;
+ 327              		.loc 3 60 2 view .LVU92
+ 328              	.LBB98:
+ 329              	.LBI98:
+ 330              		.file 4 "include/ubtbr/system.h"
+   1:include/ubtbr/system.h **** #ifndef __SYSTEM_H
+   2:include/ubtbr/system.h **** #define __SYSTEM_H
+   3:include/ubtbr/system.h **** #include <stdint.h>
+   4:include/ubtbr/system.h **** 
+   5:include/ubtbr/system.h **** static inline uint32_t irq_save_disable(void)
+ 331              		.loc 4 5 24 view .LVU93
+ 332              	.LBB99:
+   6:include/ubtbr/system.h **** {
+   7:include/ubtbr/system.h **** 	uint32_t primask;
+ 333              		.loc 4 7 2 view .LVU94
+   8:include/ubtbr/system.h **** 
+ARM GAS  /tmp/cclHAjNu.s 			page 14
+
+
+   9:include/ubtbr/system.h **** 	__asm__ __volatile__ (
+ 334              		.loc 4 9 2 view .LVU95
+ 335              		.syntax unified
+ 336              	@ 9 "include/ubtbr/system.h" 1
+ 337 00ca EFF31084 			mrs    r4, primask
+ 338 00ce 72B6     		cpsid  i
+ 339              	
+ 340              	@ 0 "" 2
+ 341              	.LVL27:
+  10:include/ubtbr/system.h **** 	"\tmrs    %0, primask\n"
+  11:include/ubtbr/system.h **** 	"\tcpsid  i\n"
+  12:include/ubtbr/system.h **** 	: "=r" (primask)
+  13:include/ubtbr/system.h **** 	:
+  14:include/ubtbr/system.h **** 	: "memory");
+  15:include/ubtbr/system.h **** 
+  16:include/ubtbr/system.h **** 	return primask;
+ 342              		.loc 4 16 2 view .LVU96
+ 343              		.loc 4 16 2 is_stmt 0 view .LVU97
+ 344              		.thumb
+ 345              		.syntax unified
+ 346              	.LBE99:
+ 347              	.LBE98:
+  61:include/ubtbr/btctl_intf.h **** 
+ 348              		.loc 3 61 2 is_stmt 1 view .LVU98
+  63:include/ubtbr/btctl_intf.h **** 	irq_restore(flags);
+ 349              		.loc 3 63 2 view .LVU99
+  63:include/ubtbr/btctl_intf.h **** 	irq_restore(flags);
+ 350              		.loc 3 63 7 is_stmt 0 view .LVU100
+ 351 00d0 4448     		ldr	r0, .L42+16
+ 352              	.LVL28:
+  63:include/ubtbr/btctl_intf.h **** 	irq_restore(flags);
+ 353              		.loc 3 63 7 view .LVU101
+ 354 00d2 FFF7FEFF 		bl	msg_enqueue
+ 355              	.LVL29:
+  64:include/ubtbr/btctl_intf.h **** 
+ 356              		.loc 3 64 2 is_stmt 1 view .LVU102
+ 357              	.LBB100:
+ 358              	.LBI100:
+  17:include/ubtbr/system.h **** }
+  18:include/ubtbr/system.h **** 
+  19:include/ubtbr/system.h **** static inline void irq_restore(uint32_t primask)
+ 359              		.loc 4 19 20 view .LVU103
+ 360              	.LBB101:
+  20:include/ubtbr/system.h **** {
+  21:include/ubtbr/system.h **** 	__asm__ __volatile__ (
+ 361              		.loc 4 21 2 view .LVU104
+ 362              		.syntax unified
+ 363              	@ 21 "include/ubtbr/system.h" 1
+ 364 00d6 84F31088 		msr primask, r4
+ 365              	@ 0 "" 2
+ 366              	.LVL30:
+ 367              		.loc 4 21 2 is_stmt 0 view .LVU105
+ 368              		.thumb
+ 369              		.syntax unified
+ 370              	.LBE101:
+ 371              	.LBE100:
+  66:include/ubtbr/btctl_intf.h **** }
+ARM GAS  /tmp/cclHAjNu.s 			page 15
+
+
+ 372              		.loc 3 66 2 is_stmt 1 view .LVU106
+  66:include/ubtbr/btctl_intf.h **** }
+ 373              		.loc 3 66 2 is_stmt 0 view .LVU107
+ 374              	.LBE97:
+ 375              	.LBE96:
+ 376              	.LBE95:
+ 377              	.LBE94:
+ 378              	.LBE103:
+ 379              	.LBE106:
+ 180:src/btctl/vendor_request_handler.c **** }
+ 380              		.loc 1 180 9 view .LVU108
+ 381 00da 0120     		movs	r0, #1
+ 382              	.LBB107:
+ 383              	.LBB104:
+  34:src/btctl/vendor_request_handler.c **** 
+ 384              		.loc 1 34 1 view .LVU109
+ 385 00dc BCE7     		b	.L1
+ 386              	.LVL31:
+ 387              	.L6:
+  34:src/btctl/vendor_request_handler.c **** 
+ 388              		.loc 1 34 1 view .LVU110
+ 389              	.LBE104:
+ 390              	.LBE107:
+ 142:src/btctl/vendor_request_handler.c **** 			cc2400_set(FREND, 8 | request_params[0]);
+ 391              		.loc 1 142 3 is_stmt 1 view .LVU111
+ 142:src/btctl/vendor_request_handler.c **** 			cc2400_set(FREND, 8 | request_params[0]);
+ 392              		.loc 1 142 21 is_stmt 0 view .LVU112
+ 393 00de 0988     		ldrh	r1, [r1]
+ 394              	.LVL32:
+ 142:src/btctl/vendor_request_handler.c **** 			cc2400_set(FREND, 8 | request_params[0]);
+ 395              		.loc 1 142 5 view .LVU113
+ 396 00e0 0729     		cmp	r1, #7
+ 397 00e2 B8D8     		bhi	.L33
+ 143:src/btctl/vendor_request_handler.c **** 		} else {
+ 398              		.loc 1 143 4 is_stmt 1 view .LVU114
+ 399 00e4 0520     		movs	r0, #5
+ 400              	.LVL33:
+ 143:src/btctl/vendor_request_handler.c **** 		} else {
+ 401              		.loc 1 143 4 is_stmt 0 view .LVU115
+ 402 00e6 41F00801 		orr	r1, r1, #8
+ 403 00ea FFF7FEFF 		bl	cc2400_set
+ 404              	.LVL34:
+ 147:src/btctl/vendor_request_handler.c **** #endif
+ 405              		.loc 1 147 3 is_stmt 1 view .LVU116
+ 180:src/btctl/vendor_request_handler.c **** }
+ 406              		.loc 1 180 9 is_stmt 0 view .LVU117
+ 407 00ee 0120     		movs	r0, #1
+ 147:src/btctl/vendor_request_handler.c **** #endif
+ 408              		.loc 1 147 3 view .LVU118
+ 409 00f0 B2E7     		b	.L1
+ 410              	.LVL35:
+ 411              	.L3:
+ 173:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 412              		.loc 1 173 3 is_stmt 1 view .LVU119
+ 173:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 413              		.loc 1 173 11 is_stmt 0 view .LVU120
+ 414 00f2 0123     		movs	r3, #1
+ARM GAS  /tmp/cclHAjNu.s 			page 16
+
+
+ 415 00f4 1370     		strb	r3, [r2]
+ 416              	.LVL36:
+ 174:src/btctl/vendor_request_handler.c **** 		break;
+ 417              		.loc 1 174 3 is_stmt 1 view .LVU121
+ 180:src/btctl/vendor_request_handler.c **** }
+ 418              		.loc 1 180 9 is_stmt 0 view .LVU122
+ 419 00f6 1846     		mov	r0, r3
+ 420              	.LVL37:
+ 174:src/btctl/vendor_request_handler.c **** 		break;
+ 421              		.loc 1 174 13 view .LVU123
+ 422 00f8 2360     		str	r3, [r4]
+ 175:src/btctl/vendor_request_handler.c **** 
+ 423              		.loc 1 175 3 is_stmt 1 view .LVU124
+ 424 00fa ADE7     		b	.L1
+ 425              	.LVL38:
+ 426              	.L5:
+ 161:src/btctl/vendor_request_handler.c **** 		data[1] = 0x00;
+ 427              		.loc 1 161 3 view .LVU125
+ 161:src/btctl/vendor_request_handler.c **** 		data[1] = 0x00;
+ 428              		.loc 1 161 11 is_stmt 0 view .LVU126
+ 429 00fc 0023     		movs	r3, #0
+ 164:src/btctl/vendor_request_handler.c **** 		data[2] = length;
+ 430              		.loc 1 164 16 view .LVU127
+ 431 00fe 3A48     		ldr	r0, .L42+20
+ 432              	.LVL39:
+ 161:src/btctl/vendor_request_handler.c **** 		data[1] = 0x00;
+ 433              		.loc 1 161 11 view .LVU128
+ 434 0100 1370     		strb	r3, [r2]
+ 435              	.LVL40:
+ 162:src/btctl/vendor_request_handler.c **** 
+ 436              		.loc 1 162 3 is_stmt 1 view .LVU129
+ 162:src/btctl/vendor_request_handler.c **** 
+ 437              		.loc 1 162 11 is_stmt 0 view .LVU130
+ 438 0102 5370     		strb	r3, [r2, #1]
+ 439 0104 0192     		str	r2, [sp, #4]
+ 164:src/btctl/vendor_request_handler.c **** 		data[2] = length;
+ 440              		.loc 1 164 3 is_stmt 1 view .LVU131
+ 164:src/btctl/vendor_request_handler.c **** 		data[2] = length;
+ 441              		.loc 1 164 16 is_stmt 0 view .LVU132
+ 442 0106 FFF7FEFF 		bl	strlen
+ 443              	.LVL41:
+ 164:src/btctl/vendor_request_handler.c **** 		data[2] = length;
+ 444              		.loc 1 164 12 view .LVU133
+ 445 010a 019A     		ldr	r2, [sp, #4]
+ 446 010c C5B2     		uxtb	r5, r0
+ 447              	.LVL42:
+ 165:src/btctl/vendor_request_handler.c **** 
+ 448              		.loc 1 165 3 is_stmt 1 view .LVU134
+ 164:src/btctl/vendor_request_handler.c **** 		data[2] = length;
+ 449              		.loc 1 164 12 is_stmt 0 view .LVU135
+ 450 010e 9070     		strb	r0, [r2, #2]
+ 167:src/btctl/vendor_request_handler.c **** 
+ 451              		.loc 1 167 3 is_stmt 1 view .LVU136
+ 452 0110 3549     		ldr	r1, .L42+20
+ 453 0112 D01C     		adds	r0, r2, #3
+ 454 0114 2A46     		mov	r2, r5
+ 169:src/btctl/vendor_request_handler.c **** 		break;
+ARM GAS  /tmp/cclHAjNu.s 			page 17
+
+
+ 455              		.loc 1 169 21 is_stmt 0 view .LVU137
+ 456 0116 0335     		adds	r5, r5, #3
+ 457              	.LVL43:
+ 167:src/btctl/vendor_request_handler.c **** 
+ 458              		.loc 1 167 3 view .LVU138
+ 459 0118 FFF7FEFF 		bl	memcpy
+ 460              	.LVL44:
+ 169:src/btctl/vendor_request_handler.c **** 		break;
+ 461              		.loc 1 169 3 is_stmt 1 view .LVU139
+ 180:src/btctl/vendor_request_handler.c **** }
+ 462              		.loc 1 180 9 is_stmt 0 view .LVU140
+ 463 011c 0120     		movs	r0, #1
+ 169:src/btctl/vendor_request_handler.c **** 		break;
+ 464              		.loc 1 169 13 view .LVU141
+ 465 011e 2560     		str	r5, [r4]
+ 170:src/btctl/vendor_request_handler.c **** 
+ 466              		.loc 1 170 3 is_stmt 1 view .LVU142
+ 467 0120 9AE7     		b	.L1
+ 468              	.LVL45:
+ 469              	.L22:
+  64:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 470              		.loc 1 64 3 view .LVU143
+  65:src/btctl/vendor_request_handler.c **** 		break;
+ 471              		.loc 1 65 13 is_stmt 0 view .LVU144
+ 472 0122 0121     		movs	r1, #1
+ 473              	.LVL46:
+  64:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 474              		.loc 1 64 14 view .LVU145
+ 475 0124 2C4B     		ldr	r3, .L42+4
+ 180:src/btctl/vendor_request_handler.c **** }
+ 476              		.loc 1 180 9 view .LVU146
+ 477 0126 0846     		mov	r0, r1
+ 478              	.LVL47:
+  64:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 479              		.loc 1 64 14 view .LVU147
+ 480 0128 1B68     		ldr	r3, [r3]
+  64:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 481              		.loc 1 64 25 view .LVU148
+ 482 012a C3F30013 		ubfx	r3, r3, #4, #1
+  64:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 483              		.loc 1 64 11 view .LVU149
+ 484 012e 1370     		strb	r3, [r2]
+ 485              	.LVL48:
+  65:src/btctl/vendor_request_handler.c **** 		break;
+ 486              		.loc 1 65 3 is_stmt 1 view .LVU150
+  65:src/btctl/vendor_request_handler.c **** 		break;
+ 487              		.loc 1 65 13 is_stmt 0 view .LVU151
+ 488 0130 2160     		str	r1, [r4]
+  66:src/btctl/vendor_request_handler.c **** 
+ 489              		.loc 1 66 3 is_stmt 1 view .LVU152
+ 490 0132 91E7     		b	.L1
+ 491              	.LVL49:
+ 492              	.L23:
+  57:src/btctl/vendor_request_handler.c **** 			USRLED_SET;
+ 493              		.loc 1 57 3 view .LVU153
+  57:src/btctl/vendor_request_handler.c **** 			USRLED_SET;
+ 494              		.loc 1 57 6 is_stmt 0 view .LVU154
+ARM GAS  /tmp/cclHAjNu.s 			page 18
+
+
+ 495 0134 0B88     		ldrh	r3, [r1]
+  58:src/btctl/vendor_request_handler.c **** 		else
+ 496              		.loc 1 58 4 view .LVU155
+ 497 0136 0222     		movs	r2, #2
+ 498              	.LVL50:
+  57:src/btctl/vendor_request_handler.c **** 			USRLED_SET;
+ 499              		.loc 1 57 6 view .LVU156
+ 500 0138 002B     		cmp	r3, #0
+ 501 013a 9AD1     		bne	.L38
+ 502              	.L29:
+  96:src/btctl/vendor_request_handler.c **** 		break;
+ 503              		.loc 1 96 4 is_stmt 1 view .LVU157
+ 504 013c 2B4B     		ldr	r3, .L42+24
+ 180:src/btctl/vendor_request_handler.c **** }
+ 505              		.loc 1 180 9 is_stmt 0 view .LVU158
+ 506 013e 0120     		movs	r0, #1
+ 507              	.LVL51:
+  96:src/btctl/vendor_request_handler.c **** 		break;
+ 508              		.loc 1 96 4 view .LVU159
+ 509 0140 1A60     		str	r2, [r3]
+ 510 0142 89E7     		b	.L1
+ 511              	.LVL52:
+ 512              	.L18:
+  88:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 513              		.loc 1 88 3 is_stmt 1 view .LVU160
+  89:src/btctl/vendor_request_handler.c **** 		break;
+ 514              		.loc 1 89 13 is_stmt 0 view .LVU161
+ 515 0144 0121     		movs	r1, #1
+ 516              	.LVL53:
+  88:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 517              		.loc 1 88 14 view .LVU162
+ 518 0146 244B     		ldr	r3, .L42+4
+ 180:src/btctl/vendor_request_handler.c **** }
+ 519              		.loc 1 180 9 view .LVU163
+ 520 0148 0846     		mov	r0, r1
+ 521              	.LVL54:
+  88:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 522              		.loc 1 88 14 view .LVU164
+ 523 014a 1B68     		ldr	r3, [r3]
+  88:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 524              		.loc 1 88 25 view .LVU165
+ 525 014c C3F34023 		ubfx	r3, r3, #9, #1
+  88:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 526              		.loc 1 88 11 view .LVU166
+ 527 0150 1370     		strb	r3, [r2]
+ 528              	.LVL55:
+  89:src/btctl/vendor_request_handler.c **** 		break;
+ 529              		.loc 1 89 3 is_stmt 1 view .LVU167
+  89:src/btctl/vendor_request_handler.c **** 		break;
+ 530              		.loc 1 89 13 is_stmt 0 view .LVU168
+ 531 0152 2160     		str	r1, [r4]
+  90:src/btctl/vendor_request_handler.c **** 
+ 532              		.loc 1 90 3 is_stmt 1 view .LVU169
+ 533 0154 80E7     		b	.L1
+ 534              	.LVL56:
+ 535              	.L19:
+  81:src/btctl/vendor_request_handler.c **** 			TXLED_SET;
+ARM GAS  /tmp/cclHAjNu.s 			page 19
+
+
+ 536              		.loc 1 81 3 view .LVU170
+  81:src/btctl/vendor_request_handler.c **** 			TXLED_SET;
+ 537              		.loc 1 81 6 is_stmt 0 view .LVU171
+ 538 0156 0B88     		ldrh	r3, [r1]
+  82:src/btctl/vendor_request_handler.c **** 		else
+ 539              		.loc 1 82 4 view .LVU172
+ 540 0158 4FF48072 		mov	r2, #256
+ 541              	.LVL57:
+  81:src/btctl/vendor_request_handler.c **** 			TXLED_SET;
+ 542              		.loc 1 81 6 view .LVU173
+ 543 015c 002B     		cmp	r3, #0
+ 544 015e EDD0     		beq	.L29
+ 545 0160 87E7     		b	.L38
+ 546              	.LVL58:
+ 547              	.L20:
+  76:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 548              		.loc 1 76 3 is_stmt 1 view .LVU174
+  77:src/btctl/vendor_request_handler.c **** 		break;
+ 549              		.loc 1 77 13 is_stmt 0 view .LVU175
+ 550 0162 0121     		movs	r1, #1
+ 551              	.LVL59:
+  76:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 552              		.loc 1 76 14 view .LVU176
+ 553 0164 1C4B     		ldr	r3, .L42+4
+ 554              	.L37:
+ 125:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 555              		.loc 1 125 14 view .LVU177
+ 556 0166 1B68     		ldr	r3, [r3]
+ 180:src/btctl/vendor_request_handler.c **** }
+ 557              		.loc 1 180 9 view .LVU178
+ 558 0168 0846     		mov	r0, r1
+ 559              	.LVL60:
+ 125:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 560              		.loc 1 125 23 view .LVU179
+ 561 016a C3F30023 		ubfx	r3, r3, #8, #1
+ 125:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 562              		.loc 1 125 11 view .LVU180
+ 563 016e 1370     		strb	r3, [r2]
+ 564              	.LVL61:
+ 126:src/btctl/vendor_request_handler.c **** 		break;
+ 565              		.loc 1 126 3 is_stmt 1 view .LVU181
+ 126:src/btctl/vendor_request_handler.c **** 		break;
+ 566              		.loc 1 126 13 is_stmt 0 view .LVU182
+ 567 0170 2160     		str	r1, [r4]
+ 127:src/btctl/vendor_request_handler.c **** 
+ 568              		.loc 1 127 3 is_stmt 1 view .LVU183
+ 569 0172 71E7     		b	.L1
+ 570              	.LVL62:
+ 571              	.L21:
+  69:src/btctl/vendor_request_handler.c **** 			RXLED_SET;
+ 572              		.loc 1 69 3 view .LVU184
+  69:src/btctl/vendor_request_handler.c **** 			RXLED_SET;
+ 573              		.loc 1 69 6 is_stmt 0 view .LVU185
+ 574 0174 0B88     		ldrh	r3, [r1]
+  70:src/btctl/vendor_request_handler.c **** 		else
+ 575              		.loc 1 70 4 view .LVU186
+ 576 0176 1022     		movs	r2, #16
+ARM GAS  /tmp/cclHAjNu.s 			page 20
+
+
+ 577              	.LVL63:
+  69:src/btctl/vendor_request_handler.c **** 			RXLED_SET;
+ 578              		.loc 1 69 6 view .LVU187
+ 579 0178 002B     		cmp	r3, #0
+ 580 017a DFD0     		beq	.L29
+ 581 017c 79E7     		b	.L38
+ 582              	.LVL64:
+ 583              	.L10:
+ 130:src/btctl/vendor_request_handler.c **** 			HGM_SET;
+ 584              		.loc 1 130 3 is_stmt 1 view .LVU188
+ 130:src/btctl/vendor_request_handler.c **** 			HGM_SET;
+ 585              		.loc 1 130 6 is_stmt 0 view .LVU189
+ 586 017e 0B88     		ldrh	r3, [r1]
+ 131:src/btctl/vendor_request_handler.c **** 		else
+ 587              		.loc 1 131 4 view .LVU190
+ 588 0180 4FF48072 		mov	r2, #256
+ 589              	.LVL65:
+ 130:src/btctl/vendor_request_handler.c **** 			HGM_SET;
+ 590              		.loc 1 130 6 view .LVU191
+ 591 0184 53B1     		cbz	r3, .L31
+ 592              	.L40:
+ 131:src/btctl/vendor_request_handler.c **** 		else
+ 593              		.loc 1 131 4 is_stmt 1 view .LVU192
+ 594 0186 1A4B     		ldr	r3, .L42+28
+ 180:src/btctl/vendor_request_handler.c **** }
+ 595              		.loc 1 180 9 is_stmt 0 view .LVU193
+ 596 0188 0120     		movs	r0, #1
+ 597              	.LVL66:
+ 131:src/btctl/vendor_request_handler.c **** 		else
+ 598              		.loc 1 131 4 view .LVU194
+ 599 018a 1A60     		str	r2, [r3]
+ 600 018c 64E7     		b	.L1
+ 601              	.LVL67:
+ 602              	.L11:
+ 125:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 603              		.loc 1 125 3 is_stmt 1 view .LVU195
+ 126:src/btctl/vendor_request_handler.c **** 		break;
+ 604              		.loc 1 126 13 is_stmt 0 view .LVU196
+ 605 018e 0121     		movs	r1, #1
+ 606              	.LVL68:
+ 125:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 607              		.loc 1 125 14 view .LVU197
+ 608 0190 184B     		ldr	r3, .L42+32
+ 609 0192 E8E7     		b	.L37
+ 610              	.LVL69:
+ 611              	.L12:
+ 118:src/btctl/vendor_request_handler.c **** 			PAEN_SET;
+ 612              		.loc 1 118 3 is_stmt 1 view .LVU198
+ 118:src/btctl/vendor_request_handler.c **** 			PAEN_SET;
+ 613              		.loc 1 118 6 is_stmt 0 view .LVU199
+ 614 0194 0B88     		ldrh	r3, [r1]
+ 119:src/btctl/vendor_request_handler.c **** 		else
+ 615              		.loc 1 119 4 view .LVU200
+ 616 0196 8022     		movs	r2, #128
+ 617              	.LVL70:
+ 118:src/btctl/vendor_request_handler.c **** 			PAEN_SET;
+ 618              		.loc 1 118 6 view .LVU201
+ARM GAS  /tmp/cclHAjNu.s 			page 21
+
+
+ 619 0198 002B     		cmp	r3, #0
+ 620 019a F4D1     		bne	.L40
+ 621              	.L31:
+ 133:src/btctl/vendor_request_handler.c **** 		break;
+ 622              		.loc 1 133 4 is_stmt 1 view .LVU202
+ 623 019c 164B     		ldr	r3, .L42+36
+ 180:src/btctl/vendor_request_handler.c **** }
+ 624              		.loc 1 180 9 is_stmt 0 view .LVU203
+ 625 019e 0120     		movs	r0, #1
+ 626              	.LVL71:
+ 133:src/btctl/vendor_request_handler.c **** 		break;
+ 627              		.loc 1 133 4 view .LVU204
+ 628 01a0 1A60     		str	r2, [r3]
+ 629 01a2 59E7     		b	.L1
+ 630              	.LVL72:
+ 631              	.L13:
+ 113:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 632              		.loc 1 113 3 is_stmt 1 view .LVU205
+ 114:src/btctl/vendor_request_handler.c **** 		break;
+ 633              		.loc 1 114 13 is_stmt 0 view .LVU206
+ 634 01a4 0121     		movs	r1, #1
+ 635              	.LVL73:
+ 113:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 636              		.loc 1 113 14 view .LVU207
+ 637 01a6 134B     		ldr	r3, .L42+32
+ 180:src/btctl/vendor_request_handler.c **** }
+ 638              		.loc 1 180 9 view .LVU208
+ 639 01a8 0846     		mov	r0, r1
+ 640              	.LVL74:
+ 113:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 641              		.loc 1 113 14 view .LVU209
+ 642 01aa 1B68     		ldr	r3, [r3]
+ 113:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 643              		.loc 1 113 24 view .LVU210
+ 644 01ac C3F3C013 		ubfx	r3, r3, #7, #1
+ 113:src/btctl/vendor_request_handler.c **** 		*data_len = 1;
+ 645              		.loc 1 113 11 view .LVU211
+ 646 01b0 1370     		strb	r3, [r2]
+ 647              	.LVL75:
+ 114:src/btctl/vendor_request_handler.c **** 		break;
+ 648              		.loc 1 114 3 is_stmt 1 view .LVU212
+ 114:src/btctl/vendor_request_handler.c **** 		break;
+ 649              		.loc 1 114 13 is_stmt 0 view .LVU213
+ 650 01b2 2160     		str	r1, [r4]
+ 115:src/btctl/vendor_request_handler.c **** 
+ 651              		.loc 1 115 3 is_stmt 1 view .LVU214
+ 652 01b4 50E7     		b	.L1
+ 653              	.LVL76:
+ 654              	.L14:
+ 100:src/btctl/vendor_request_handler.c **** 		break;
+ 655              		.loc 1 100 3 view .LVU215
+ 656 01b6 1046     		mov	r0, r2
+ 657              	.LVL77:
+ 100:src/btctl/vendor_request_handler.c **** 		break;
+ 658              		.loc 1 100 3 is_stmt 0 view .LVU216
+ 659 01b8 2146     		mov	r1, r4
+ 660              	.LVL78:
+ARM GAS  /tmp/cclHAjNu.s 			page 22
+
+
+ 100:src/btctl/vendor_request_handler.c **** 		break;
+ 661              		.loc 1 100 3 view .LVU217
+ 662 01ba FFF7FEFF 		bl	get_part_num
+ 663              	.LVL79:
+ 101:src/btctl/vendor_request_handler.c **** 
+ 664              		.loc 1 101 3 is_stmt 1 view .LVU218
+ 180:src/btctl/vendor_request_handler.c **** }
+ 665              		.loc 1 180 9 is_stmt 0 view .LVU219
+ 666 01be 0120     		movs	r0, #1
+ 101:src/btctl/vendor_request_handler.c **** 
+ 667              		.loc 1 101 3 view .LVU220
+ 668 01c0 4AE7     		b	.L1
+ 669              	.LVL80:
+ 670              	.L15:
+ 108:src/btctl/vendor_request_handler.c **** 		break;
+ 671              		.loc 1 108 3 is_stmt 1 view .LVU221
+ 672 01c2 1046     		mov	r0, r2
+ 673              	.LVL81:
+ 108:src/btctl/vendor_request_handler.c **** 		break;
+ 674              		.loc 1 108 3 is_stmt 0 view .LVU222
+ 675 01c4 2146     		mov	r1, r4
+ 676              	.LVL82:
+ 108:src/btctl/vendor_request_handler.c **** 		break;
+ 677              		.loc 1 108 3 view .LVU223
+ 678 01c6 FFF7FEFF 		bl	get_device_serial
+ 679              	.LVL83:
+ 109:src/btctl/vendor_request_handler.c **** 
+ 680              		.loc 1 109 3 is_stmt 1 view .LVU224
+ 180:src/btctl/vendor_request_handler.c **** }
+ 681              		.loc 1 180 9 is_stmt 0 view .LVU225
+ 682 01ca 0120     		movs	r0, #1
+ 109:src/btctl/vendor_request_handler.c **** 
+ 683              		.loc 1 109 3 view .LVU226
+ 684 01cc 44E7     		b	.L1
+ 685              	.LVL84:
+ 686              	.L16:
+ 104:src/btctl/vendor_request_handler.c **** 		break;
+ 687              		.loc 1 104 3 is_stmt 1 view .LVU227
+ 688              	.LBB108:
+ 689              	.LBI108:
+  31:src/btctl/vendor_request_handler.c **** {
+ 690              		.loc 1 31 13 view .LVU228
+ 691              	.LBB109:
+  33:src/btctl/vendor_request_handler.c **** }
+ 692              		.loc 1 33 2 view .LVU229
+ 693              	.LBB110:
+ 694              	.LBI110:
+  34:include/ubtbr/btctl_intf.h **** {
+ 695              		.loc 3 34 22 view .LVU230
+ 696              	.LBB111:
+  36:include/ubtbr/btctl_intf.h **** 	btctl_hdr_t *hdr;
+ 697              		.loc 3 36 2 view .LVU231
+  37:include/ubtbr/btctl_intf.h **** 
+ 698              		.loc 3 37 2 view .LVU232
+  40:include/ubtbr/btctl_intf.h **** 	hdr = (btctl_hdr_t*) msg_put(msg, sizeof(*hdr));
+ 699              		.loc 3 40 2 view .LVU233
+ 700              	.LBB112:
+ARM GAS  /tmp/cclHAjNu.s 			page 23
+
+
+ 701              	.LBI112:
+  15:include/ubtbr/msg.h **** {
+ 702              		.loc 2 15 22 view .LVU234
+ 703              	.LBB113:
+  17:include/ubtbr/msg.h **** 
+ 704              		.loc 2 17 2 view .LVU235
+  17:include/ubtbr/msg.h **** 
+ 705              		.loc 2 17 23 is_stmt 0 view .LVU236
+ 706 01ce 4FF4BA70 		mov	r0, #372
+ 707              	.LVL85:
+  17:include/ubtbr/msg.h **** 
+ 708              		.loc 2 17 23 view .LVU237
+ 709 01d2 6CE7     		b	.L39
+ 710              	.L43:
+ 711              		.align	2
+ 712              	.L42:
+ 713 01d4 38C00920 		.word	537509944
+ 714 01d8 34C00920 		.word	537509940
+ 715 01dc 00000000 		.word	bootloader_ctrl
+ 716 01e0 21BB0543 		.word	1124449057
+ 717 01e4 04000000 		.word	btctl+4
+ 718 01e8 00000000 		.word	.LC0
+ 719 01ec 3CC00920 		.word	537509948
+ 720 01f0 58C00920 		.word	537509976
+ 721 01f4 54C00920 		.word	537509972
+ 722 01f8 5CC00920 		.word	537509980
+ 723              	.LBE113:
+ 724              	.LBE112:
+ 725              	.LBE111:
+ 726              	.LBE110:
+ 727              	.LBE109:
+ 728              	.LBE108:
+ 729              		.cfi_endproc
+ 730              	.LFE26:
+ 732              		.text
+ 733              	.Letext0:
+ 734              		.file 5 "/usr/lib/gcc/arm-none-eabi/9.2.1/include/stddef.h"
+ 735              		.file 6 "/usr/include/newlib/sys/_types.h"
+ 736              		.file 7 "/usr/include/newlib/sys/reent.h"
+ 737              		.file 8 "/usr/include/newlib/sys/lock.h"
+ 738              		.file 9 "/usr/lib/gcc/arm-none-eabi/9.2.1/include/stdint.h"
+ 739              		.file 10 "../../host/libubertooth/src/ubertooth_interface.h"
+ 740              		.file 11 "../common/ubertooth.h"
+ 741              		.file 12 "include/ubtbr/queue.h"
+ 742              		.file 13 "include/ubtbr/btphy.h"
+ 743              		.file 14 "include/ubtbr/mem_pool.h"
+ 744              		.file 15 "/usr/include/newlib/string.h"
+ARM GAS  /tmp/cclHAjNu.s 			page 24
+
+
+DEFINED SYMBOLS
+                            *ABS*:0000000000000000 vendor_request_handler.c
+     /tmp/cclHAjNu.s:16     .rodata.str1.4:0000000000000000 $d
+     /tmp/cclHAjNu.s:20     .text.vendor_request_handler:0000000000000000 $t
+     /tmp/cclHAjNu.s:29     .text.vendor_request_handler:0000000000000000 vendor_request_handler
+     /tmp/cclHAjNu.s:60     .text.vendor_request_handler:000000000000000e $d
+     /tmp/cclHAjNu.s:96     .text.vendor_request_handler:0000000000000056 $t
+     /tmp/cclHAjNu.s:713    .text.vendor_request_handler:00000000000001d4 $d
+
+UNDEFINED SYMBOLS
+set_isp
+cc2400_get
+mem_pool_alloc
+msg_enqueue
+cc2400_set
+strlen
+memcpy
+get_part_num
+get_device_serial
+bootloader_ctrl
+btctl
